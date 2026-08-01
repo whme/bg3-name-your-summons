@@ -78,10 +78,14 @@ run. When a change depends on a BG3SE or Osiris behaviour, verify the
 assumption against Script Extender console output the user pastes, or against
 the IDE helpers / API docs, before relying on it.
 
-Packaging (done by the user, not the agent): BG3 Modder's Multitool ->
-Create Package on the top-level `NameYourSummons/` folder, or
-`divine.exe -a create-package`. For iteration the folder is symlinked into the
-game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
+Packaging: run `./build.ps1` (PowerShell). It downloads a pinned LSLib release
+into `.tools/` and wraps `divine.exe -a create-package` to produce
+`build/NameYourSummons.pak` plus a zip. The Modder's Multitool *Create Package*
+does the same thing by hand. Trap: divine excludes any file whose ABSOLUTE path
+contains a dot-segment (e.g. a `.paseo` worktree), silently emitting an empty
+pak - `build.ps1` stages the mod into a dot-free temp dir to dodge this. For
+iteration the folder is symlinked into the game's `Data/`, and `reset` in the
+SE console reloads Lua without restarting.
 
 Diagnostic console commands (server state unless noted):
 

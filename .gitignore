@@ -1,4 +1,6 @@
-*.zip
+# Build output (.pak + .zip) and the downloaded LSLib toolchain.
+build/
+.tools/
 
 # Local, uncommitted per-project agent settings (Claude Code writes these).
 .claude/settings.local.json
