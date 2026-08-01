@@ -8,6 +8,7 @@
 #   ./make.ps1 lint          run luacheck
 #   ./make.ps1 typecheck     run lua-language-server --check
 #   ./make.ps1 test          run the LuaUnit suite
+#   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 all           format + lint + typecheck + test (verify locally)
 #   ./make.ps1 check         format-check + lint + typecheck + test (what CI runs)
 #   ./make.ps1 help          show this text
@@ -39,6 +40,7 @@ $V = @{
     Lua           = "54f813a"
     LuaUnit       = "LUAUNIT_V3_5"
     ExtIdeHelpers = "main"
+    LSLib         = "v1.20.4"
 }
 
 # ---------------------------------------------------------------------------
@@ -174,6 +176,29 @@ function Get-ExtIdeHelpers {
     return $lib
 }
 
+# Norbyte's LSLib CLI (divine.exe) - the packer behind the Modder's Multitool's
+# Create Package. Needs the .NET 8 Desktop Runtime to run. The ExportTool zip
+# lays divine.exe next to its DLLs; the exact subfolder has shifted between
+# releases, so locate it by search rather than a fixed path.
+function Get-Divine {
+    $lslibDir = Join-Path $ToolsDir "lslib-$($V.LSLib)"
+    $existing = Get-ChildItem -Path $lslibDir -Filter "divine.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($existing) { return $existing.FullName }
+    Write-Host "Installing LSLib $($V.LSLib)..."
+    $asset = "ExportTool-$($V.LSLib).zip"
+    $tmp = Join-Path $ToolsDir "_lslib.zip"
+    Get-File "https://github.com/Norbyte/lslib/releases/download/$($V.LSLib)/$asset" $tmp
+    Expand-Into $tmp $lslibDir
+    Remove-Item $tmp -Force
+    $divine = Get-ChildItem -Path $lslibDir -Filter "divine.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $divine) {
+        throw "divine.exe not found in $asset after extraction - the release layout may have changed."
+    }
+    return $divine.FullName
+}
+
 # ---------------------------------------------------------------------------
 # Commands - each returns a process exit code (0 = ok)
 # ---------------------------------------------------------------------------
@@ -246,10 +271,86 @@ function Cmd-All {
     return $fail
 }
 
+# Decode the mod's packed Version64 for self-identifying artefacts. BG3 packs
+# major.minor.revision.build; the trailing build field is dropped when zero. The
+# top-level <version> node is the LSX file-format version, not the mod's.
+function Get-ModVersion($MetaPath) {
+    try {
+        $node = Select-Xml -Path $MetaPath -XPath "//attribute[@id='Version64']" | Select-Object -First 1
+        $packed = [int64]$node.Node.value
+        $major = ($packed -shr 55) -band 0x7f
+        $minor = ($packed -shr 47) -band 0xff
+        $revision = ($packed -shr 31) -band 0xffff
+        $build = $packed -band 0x7fffffff
+        if ($build -ne 0) { return "$major.$minor.$revision.$build" }
+        return "$major.$minor.$revision"
+    }
+    catch {
+        Write-Warning "Could not read version from meta.lsx: $($_.Exception.Message)"
+        return "0.0.0"
+    }
+}
+
+# Pack the mod into build/ via divine.exe, exactly like the Modder's Multitool
+# Create Package. Pass -Clean (via `./make.ps1 build -Clean`) to wipe build/ first.
+function Cmd-Build {
+    $clean = @($Rest) -match "^-{0,2}[Cc]lean$"
+    $modName = "NameYourSummons"
+    $sourceDir = Join-Path $Root $modName
+    $buildDir = Join-Path $Root "build"
+    $meta = Join-Path $sourceDir "Mods/$modName/meta.lsx"
+    if (-not (Test-Path $meta)) {
+        Write-Host "Source folder '$sourceDir' does not look like the mod (no Mods/$modName/meta.lsx)."
+        return 1
+    }
+
+    if ($clean -and (Test-Path $buildDir)) { Remove-Item $buildDir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+
+    $version = Get-ModVersion $meta
+    $pak = Join-Path $buildDir "$modName-$version.pak"
+    $zipOut = Join-Path $buildDir "$modName-$version.zip"
+    $divine = Get-Divine
+
+    # divine drops any file whose ABSOLUTE path has a dot-segment (e.g. a .paseo
+    # worktree) and offers no flag to disable it, silently emitting an empty pak.
+    # Stage into a dot-free temp dir and pack from there.
+    $stage = Join-Path ([System.IO.Path]::GetTempPath()) "nys-build-$([Guid]::NewGuid().ToString('N'))"
+    if ($stage -split '[\\/]' | Where-Object { $_.StartsWith('.') }) {
+        throw "Temp path '$stage' contains a dot-segment; divine would exclude all files. Set a TEMP without leading-dot folders."
+    }
+
+    Write-Host "Packing $modName $version ..."
+    try {
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        Copy-Item -Path (Join-Path $sourceDir "*") -Destination $stage -Recurse -Force
+        & $divine --game bg3 --action create-package --source $stage --destination $pak --loglevel warn
+        if ($LASTEXITCODE -ne 0) {
+            throw "divine.exe failed with exit code $LASTEXITCODE. If it complained about a missing runtime, install the .NET 8 Desktop Runtime: https://dotnet.microsoft.com/download/dotnet/8.0"
+        }
+    }
+    finally {
+        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if ((Get-Item $pak).Length -le 64) {
+        throw "Packed .pak is empty ($((Get-Item $pak).Length) bytes) - divine found no files to include."
+    }
+
+    if (Test-Path $zipOut) { Remove-Item $zipOut -Force }
+    Compress-Archive -Path $pak -DestinationPath $zipOut
+
+    Write-Host ""
+    Write-Host "Built:"
+    Write-Host "  $pak"
+    Write-Host "  $zipOut"
+    return 0
+}
+
 function Show-Help {
     Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
         if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 18 | Out-Host
+    } | Select-Object -First 16 | Out-Host
 }
 
 # ---------------------------------------------------------------------------
@@ -270,6 +371,7 @@ try {
         "lint" { $code = Cmd-Lint }
         "typecheck" { $code = Cmd-Typecheck }
         "test" { $code = Cmd-Test }
+        "build" { $code = Cmd-Build }
         "all" { $code = Cmd-All }
         { $_ -in "check", "ci" } { $code = Cmd-Check }
         default { Show-Help; $code = 0 }

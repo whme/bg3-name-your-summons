@@ -84,15 +84,15 @@ lua-language-server), all driven by the `./make.ps1` entrypoint and all pinned t
 Lua 5.4 to match BG3SE. See "Tooling and Quality Gates" below. These verify code
 correctness, never feature correctness in game.
 
-Packaging: run `./build.ps1` (PowerShell). It downloads a pinned LSLib release
-into `.tools/` and wraps `divine.exe -a create-package` to produce
-`build/NameYourSummons-<version>.pak` plus a matching zip, both suffixed with
-the mod's semantic version. The Modder's Multitool *Create Package*
-does the same thing by hand. Trap: divine excludes any file whose ABSOLUTE path
-contains a dot-segment (e.g. a `.paseo` worktree), silently emitting an empty
-pak - `build.ps1` stages the mod into a dot-free temp dir to dodge this. For
-iteration the folder is symlinked into the game's `Data/`, and `reset` in the
-SE console reloads Lua without restarting.
+Packaging: run `./make.ps1 build` (PowerShell). It downloads a pinned LSLib
+release into `.tools/` and wraps `divine.exe -a create-package` to produce
+`build/NameYourSummons-<version>.pak` plus a matching zip, both suffixed with the
+mod's semantic version (`-Clean` wipes `build/` first). The Modder's Multitool
+*Create Package* does the same thing by hand. Trap: divine
+excludes any file whose ABSOLUTE path contains a dot-segment (e.g. a `.paseo`
+worktree), silently emitting an empty pak - `make.ps1 build` stages the mod into
+a dot-free temp dir to dodge this. For iteration the folder is symlinked into the
+game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
 
 Diagnostic console commands (server state unless noted):
 
@@ -128,6 +128,7 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 lint          # luacheck
 ./make.ps1 typecheck     # lua-language-server --check
 ./make.ps1 test          # LuaUnit suite
+./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 all           # format + lint + typecheck + test (verify locally)
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
 ```

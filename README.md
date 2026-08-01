@@ -16,10 +16,10 @@ Requires [Norbyte's Script Extender](https://github.com/Norbyte/bg3se) (BG3SE).
 
 ### Building from source
 
-Run the build script from PowerShell:
+Run the build command from PowerShell:
 
 ```powershell
-./build.ps1
+./make.ps1 build
 ```
 
 It downloads a pinned [LSLib](https://github.com/Norbyte/lslib) release into
@@ -30,7 +30,7 @@ then packs the mod into `build/`:
 - `build/NameYourSummons-<version>.pak` - drop it in per the install steps above.
 - `build/NameYourSummons-<version>.zip` - the same `.pak` zipped for upload.
 
-Pass `-Clean` to wipe `build/` first. (The **BG3 Modder's Multitool**
+Pass `./make.ps1 build -Clean` to wipe `build/` first. (The **BG3 Modder's Multitool**
 *Create Package* still works too - it wraps the same LSLib packer.)
 
 ## Using it
