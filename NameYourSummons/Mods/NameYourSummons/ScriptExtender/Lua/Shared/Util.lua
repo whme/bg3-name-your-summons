@@ -7,24 +7,28 @@ Util.MAX_NAME_LENGTH = 40
 ---@param guidstring string|nil
 ---@return string|nil
 function Util.ToUuid(guidstring)
-    if type(guidstring) ~= "string" then return nil end
-    local uuid = string.match(guidstring, "(%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x)$")
-    return uuid and string.lower(uuid) or string.lower(guidstring)
+	if type(guidstring) ~= "string" then
+		return nil
+	end
+	local uuid = string.match(guidstring, "(%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x)$")
+	return uuid and string.lower(uuid) or string.lower(guidstring)
 end
 
 --- Trim, collapse whitespace, strip control characters, clamp length.
 ---@param raw any
 ---@return string
 function Util.Sanitise(raw)
-    if type(raw) ~= "string" then return "" end
-    local s = raw:gsub("%c", " ")          -- control chars -> space
-    s = s:gsub("%s+", " ")                 -- collapse runs of whitespace
-    s = s:gsub("^%s*(.-)%s*$", "%1")       -- trim
-    if #s > Util.MAX_NAME_LENGTH then
-        s = s:sub(1, Util.MAX_NAME_LENGTH)
-        s = s:gsub("%s+$", "")
-    end
-    return s
+	if type(raw) ~= "string" then
+		return ""
+	end
+	local s = raw:gsub("%c", " ") -- control chars -> space
+	s = s:gsub("%s+", " ") -- collapse runs of whitespace
+	s = s:gsub("^%s*(.-)%s*$", "%1") -- trim
+	if #s > Util.MAX_NAME_LENGTH then
+		s = s:sub(1, Util.MAX_NAME_LENGTH)
+		s = s:gsub("%s+$", "")
+	end
+	return s
 end
 
 --- Storage key: one saved name per (owner, root template) pair.
@@ -36,19 +40,19 @@ end
 ---@param rootTemplate string
 ---@return string
 function Util.MakeKey(ownerUuid, rootTemplate)
-    return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
+	return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
 end
 
 --- FNV-1a, 32 bit.
 ---@param s string
 ---@return integer
 function Util.Hash32(s)
-    local h = 2166136261
-    for i = 1, #s do
-        h = h ~ s:byte(i)
-        h = (h * 16777619) & 0xFFFFFFFF
-    end
-    return h
+	local h = 2166136261
+	for i = 1, #s do
+		h = h ~ s:byte(i)
+		h = (h * 16777619) & 0xFFFFFFFF
+	end
+	return h
 end
 
 --- A localisation handle derived from the text, so the same name always maps to
@@ -56,15 +60,15 @@ end
 ---@param text string
 ---@return string
 function Util.LocaHandleFor(text)
-    return string.format("hNameYourSummons%08x", Util.Hash32(text))
+	return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
 function Util.Log(...)
-    Ext.Utils.Print("[NameYourSummons]", ...)
+	Ext.Utils.Print("[NameYourSummons]", ...)
 end
 
 function Util.Warn(...)
-    Ext.Utils.PrintWarning("[NameYourSummons]", ...)
+	Ext.Utils.PrintWarning("[NameYourSummons]", ...)
 end
 
 return Util

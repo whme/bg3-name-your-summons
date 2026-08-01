@@ -72,11 +72,17 @@ NameYourSummons/                     <- pak this folder
 
 ## Build & Test Commands
 
-There is no build step and no local test suite. You **cannot run the game**;
-only the user can. Do not claim a change works in game - you have not seen it
-run. When a change depends on a BG3SE or Osiris behaviour, verify the
-assumption against Script Extender console output the user pastes, or against
-the IDE helpers / API docs, before relying on it.
+There is no build step, and you **cannot run the game** - only the user can. Do
+not claim a change works in game - you have not seen it run. When a change
+depends on a BG3SE or Osiris behaviour, verify the assumption against Script
+Extender console output the user pastes, or against the IDE helpers / API docs,
+before relying on it.
+
+There **is** a local unit-test suite (LuaUnit) covering the engine-independent
+logic (`Util`, `Store`, `NameWriter`), plus static gates (StyLua, luacheck,
+lua-language-server), all driven by the `./make.ps1` entrypoint and all pinned to
+Lua 5.4 to match BG3SE. See "Tooling and Quality Gates" below. These verify code
+correctness, never feature correctness in game.
 
 Packaging: run `./build.ps1` (PowerShell). It downloads a pinned LSLib release
 into `.tools/` and wraps `divine.exe -a create-package` to produce
@@ -100,6 +106,77 @@ Diagnostic console commands (server state unless noted):
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to
 paste that output when a name will not stick.
+
+## Tooling and Quality Gates
+
+Everything is driven by a single cargo-style entrypoint, `make.ps1`, which
+downloads its own pinned tooling into `.tools/` (gitignored) on first use - no
+Rust or Lua build toolchain required. It runs under Windows PowerShell 5.1 and
+cross-platform `pwsh`, so CI (`.github/workflows/ci.yml`) invokes the same
+commands via `pwsh`.
+
+**Every tool targets Lua 5.4 - the version BG3SE runs** - so the tooling checks
+the same language the game does (integer and bitwise ops, `<const>`/`<close>`).
+The interpreter (`lua54`), luacheck (built on PUC-Rio Lua 5.4), and
+lua-language-server's `runtime.version` are all pinned to 5.4.
+
+```
+./make.ps1 setup         # download all tooling into .tools/
+./make.ps1 format        # StyLua, writing changes in place
+./make.ps1 format-check  # StyLua, verify only (diff, no writes)
+./make.ps1 lint          # luacheck
+./make.ps1 typecheck     # lua-language-server --check
+./make.ps1 test          # LuaUnit suite
+./make.ps1 all           # format + lint + typecheck + test (verify locally)
+./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+```
+
+**To verify a change locally, run `./make.ps1 all` and nothing else.** It formats
+in place and then runs every gate; a green `all` is the definition of done. (CI
+runs `check`, which is identical except it verifies formatting instead of
+writing it.)
+
+| Gate | Tool | Config | Command |
+|---|---|---|---|
+| Format | StyLua | `.stylua.toml` | `./make.ps1 format` (verify: `./make.ps1 format-check`) |
+| Lint | luacheck | `.luacheckrc` | `./make.ps1 lint` |
+| Type check | lua-language-server | `.luarc.json` | `./make.ps1 typecheck` |
+| Unit tests | LuaUnit | `spec/` | `./make.ps1 test` |
+
+Notes:
+
+- **StyLua** uses its opinionated defaults verbatim (`.stylua.toml`) - tabs,
+  120 columns, Roblox Lua Style Guide. `format` writes changes in place;
+  `format-check` only diffs. Do not tune the config to a personal style; the
+  point of a deterministic formatter is that style is not up for debate.
+- **luacheck** lints against `std = "lua54"`, so it accepts and checks every
+  file including `Util.lua`'s bitwise FNV-1a (a Lua-5.4-only construct). Engine
+  globals (`Ext`, `Osi`, `Mods`, `ModuleUUID`, `_C/_D/_P`) are declared in
+  `.luacheckrc` as read-only; add one there if luacheck flags a real engine
+  global as undefined. `spec/` has a scoped override (writable `Ext`/`Osi` for
+  the stubs, `allow_defined_top` for the LuaUnit `Test*` tables). Line length is
+  disabled - StyLua owns that. (Selene was evaluated and rejected: its released
+  CLI cannot parse Lua 5.3/5.4 syntax - upstream PR #666 is still open.)
+- **lua-language-server** type-checks from the EmmyLua annotations. `./make.ps1
+  typecheck` auto-fetches the authoritative BG3SE `ExtIdeHelpers.lua` into
+  `.luals-libs/` (gitignored; `.luarc.json` points `workspace.library` there)
+  and gates on **Error level only**. The dynamic `Ext`/`Osi` surface produces
+  unavoidable *Warnings* (undefined-field, API drift) that are useful inline in
+  an editor but are not build failures. Editors read the same `.luarc.json`, so
+  autocomplete works once `.luals-libs/` is populated (`./make.ps1 typecheck` or
+  `setup` once).
+- **LuaUnit** (a single pure-Lua file, so it bootstraps on the prebuilt Lua 5.4
+  interpreter with no C-compiler dependency, unlike busted) tests only the
+  engine-independent modules. `spec/spec_helper.lua` stubs the `Ext`/`Osi`
+  surface and reimplements `Ext.Require` so a module and its dependencies load
+  off-game; `spec/run.lua` is the runner. **Keep pure logic (key derivation,
+  hashing, sanitising, ModVar shaping, the two DisplayName writes) free of
+  direct engine calls so it stays testable** - push unavoidable ECS / net /
+  ImGui / timing code into the thin, untested glue (`SummonWatcher`, `Naming`,
+  `PromptUI`, `Channels`). When you add such logic, add a spec for it.
+- The `.githooks/pre-commit` hook runs `./make.ps1 format-check` and `lint` when a
+  PowerShell is available, so the ASCII-punctuation check still works without
+  one. CI enforces every gate unconditionally.
 
 ## Code Standards
 
@@ -238,5 +315,9 @@ confirm:
 2. No forbidden Unicode punctuation (the pre-commit hook passes).
 3. Every fallible SE call is `pcall`-guarded.
 4. Server/client replication is correct for any renaming path touched.
-5. Any behaviour you could not verify in game is called out explicitly, with
+5. `./make.ps1 all` passes - this single command (format, lint, type check,
+   LuaUnit tests) is how you verify a change locally; do not run the gates
+   piecemeal. If you cannot run it, reason through each gate and say so. Add or
+   update a spec when you change testable logic.
+6. Any behaviour you could not verify in game is called out explicitly, with
    the console command the user should run to confirm it.

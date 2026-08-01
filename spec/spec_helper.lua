@@ -1,0 +1,82 @@
+-- Loaded once by spec/run.lua before any spec.
+--
+-- BG3SE injects `Ext`, `Osi`, and `ModuleUUID` as globals and loads modules via
+-- `Ext.Require`. None of that exists off-game, so we stand up a minimal stub:
+-- enough for the engine-independent modules to load and for individual specs to
+-- override the exact call they are testing (e.g. Ext.Loca.UpdateTranslatedString).
+
+local LUA_ROOT = "./NameYourSummons/Mods/NameYourSummons/ScriptExtender/Lua/"
+
+_G.ModuleUUID = "00000000-0000-0000-0000-000000000000"
+
+-- Ext.Require caches on the real thing; mirror that so a module and its
+-- dependencies resolve to a single instance within a test run.
+local requireCache = {}
+local function extRequire(relPath)
+	if requireCache[relPath] == nil then
+		local chunk = assert(loadfile(LUA_ROOT .. relPath))
+		requireCache[relPath] = chunk() or true
+	end
+	return requireCache[relPath]
+end
+
+_G.Ext = {
+	Require = extRequire,
+	Utils = {
+		Print = function() end,
+		PrintWarning = function() end,
+	},
+	Loca = {
+		UpdateTranslatedString = function()
+			return true
+		end,
+		GetTranslatedString = function()
+			return ""
+		end,
+	},
+	Entity = {
+		Get = function()
+			return nil
+		end,
+		GetAllEntitiesWithComponent = function()
+			return {}
+		end,
+	},
+	Vars = {
+		RegisterModVariable = function() end,
+		GetModVariables = function()
+			return {}
+		end,
+	},
+	Net = {
+		CreateChannel = function()
+			return {
+				SetHandler = function() end,
+				SendToServer = function() end,
+				SendToClient = function() end,
+			}
+		end,
+	},
+	Timer = {
+		WaitFor = function() end,
+		WaitForRealtime = function() end,
+	},
+	IMGUI = {
+		NewWindow = function()
+			return {}
+		end,
+	},
+	Events = setmetatable({}, {
+		__index = function()
+			return { Subscribe = function() end }
+		end,
+	}),
+	Osiris = { RegisterListener = function() end },
+	RegisterConsoleCommand = function() end,
+}
+
+_G.Osi = setmetatable({}, {
+	__index = function()
+		return function() end
+	end,
+})

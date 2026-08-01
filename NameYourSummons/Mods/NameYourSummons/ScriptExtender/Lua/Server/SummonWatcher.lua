@@ -1,7 +1,7 @@
-local Util     = Ext.Require("Shared/Util.lua")
+local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
-local Store    = Ext.Require("Server/Store.lua")
-local Naming   = Ext.Require("Server/Naming.lua")
+local Store = Ext.Require("Server/Store.lua")
+local Naming = Ext.Require("Server/Naming.lua")
 
 local Watcher = {}
 
@@ -19,16 +19,16 @@ local pending = {}
 ---@param guid string
 ---@return boolean
 local function isSummon(guid)
-    local ok, result = pcall(Osi.IsSummon, guid)
-    return ok and result == 1
+	local ok, result = pcall(Osi.IsSummon, guid)
+	return ok and result == 1
 end
 
 --- Only bother the player about summons that belong to their own party.
 ---@param ownerUuid string
 ---@return boolean
 local function ownerIsPlayer(ownerUuid)
-    local ok, result = pcall(Osi.IsPartyMember, ownerUuid, 1)
-    return ok and result == 1
+	local ok, result = pcall(Osi.IsPartyMember, ownerUuid, 1)
+	return ok and result == 1
 end
 
 ---------------------------------------------------------------------------
@@ -39,50 +39,58 @@ end
 ---@param rootTemplate string
 ---@param attempt integer|nil
 function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
-    attempt = attempt or 1
-    if not Osi.Exists(summonGuid) or Osi.Exists(summonGuid) == 0 then return end
+	attempt = attempt or 1
+	if not Osi.Exists(summonGuid) or Osi.Exists(summonGuid) == 0 then
+		return
+	end
 
-    local ownerRaw = Osi.CharacterGetOwner(summonGuid)
-    if not ownerRaw or ownerRaw == "" then
-        -- The owner link isn't wired up yet on some summon paths; retry briefly.
-        if attempt < 5 then
-            Ext.Timer.WaitFor(200, function()
-                Watcher.HandleSummon(summonGuid, rootTemplate, attempt + 1)
-            end)
-        else
-            Util.Warn("Gave up waiting for an owner on " .. tostring(summonGuid))
-        end
-        return
-    end
+	local ownerRaw = Osi.CharacterGetOwner(summonGuid)
+	if not ownerRaw or ownerRaw == "" then
+		-- The owner link isn't wired up yet on some summon paths; retry briefly.
+		if attempt < 5 then
+			Ext.Timer.WaitFor(200, function()
+				Watcher.HandleSummon(summonGuid, rootTemplate, attempt + 1)
+			end)
+		else
+			Util.Warn("Gave up waiting for an owner on " .. tostring(summonGuid))
+		end
+		return
+	end
 
-    local ownerUuid = Util.ToUuid(ownerRaw)
-    local key = Util.MakeKey(ownerUuid, rootTemplate)
+	local ownerUuid = Util.ToUuid(ownerRaw)
+	local key = Util.MakeKey(ownerUuid, rootTemplate)
 
-    local saved = Store.Get(key)
-    if saved then
-        Naming.ApplyDeferred(summonGuid, saved)
-        return
-    end
+	local saved = Store.Get(key)
+	if saved then
+		Naming.ApplyDeferred(summonGuid, saved)
+		return
+	end
 
-    local settings = Store.Settings()
-    if not settings.PromptOnSummon then return end
-    if askedThisSession[key] then return end
-    if not ownerIsPlayer(ownerUuid) then return end
+	local settings = Store.Settings()
+	if not settings.PromptOnSummon then
+		return
+	end
+	if askedThisSession[key] then
+		return
+	end
+	if not ownerIsPlayer(ownerUuid) then
+		return
+	end
 
-    askedThisSession[key] = true
-    pending[key] = Util.ToUuid(summonGuid)
+	askedThisSession[key] = true
+	pending[key] = Util.ToUuid(summonGuid)
 
-    -- Give the summon a moment to finish spawning so the default name we show
-    -- in the prompt is the real one.
-    Ext.Timer.WaitFor(400, function()
-        Channels.AskName:SendToClient({
-            Key         = key,
-            SummonUuid  = Util.ToUuid(summonGuid),
-            OwnerUuid   = ownerUuid,
-            DefaultName = Naming.GetCurrentName(summonGuid),
-            Template    = rootTemplate,
-        }, ownerRaw)
-    end)
+	-- Give the summon a moment to finish spawning so the default name we show
+	-- in the prompt is the real one.
+	Ext.Timer.WaitFor(400, function()
+		Channels.AskName:SendToClient({
+			Key = key,
+			SummonUuid = Util.ToUuid(summonGuid),
+			OwnerUuid = ownerUuid,
+			DefaultName = Naming.GetCurrentName(summonGuid),
+			Template = rootTemplate,
+		}, ownerRaw)
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -94,14 +102,16 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.Register()
-    Ext.Osiris.RegisterListener("EnteredLevel", 3, "after", function(objectGuid, rootTemplate, _level)
-        if not isSummon(objectGuid) then return end
-        -- Defer: on the tick a summon enters the level its owner link and
-        -- display name are not reliably populated yet.
-        Ext.Timer.WaitFor(100, function()
-            Watcher.HandleSummon(objectGuid, rootTemplate)
-        end)
-    end)
+	Ext.Osiris.RegisterListener("EnteredLevel", 3, "after", function(objectGuid, rootTemplate, _level)
+		if not isSummon(objectGuid) then
+			return
+		end
+		-- Defer: on the tick a summon enters the level its owner link and
+		-- display name are not reliably populated yet.
+		Ext.Timer.WaitFor(100, function()
+			Watcher.HandleSummon(objectGuid, rootTemplate)
+		end)
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -109,25 +119,27 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.ReapplyExisting()
-    Naming.SeedLoca(Store.All())
+	Naming.SeedLoca(Store.All())
 
-    if not Store.Settings().ApplyToExisting then return end
+	if not Store.Settings().ApplyToExisting then
+		return
+	end
 
-    local summons = Naming.AllSummons()
-    local applied = 0
+	local summons = Naming.AllSummons()
+	local applied = 0
 
-    for _, summon in ipairs(summons) do
-        local owner    = Naming.OwnerOf(summon)
-        local template = Naming.TemplateOf(summon)
-        if owner and template then
-            local saved = Store.Get(Util.MakeKey(owner, template))
-            if saved and Naming.Apply(summon, saved) then
-                applied = applied + 1
-            end
-        end
-    end
+	for _, summon in ipairs(summons) do
+		local owner = Naming.OwnerOf(summon)
+		local template = Naming.TemplateOf(summon)
+		if owner and template then
+			local saved = Store.Get(Util.MakeKey(owner, template))
+			if saved and Naming.Apply(summon, saved) then
+				applied = applied + 1
+			end
+		end
+	end
 
-    Util.Log(("Reapply: named %d of %d live summon(s)."):format(applied, #summons))
+	Util.Log(("Reapply: named %d of %d live summon(s)."):format(applied, #summons))
 end
 
 ---------------------------------------------------------------------------
@@ -135,40 +147,46 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.RegisterNet()
-    Channels.SubmitName:SetHandler(function(data, _user)
-        if type(data) ~= "table" or type(data.Key) ~= "string" then return end
+	Channels.SubmitName:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.Key) ~= "string" then
+			return
+		end
 
-        local name = Util.Sanitise(data.Name)
-        if name == "" then
-            pending[data.Key] = nil
-            return
-        end
+		local name = Util.Sanitise(data.Name)
+		if name == "" then
+			pending[data.Key] = nil
+			return
+		end
 
-        Store.Set(data.Key, name)
+		Store.Set(data.Key, name)
 
-        local target = data.SummonUuid or pending[data.Key]
-        if target then
-            Naming.Apply(target, name)
-        end
-        pending[data.Key] = nil
-        Util.Log(("Saved name '%s' for key %s"):format(name, data.Key))
-    end)
+		local target = data.SummonUuid or pending[data.Key]
+		if target then
+			Naming.Apply(target, name)
+		end
+		pending[data.Key] = nil
+		Util.Log(("Saved name '%s' for key %s"):format(name, data.Key))
+	end)
 
-    Channels.ListNames:SetRequestHandler(function(_data, _user)
-        local out = {}
-        for key, name in pairs(Store.All()) do
-            table.insert(out, { Key = key, Name = name })
-        end
-        table.sort(out, function(a, b) return a.Name:lower() < b.Name:lower() end)
-        return { Entries = out }
-    end)
+	Channels.ListNames:SetRequestHandler(function(_data, _user)
+		local out = {}
+		for key, name in pairs(Store.All()) do
+			table.insert(out, { Key = key, Name = name })
+		end
+		table.sort(out, function(a, b)
+			return a.Name:lower() < b.Name:lower()
+		end)
+		return { Entries = out }
+	end)
 
-    Channels.ForgetName:SetHandler(function(data, _user)
-        if type(data) ~= "table" or type(data.Key) ~= "string" then return end
-        Store.Forget(data.Key)
-        askedThisSession[data.Key] = nil
-        Util.Log("Forgot saved name for key " .. data.Key)
-    end)
+	Channels.ForgetName:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.Key) ~= "string" then
+			return
+		end
+		Store.Forget(data.Key)
+		askedThisSession[data.Key] = nil
+		Util.Log("Forgot saved name for key " .. data.Key)
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -176,54 +194,56 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.RegisterConsole()
-    Ext.RegisterConsoleCommand("nys_diag", function()
-        local summons = Naming.HostSummons()
-        if #summons == 0 then
-            Util.Log("No summons found on the host character; diagnosing the host instead.")
-            Naming.Diagnose(Osi.GetHostCharacter())
-            return
-        end
-        for _, summon in ipairs(summons) do
-            Naming.Diagnose(summon)
-        end
-    end)
+	Ext.RegisterConsoleCommand("nys_diag", function()
+		local summons = Naming.HostSummons()
+		if #summons == 0 then
+			Util.Log("No summons found on the host character; diagnosing the host instead.")
+			Naming.Diagnose(Osi.GetHostCharacter())
+			return
+		end
+		for _, summon in ipairs(summons) do
+			Naming.Diagnose(summon)
+		end
+	end)
 
-    -- Rename the host's summons on the spot, without going through the prompt.
-    Ext.RegisterConsoleCommand("nys_rename", function(_cmd, ...)
-        local name = Util.Sanitise(table.concat({ ... }, " "))
-        if name == "" then
-            Util.Log("Usage: !nys_rename <name>")
-            return
-        end
-        local summons = Naming.HostSummons()
-        if #summons == 0 then
-            Util.Log("The host character has no summons out.")
-            return
-        end
-        for _, summon in ipairs(summons) do
-            Naming.Apply(summon, name)
-        end
-    end)
+	-- Rename the host's summons on the spot, without going through the prompt.
+	Ext.RegisterConsoleCommand("nys_rename", function(_cmd, ...)
+		local name = Util.Sanitise(table.concat({ ... }, " "))
+		if name == "" then
+			Util.Log("Usage: !nys_rename <name>")
+			return
+		end
+		local summons = Naming.HostSummons()
+		if #summons == 0 then
+			Util.Log("The host character has no summons out.")
+			return
+		end
+		for _, summon in ipairs(summons) do
+			Naming.Apply(summon, name)
+		end
+	end)
 
-    Ext.RegisterConsoleCommand("nys_list", function()
-        local n = 0
-        for key, name in pairs(Store.All()) do
-            Util.Log(("  %-70s -> %s"):format(key, name))
-            n = n + 1
-        end
-        Util.Log(("%d saved name(s)."):format(n))
-    end)
+	Ext.RegisterConsoleCommand("nys_list", function()
+		local n = 0
+		for key, name in pairs(Store.All()) do
+			Util.Log(("  %-70s -> %s"):format(key, name))
+			n = n + 1
+		end
+		Util.Log(("%d saved name(s)."):format(n))
+	end)
 
-    -- Run the save/load reapply pass on demand, without reloading.
-    Ext.RegisterConsoleCommand("nys_reapply", function()
-        Watcher.ReapplyExisting()
-    end)
+	-- Run the save/load reapply pass on demand, without reloading.
+	Ext.RegisterConsoleCommand("nys_reapply", function()
+		Watcher.ReapplyExisting()
+	end)
 
-    Ext.RegisterConsoleCommand("nys_clear", function()
-        for key in pairs(Store.All()) do Store.Forget(key) end
-        askedThisSession = {}
-        Util.Log("Cleared all saved summon names.")
-    end)
+	Ext.RegisterConsoleCommand("nys_clear", function()
+		for key in pairs(Store.All()) do
+			Store.Forget(key)
+		end
+		askedThisSession = {}
+		Util.Log("Cleared all saved summon names.")
+	end)
 end
 
 return Watcher

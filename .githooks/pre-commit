@@ -47,4 +47,25 @@ while IFS= read -r file; do
     fi
 done < <(git diff --cached --name-only --diff-filter=ACM)
 
+# Format and lint via the make.ps1 entrypoint, which self-bootstraps its tooling.
+# Runs only when a PowerShell is available so the ASCII check above still works
+# without it; CI enforces these unconditionally (.github/workflows/ci.yml).
+PS_EXE=""
+if command -v pwsh >/dev/null 2>&1; then
+    PS_EXE=pwsh
+elif command -v powershell >/dev/null 2>&1; then
+    PS_EXE=powershell
+fi
+
+if [ -n "$PS_EXE" ] && [ -f make.ps1 ]; then
+    if ! "$PS_EXE" -NoProfile -File ./make.ps1 format-check ; then
+        echo "pre-commit: formatting issues - run './make.ps1 format'" >&2
+        status=1
+    fi
+    if ! "$PS_EXE" -NoProfile -File ./make.ps1 lint ; then
+        echo "pre-commit: luacheck reported lints" >&2
+        status=1
+    fi
+fi
+
 exit "$status"

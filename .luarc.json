@@ -1,0 +1,30 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "runtime.version": "Lua 5.4",
+    "runtime.path": [
+        "?.lua",
+        "?/init.lua",
+        "NameYourSummons/Mods/NameYourSummons/ScriptExtender/Lua/?.lua"
+    ],
+    "workspace.library": [
+        ".luals-libs"
+    ],
+    "workspace.ignoreDir": [
+        ".luals-libs",
+        ".tools",
+        "spec"
+    ],
+    "diagnostics.globals": [
+        "Ext",
+        "Osi",
+        "Mods",
+        "ModuleUUID",
+        "_C",
+        "_D",
+        "_P"
+    ],
+    "diagnostics.libraryFiles": "Disable",
+    "diagnostics.disable": [
+        "lowercase-global"
+    ]
+}

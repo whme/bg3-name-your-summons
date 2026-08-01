@@ -4,3 +4,14 @@ build/
 
 # Local, uncommitted per-project agent settings (Claude Code writes these).
 .claude/settings.local.json
+
+# Self-bootstrapped dev tooling downloaded by make.ps1 (StyLua, luacheck,
+# lua-language-server, the Lua interpreter, LuaUnit).
+.tools/
+
+# Drop-zone for the BG3SE IDE helpers (ExtIdeHelpers.lua) that lua-language-server
+# reads for full Ext/Osi autocomplete. Not committed - fetched per developer.
+.luals-libs/
+
+# lua-language-server --check output.
+luals-log/
