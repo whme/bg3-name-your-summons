@@ -103,7 +103,7 @@ function Naming.Diagnose(ref)
     local e = Writer.Resolve(ref)
     if not e then Util.Log("Diagnose: no such entity") return end
 
-    Util.Log("---- SummonNamer diagnosis ----")
+    Util.Log("---- NameYourSummons diagnosis ----")
 
     local uuid
     if e.Uuid then

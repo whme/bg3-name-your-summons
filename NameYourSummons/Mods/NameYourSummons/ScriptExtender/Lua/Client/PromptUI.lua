@@ -165,8 +165,8 @@ function UI.Register()
         end
     end)
 
-    -- Type  client  then  !sn_ui  in the Script Extender console.
-    Ext.RegisterConsoleCommand("sn_ui", function()
+    -- Type  client  then  !nys_ui  in the Script Extender console.
+    Ext.RegisterConsoleCommand("nys_ui", function()
         UI.OpenManager()
     end)
 end

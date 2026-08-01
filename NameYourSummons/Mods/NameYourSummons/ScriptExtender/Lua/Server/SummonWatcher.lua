@@ -179,7 +179,7 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.RegisterConsole()
-    Ext.RegisterConsoleCommand("sn_diag", function()
+    Ext.RegisterConsoleCommand("nys_diag", function()
         local summons = Naming.HostSummons()
         if #summons == 0 then
             Util.Log("No summons found on the host character; diagnosing the host instead.")
@@ -192,10 +192,10 @@ function Watcher.RegisterConsole()
     end)
 
     -- Rename the host's summons on the spot, without going through the prompt.
-    Ext.RegisterConsoleCommand("sn_rename", function(_cmd, ...)
+    Ext.RegisterConsoleCommand("nys_rename", function(_cmd, ...)
         local name = Util.Sanitise(table.concat({ ... }, " "))
         if name == "" then
-            Util.Log("Usage: !sn_rename <name>")
+            Util.Log("Usage: !nys_rename <name>")
             return
         end
         local summons = Naming.HostSummons()
@@ -208,7 +208,7 @@ function Watcher.RegisterConsole()
         end
     end)
 
-    Ext.RegisterConsoleCommand("sn_list", function()
+    Ext.RegisterConsoleCommand("nys_list", function()
         local n = 0
         for key, name in pairs(Store.All()) do
             Util.Log(("  %-70s -> %s"):format(key, name))
@@ -217,7 +217,7 @@ function Watcher.RegisterConsole()
         Util.Log(("%d saved name(s)."):format(n))
     end)
 
-    Ext.RegisterConsoleCommand("sn_clear", function()
+    Ext.RegisterConsoleCommand("nys_clear", function()
         for key in pairs(Store.All()) do Store.Forget(key) end
         askedThisSession = {}
         Util.Log("Cleared all saved summon names.")

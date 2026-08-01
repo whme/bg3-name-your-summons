@@ -54,15 +54,15 @@ end
 ---@param text string
 ---@return string
 function Util.LocaHandleFor(text)
-    return string.format("hSummonNamer%08x", Util.Hash32(text))
+    return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
 function Util.Log(...)
-    Ext.Utils.Print("[SummonNamer]", ...)
+    Ext.Utils.Print("[NameYourSummons]", ...)
 end
 
 function Util.Warn(...)
-    Ext.Utils.PrintWarning("[SummonNamer]", ...)
+    Ext.Utils.PrintWarning("[NameYourSummons]", ...)
 end
 
 return Util

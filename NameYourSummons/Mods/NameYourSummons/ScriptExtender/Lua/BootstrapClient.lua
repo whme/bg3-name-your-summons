@@ -17,5 +17,5 @@ Ext.Vars.RegisterModVariable(ModuleUUID, "Settings", {
 UI.Register()
 
 Ext.Events.SessionLoaded:Subscribe(function()
-    Util.Log("Client ready. Type 'client' then '!sn_ui' in the console to manage saved names.")
+    Util.Log("Client ready. Type 'client' then '!nys_ui' in the console to manage saved names.")
 end)

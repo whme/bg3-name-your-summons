@@ -1,4 +1,4 @@
-# Summon Namer — a BG3 mod for naming your summons
+# Name Your Summons — a BG3 mod for naming your summons
 
 Names your summoned creatures, remembers the names, and reapplies them
 automatically the next time you summon the same creature. Optionally pops a
@@ -146,8 +146,8 @@ separate templates — change `Util.MakeKey` if you'd rather they share one.
 ## 2. Layout
 
 ```
-SummonNamer/                         <- pak this folder
-└── Mods/SummonNamer/
+NameYourSummons/                     <- pak this folder
+└── Mods/NameYourSummons/
     ├── meta.lsx
     └── ScriptExtender/
         ├── Config.json
@@ -174,7 +174,7 @@ SummonNamer/                         <- pak this folder
    `04825fb4-1f56-40ab-8bde-ff1ebfa4c003`. Replace it before you publish anything,
    or two mods will collide.
 2. **Pack it.** BG3 Modder's Multitool → *Create Package*, pointed at the
-   top-level `SummonNamer/` folder. Or `divine.exe -a create-package`.
+   top-level `NameYourSummons/` folder. Or `divine.exe -a create-package`.
 3. Drop the `.pak` in
    `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`, enable it in BG3 Mod
    Manager, export the load order.
@@ -203,18 +203,18 @@ Console commands — press Enter to enter console mode first:
 
 | Command | Context | What it does |
 |---|---|---|
-| `!sn_list` | server | list all saved names |
-| `!sn_diag` | server | dump what the game thinks your summons are named |
-| `!sn_rename <name>` | server | rename the host's summons right now, no prompt |
-| `!sn_clear` | server | wipe all saved names |
-| `!sn_ui` | **client** (type `client` first) | open the saved-names manager |
+| `!nys_list` | server | list all saved names |
+| `!nys_diag` | server | dump what the game thinks your summons are named |
+| `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
+| `!nys_clear` | server | wipe all saved names |
+| `!nys_ui` | **client** (type `client` first) | open the saved-names manager |
 
 ---
 
 ## 5. If something goes wrong
 
-Summon something, then `!sn_rename Test1` to rename it without going through
-the prompt. `!sn_diag` dumps what the game thinks the summon is called: the
+Summon something, then `!nys_rename Test1` to rename it without going through
+the prompt. `!nys_diag` dumps what the game thinks the summon is called: the
 localisation handle, what it resolves to, `CustomName` if the entity has one,
 and the root template. That's the output to paste if a name won't stick.
 
