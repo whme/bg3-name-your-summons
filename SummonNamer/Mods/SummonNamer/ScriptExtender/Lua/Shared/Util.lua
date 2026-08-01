@@ -37,6 +37,26 @@ function Util.MakeKey(ownerUuid, rootTemplate)
     return string.lower(tostring(ownerUuid)) .. "|" .. string.lower(tostring(rootTemplate))
 end
 
+--- FNV-1a, 32 bit.
+---@param s string
+---@return integer
+function Util.Hash32(s)
+    local h = 2166136261
+    for i = 1, #s do
+        h = h ~ s:byte(i)
+        h = (h * 16777619) & 0xFFFFFFFF
+    end
+    return h
+end
+
+--- A localisation handle derived from the text, so the same name always maps to
+--- the same handle: reproducible after a save/load, and one handle per name.
+---@param text string
+---@return string
+function Util.LocaHandleFor(text)
+    return string.format("hSummonNamer%08x", Util.Hash32(text))
+end
+
 function Util.Log(...)
     Ext.Utils.Print("[SummonNamer]", ...)
 end

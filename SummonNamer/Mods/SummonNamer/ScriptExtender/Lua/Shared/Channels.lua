@@ -17,9 +17,11 @@ Channels.ListNames = Ext.Net.CreateChannel(ModuleUUID, "SummonNamer_ListNames")
 -- Client -> Server: "forget this saved name"
 Channels.ForgetName = Ext.Net.CreateChannel(ModuleUUID, "SummonNamer_ForgetName")
 
--- Server -> All Clients: fallback naming path. Clients must run
--- Ext.Loca.UpdateTranslatedString themselves, because the loca table is
--- per-Lua-state and the server's copy is not what the client UI renders.
-Channels.SetLoca = Ext.Net.CreateChannel(ModuleUUID, "SummonNamer_SetLoca")
+-- Server -> All Clients: the text behind a localisation handle, for remote peers
+-- whose separate string table has never seen a handle the host minted.
+Channels.ApplyName = Ext.Net.CreateChannel(ModuleUUID, "SummonNamer_ApplyName")
+
+-- Server -> All Clients: every saved name's handle in bulk, on session load.
+Channels.SeedLoca = Ext.Net.CreateChannel(ModuleUUID, "SummonNamer_SeedLoca")
 
 return Channels

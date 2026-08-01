@@ -63,26 +63,50 @@ save, until you restart the game. The tutorial's use case (adding a
 "Stoneskin" prefix during a status) hides this because the prefix goes on
 everything anyway.
 
-Grepping `ExtIdeHelpers.lua` turns up the right mechanism instead:
+What the tutorial *does* prove is that `DisplayName.NameKey` is rendered. So
+rather than overwriting the shared handle, this mod mints a handle of its own
+and points the entity at that. `Ext.Loca.UpdateTranslatedString` inserts into
+the string table (see `TranslatedStringRepository::UpdateTranslatedString` in
+the extender source — it's a `set`, not a replace), so a handle that doesn't
+exist yet is created rather than rejected, and nothing vanilla is touched.
 
-```
---- @class CustomNameComponent:BaseComponent
---- @field Name string
-```
-
-`CustomName` is a plain per-entity string component. That is what this mod
-writes:
+So the whole of the renaming is these two writes, in `Shared/NameWriter.lua`:
 
 ```lua
-if not entity.CustomName then entity:CreateComponent("CustomName") end
-entity.CustomName.Name = "Fenrir"
-entity:Replicate("CustomName")
+Ext.Loca.UpdateTranslatedString(handle, "Fenrir")   -- our own handle, freshly minted
+entity.DisplayName.NameKey.Handle.Handle  = handle
+entity.DisplayName.NameKey.Handle.Version = 0
+entity:Replicate("DisplayName")
 ```
 
-The loca approach is still implemented as a **fallback** (`Naming.Strategy = "Loca"`),
-but done correctly: it mints a *fresh unique handle per entity* rather than
-overwriting the shared one, and broadcasts the new string to clients so their
-loca tables agree.
+`Version` matters. The lookup is keyed on handle *and* version, and
+`UpdateTranslatedString` always registers at version 0. Leave the template's
+version in place and the lookup misses, so the name renders as nothing.
+
+Handles are derived from the *name text* (FNV-1a), not from the entity. That
+makes them deterministic — trivial to re-register after a load — and bounded:
+one handle per distinct name rather than one per summoned instance. Runtime
+loca entries are never freed within a session, so per-instance handles leak.
+
+#### Things that look right and are not
+
+**`CustomName`.** `eoc::CustomNameComponent` is a plain per-entity string, which
+is exactly the shape you want, and it is where a player character's chosen name
+lives. But summons don't have the component, and *adding* one is a structural
+ECS change driven from a Lua callback — which crashed the game outright. Not
+worth it when a field write on a component that already exists does the job.
+
+**`Osi.SetStoryDisplayName(guid, handle)`.** The engine's own route, through
+`EsvDisplayNameSystem`, and it works. It's redundant next to the write above,
+though, and it stores the handle in the server's name list, which *is* saved —
+so a reloaded save references a handle that no longer exists.
+
+**`entity:CreateComponent(...)` is deferred.** It writes into the ECS command
+buffer; the entity does not gain the component until the frame is flushed, so
+`entity.CustomName` still reads `nil` on the next line. This is what made the
+first version of this mod silently rename nothing. Nothing here needs it any
+more, but it's a trap worth knowing. See `CreateComponentRaw` in
+`BG3Extender/GameDefinitions/EntitySystem.cpp`.
 
 ### There is no "summon created" event
 
@@ -132,10 +156,11 @@ SummonNamer/                         <- pak this folder
             ├── BootstrapClient.lua
             ├── Shared/
             │   ├── Channels.lua     net channels, created in both states
-            │   └── Util.lua         uuid/sanitising/key helpers
+            │   ├── NameWriter.lua   the two writes that do the renaming
+            │   └── Util.lua         uuid/sanitising/key/loca-handle helpers
             ├── Server/
             │   ├── Store.lua        ModVar persistence
-            │   ├── Naming.lua       applies the name (+ fallback + diagnostics)
+            │   ├── Naming.lua       applying names + diagnostics
             │   └── SummonWatcher.lua detection, prompting, net handlers
             └── Client/
                 └── PromptUI.lua     ImGui prompt + saved-name manager
@@ -180,36 +205,18 @@ Console commands — press Enter to enter console mode first:
 |---|---|---|
 | `!sn_list` | server | list all saved names |
 | `!sn_diag` | server | dump what the game thinks your summons are named |
+| `!sn_rename <name>` | server | rename the host's summons right now, no prompt |
 | `!sn_clear` | server | wipe all saved names |
 | `!sn_ui` | **client** (type `client` first) | open the saved-names manager |
 
 ---
 
-## 5. Verify this before you trust it
+## 5. If something goes wrong
 
-**`CustomName` is the right component by structure, but I could not confirm from
-public sources that BG3's UI reads it for summons on your specific patch.** It is
-present on the entity class and is a per-entity string, which is exactly the shape
-you want — but "the component exists" and "the health bar renders it" are different
-claims, and I only verified the first.
-
-So the first thing to do is:
-
-1. Summon a wolf, name it "Test1".
-2. Run `!sn_diag` and check `CustomName.Name` came back as `Test1`.
-3. Look at the portrait, the health bar, and the tooltip.
-
-If the name shows up: done. If the component takes the value but the UI still shows
-"Summoned Wolf", flip the strategy in `Server/Naming.lua`:
-
-```lua
-Naming.Strategy = "Loca"
-```
-
-and re-test. The loca path is already wired end to end, including the client-side
-string update. It's second choice only because it's heavier — one synthetic
-localisation handle per summon instance, and those handles are never garbage
-collected within a session.
+Summon something, then `!sn_rename Test1` to rename it without going through
+the prompt. `!sn_diag` dumps what the game thinks the summon is called: the
+localisation handle, what it resolves to, `CustomName` if the entity has one,
+and the root template. That's the output to paste if a name won't stick.
 
 ### Other things worth knowing
 
@@ -223,6 +230,10 @@ collected within a session.
   `SummonWatcher.lua` and `Naming.lua` exist because a summon isn't fully assembled
   on the tick it enters the level. If names intermittently fail to stick on a
   slower machine, raise them.
+- **Localisation entries don't survive a restart.** Every saved name's handle is
+  re-registered on `SessionLoaded`, before any names are re-applied — which
+  works only because handles are derived from the text rather than from the
+  entity, so they can be reproduced without finding the entity first.
 - **Patch breakage.** BG3SE is tied to game builds and component layouts shift
   between patches. `RequiredVersion: 30` in `Config.json` guards the API version,
   not the component layout.

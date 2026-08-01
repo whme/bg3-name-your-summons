@@ -37,12 +37,21 @@ end
 
 ---@param summonGuid string
 ---@param rootTemplate string
-function Watcher.HandleSummon(summonGuid, rootTemplate)
+---@param attempt integer|nil
+function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
+    attempt = attempt or 1
     if not Osi.Exists(summonGuid) or Osi.Exists(summonGuid) == 0 then return end
 
     local ownerRaw = Osi.CharacterGetOwner(summonGuid)
     if not ownerRaw or ownerRaw == "" then
-        -- Owner is not wired up yet on some summon paths; try once more shortly.
+        -- The owner link isn't wired up yet on some summon paths; retry briefly.
+        if attempt < 5 then
+            Ext.Timer.WaitFor(200, function()
+                Watcher.HandleSummon(summonGuid, rootTemplate, attempt + 1)
+            end)
+        else
+            Util.Warn("Gave up waiting for an owner on " .. tostring(summonGuid))
+        end
         return
     end
 
@@ -100,6 +109,8 @@ end
 ---------------------------------------------------------------------------
 
 function Watcher.ReapplyExisting()
+    Naming.SeedLoca(Store.All())
+
     if not Store.Settings().ApplyToExisting then return end
 
     local players = Osi.DB_Players:Get(nil)
@@ -109,14 +120,13 @@ function Watcher.ReapplyExisting()
         local playerUuid = Util.ToUuid(row[1])
         local ok, entity = pcall(Ext.Entity.Get, row[1])
         if ok and entity and entity.SummonContainer then
-            for _, summonHandle in pairs(entity.SummonContainer.Characters or {}) do
-                local sOk, summon = pcall(function() return summonHandle end)
-                if sOk and summon and summon.Uuid and summon.OriginalTemplate then
-                    local key = Util.MakeKey(playerUuid, summon.OriginalTemplate.OriginalTemplate)
-                    local saved = Store.Get(key)
-                    if saved then
-                        Naming.Apply(summon, saved)
-                    end
+            for _, summon in pairs(entity.SummonContainer.Characters or {}) do
+                local sOk, template = pcall(function()
+                    return summon.OriginalTemplate and summon.OriginalTemplate.OriginalTemplate
+                end)
+                if sOk and template then
+                    local saved = Store.Get(Util.MakeKey(playerUuid, template))
+                    if saved then Naming.Apply(summon, saved) end
                 end
             end
         end
@@ -170,18 +180,32 @@ end
 
 function Watcher.RegisterConsole()
     Ext.RegisterConsoleCommand("sn_diag", function()
-        local host = Osi.GetHostCharacter()
-        local entity = Ext.Entity.Get(host)
-        if entity and entity.SummonContainer then
-            local any = false
-            for _, summon in pairs(entity.SummonContainer.Characters or {}) do
-                any = true
-                Naming.Diagnose(summon)
-            end
-            if any then return end
+        local summons = Naming.HostSummons()
+        if #summons == 0 then
+            Util.Log("No summons found on the host character; diagnosing the host instead.")
+            Naming.Diagnose(Osi.GetHostCharacter())
+            return
         end
-        Util.Log("No summons found on the host character; diagnosing the host instead.")
-        Naming.Diagnose(host)
+        for _, summon in ipairs(summons) do
+            Naming.Diagnose(summon)
+        end
+    end)
+
+    -- Rename the host's summons on the spot, without going through the prompt.
+    Ext.RegisterConsoleCommand("sn_rename", function(_cmd, ...)
+        local name = Util.Sanitise(table.concat({ ... }, " "))
+        if name == "" then
+            Util.Log("Usage: !sn_rename <name>")
+            return
+        end
+        local summons = Naming.HostSummons()
+        if #summons == 0 then
+            Util.Log("The host character has no summons out.")
+            return
+        end
+        for _, summon in ipairs(summons) do
+            Naming.Apply(summon, name)
+        end
     end)
 
     Ext.RegisterConsoleCommand("sn_list", function()

@@ -1,5 +1,6 @@
 local Util     = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
+local Writer   = Ext.Require("Shared/NameWriter.lua")
 
 local UI = {}
 
@@ -149,12 +150,19 @@ function UI.Register()
         UI.ShowNext()
     end)
 
-    -- Fallback naming path: the server minted a new localisation handle and
-    -- needs this client's loca table to know about it.
-    Channels.SetLoca:SetHandler(function(data, _user)
+    Channels.ApplyName:SetHandler(function(data, _user)
         if type(data) ~= "table" then return end
         if type(data.Handle) ~= "string" or type(data.Text) ~= "string" then return end
-        pcall(Ext.Loca.UpdateTranslatedString, data.Handle, data.Text)
+        Writer.RegisterLoca(data.Handle, data.Text)
+    end)
+
+    Channels.SeedLoca:SetHandler(function(data, _user)
+        if type(data) ~= "table" or type(data.Entries) ~= "table" then return end
+        for handle, text in pairs(data.Entries) do
+            if type(handle) == "string" and type(text) == "string" then
+                Writer.RegisterLoca(handle, text)
+            end
+        end
     end)
 
     -- Type  client  then  !sn_ui  in the Script Extender console.
