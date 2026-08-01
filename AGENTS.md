@@ -86,7 +86,8 @@ correctness, never feature correctness in game.
 
 Packaging: run `./build.ps1` (PowerShell). It downloads a pinned LSLib release
 into `.tools/` and wraps `divine.exe -a create-package` to produce
-`build/NameYourSummons.pak` plus a zip. The Modder's Multitool *Create Package*
+`build/NameYourSummons-<version>.pak` plus a matching zip, both suffixed with
+the mod's semantic version. The Modder's Multitool *Create Package*
 does the same thing by hand. Trap: divine excludes any file whose ABSOLUTE path
 contains a dot-segment (e.g. a `.paseo` worktree), silently emitting an empty
 pak - `build.ps1` stages the mod into a dot-free temp dir to dodge this. For

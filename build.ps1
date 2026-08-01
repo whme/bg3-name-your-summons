@@ -9,7 +9,7 @@
     reused afterwards; nothing about the toolchain is committed to the repo.
 
     Output lands in build/:
-        build/NameYourSummons.pak            <- drop into the game's Mods dir
+        build/NameYourSummons-<version>.pak  <- drop into the game's Mods dir
         build/NameYourSummons-<version>.zip  <- Nexus / mod.io upload
 
     Requires the .NET 8 Desktop Runtime (divine.exe is a .NET app). If it is
@@ -46,8 +46,9 @@ $ToolsDir  = Join-Path $Root '.tools'
 $LSLibDir  = Join-Path $ToolsDir "lslib-$LSLibVersion"
 
 function Get-ModVersion {
-    # Decode the mod's packed Version64 so the zip is self-identifying. The
-    # top-level <version> node is the LSX file-format version, not the mod's.
+    # Decode the mod's packed Version64 for self-identifying artefacts. BG3 packs
+    # major.minor.revision.build; the trailing build field is dropped when zero.
+    # The top-level <version> node is the LSX file-format version, not the mod's.
     $meta = Join-Path $SourceDir "Mods/$ModName/meta.lsx"
     try {
         $node = Select-Xml -Path $meta -XPath "//attribute[@id='Version64']" | Select-Object -First 1
@@ -56,10 +57,11 @@ function Get-ModVersion {
         $minor    = ($packed -shr 47) -band 0xff
         $revision = ($packed -shr 31) -band 0xffff
         $build    =  $packed -band 0x7fffffff
-        return "$major.$minor.$revision.$build"
+        if ($build -ne 0) { return "$major.$minor.$revision.$build" }
+        return "$major.$minor.$revision"
     } catch {
         Write-Warning "Could not read version from meta.lsx: $($_.Exception.Message)"
-        return '0.0.0.0'
+        return '0.0.0'
     }
 }
 
@@ -96,7 +98,7 @@ if ($Clean -and (Test-Path $BuildDir)) {
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 
 $version = Get-ModVersion
-$pak     = Join-Path $BuildDir "$ModName.pak"
+$pak     = Join-Path $BuildDir "$ModName-$version.pak"
 $zipOut  = Join-Path $BuildDir "$ModName-$version.zip"
 $divine  = Resolve-Divine
 
