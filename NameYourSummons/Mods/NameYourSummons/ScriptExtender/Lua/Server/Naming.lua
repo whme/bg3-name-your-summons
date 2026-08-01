@@ -133,18 +133,47 @@ function Naming.Diagnose(ref)
     Util.Log("-------------------------------")
 end
 
+--- Every live summon in the session.
+--- SummonContainer.Characters is userdata that will not iterate from Lua, so we
+--- enumerate by the IsSummon marker component instead.
+---@return EntityHandle[]
+function Naming.AllSummons()
+    local ok, summons = pcall(Ext.Entity.GetAllEntitiesWithComponent, "IsSummon")
+    if not ok or not summons then
+        Util.Warn("Could not enumerate summons: " .. tostring(summons))
+        return {}
+    end
+    return summons
+end
+
+--- The owner uuid of a summon, via Osiris, or nil.
+---@param summon EntityHandle
+---@return string|nil
+function Naming.OwnerOf(summon)
+    local uuid = summon.Uuid and tostring(summon.Uuid.EntityUuid)
+    if not uuid then return nil end
+    local ownerRaw = Osi.CharacterGetOwner(uuid)
+    if not ownerRaw or ownerRaw == "" then return nil end
+    return Util.ToUuid(ownerRaw)
+end
+
+--- The root template of a summon, or nil.
+---@param summon EntityHandle
+---@return string|nil
+function Naming.TemplateOf(summon)
+    return summon.OriginalTemplate and summon.OriginalTemplate.OriginalTemplate
+end
+
 --- Every summon the host currently has out.
 ---@return EntityHandle[]
 function Naming.HostSummons()
     local out = {}
     local ok, host = pcall(Osi.GetHostCharacter)
     if not ok or not host then return out end
+    local hostUuid = Util.ToUuid(host)
 
-    local entityOk, entity = pcall(Ext.Entity.Get, host)
-    if not entityOk or not entity or not entity.SummonContainer then return out end
-
-    for _, summon in pairs(entity.SummonContainer.Characters or {}) do
-        if type(summon) ~= "string" and type(summon) ~= "number" then
+    for _, summon in ipairs(Naming.AllSummons()) do
+        if Naming.OwnerOf(summon) == hostUuid then
             table.insert(out, summon)
         end
     end

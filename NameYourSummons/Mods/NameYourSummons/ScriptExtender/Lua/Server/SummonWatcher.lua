@@ -113,24 +113,21 @@ function Watcher.ReapplyExisting()
 
     if not Store.Settings().ApplyToExisting then return end
 
-    local players = Osi.DB_Players:Get(nil)
-    if not players then return end
+    local summons = Naming.AllSummons()
+    local applied = 0
 
-    for _, row in pairs(players) do
-        local playerUuid = Util.ToUuid(row[1])
-        local ok, entity = pcall(Ext.Entity.Get, row[1])
-        if ok and entity and entity.SummonContainer then
-            for _, summon in pairs(entity.SummonContainer.Characters or {}) do
-                local sOk, template = pcall(function()
-                    return summon.OriginalTemplate and summon.OriginalTemplate.OriginalTemplate
-                end)
-                if sOk and template then
-                    local saved = Store.Get(Util.MakeKey(playerUuid, template))
-                    if saved then Naming.Apply(summon, saved) end
-                end
+    for _, summon in ipairs(summons) do
+        local owner    = Naming.OwnerOf(summon)
+        local template = Naming.TemplateOf(summon)
+        if owner and template then
+            local saved = Store.Get(Util.MakeKey(owner, template))
+            if saved and Naming.Apply(summon, saved) then
+                applied = applied + 1
             end
         end
     end
+
+    Util.Log(("Reapply: named %d of %d live summon(s)."):format(applied, #summons))
 end
 
 ---------------------------------------------------------------------------
@@ -215,6 +212,11 @@ function Watcher.RegisterConsole()
             n = n + 1
         end
         Util.Log(("%d saved name(s)."):format(n))
+    end)
+
+    -- Run the save/load reapply pass on demand, without reloading.
+    Ext.RegisterConsoleCommand("nys_reapply", function()
+        Watcher.ReapplyExisting()
     end)
 
     Ext.RegisterConsoleCommand("nys_clear", function()

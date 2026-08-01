@@ -30,11 +30,13 @@ end
 --- Storage key: one saved name per (owner, root template) pair.
 --- This is what makes "re-summon keeps its name" work: the summon's own UUID
 --- changes every time it is conjured, but the owner and the template do not.
+--- Both halves are normalised to a bare uuid so the GUIDSTRING template seen on
+--- summon ("S_Wolf_<uuid>") matches the bare-uuid template seen on reapply.
 ---@param ownerUuid string
 ---@param rootTemplate string
 ---@return string
 function Util.MakeKey(ownerUuid, rootTemplate)
-    return string.lower(tostring(ownerUuid)) .. "|" .. string.lower(tostring(rootTemplate))
+    return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
 end
 
 --- FNV-1a, 32 bit.
