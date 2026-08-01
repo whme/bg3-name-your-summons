@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Reject staged text that contains decorative or "smart" Unicode
+# punctuation. See AGENTS.md "Typography" - the repo is ASCII-only in
+# source, docs, and commit messages. Emoji are not matched; only the
+# punctuation glyphs that have an ASCII equivalent are.
+set -e
+
+# grep -P needs a UTF-8 locale; Git's default MSYS2 locale on Windows is
+# unibyte and rejects the -P flag otherwise.
+export LC_ALL=C.UTF-8
+
+# Code points that must not appear in tracked text:
+#   U+00A0 non-breaking space
+#   U+00B7 middle dot          U+00D7 x   U+00F7 /
+#   U+2013 en-dash             U+2014 em-dash
+#   U+2018 U+2019 ' '          U+201C U+201D " "
+#   U+2022 bullet              U+2026 ellipsis
+#   U+2190-U+21FF arrows       U+2260 !=  U+2264 <=  U+2265 >=
+#   U+26A0 warning sign
+FORBIDDEN='[\x{00A0}\x{00B7}\x{00D7}\x{00F7}\x{2013}\x{2014}\x{2018}\x{2019}\x{201C}\x{201D}\x{2022}\x{2026}\x{2190}-\x{21FF}\x{2260}\x{2264}\x{2265}\x{26A0}]'
+
+# Extensions whose staged content is scanned. Anything else (.pak,
+# images, archives) is skipped as binary.
+is_text() {
+    case "$1" in
+        *.lua|*.md|*.json|*.lsx|*.txt|*.toml|*.sh|*.yml|*.yaml) return 0 ;;
+        .githooks/*|.gitignore) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+status=0
+while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    is_text "$file" || continue
+    # Scan the staged blob, not the working tree, so the check matches
+    # exactly what is about to be committed.
+    hits=$(git show ":$file" | grep -nP "$FORBIDDEN" || true)
+    if [ -n "$hits" ]; then
+        if [ "$status" -eq 0 ]; then
+            echo "pre-commit: forbidden Unicode punctuation (use ASCII, see AGENTS.md):" >&2
+        fi
+        echo "  $file:" >&2
+        echo "$hits" | sed 's/^/    /' >&2
+        status=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+exit "$status"

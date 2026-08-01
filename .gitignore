@@ -1,1 +1,4 @@
 *.zip
+
+# Local, uncommitted per-project agent settings (Claude Code writes these).
+.claude/settings.local.json
