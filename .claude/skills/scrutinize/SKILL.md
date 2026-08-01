@@ -107,9 +107,10 @@ Scrutinize the commit message itself against
 - ASCII punctuation only, and the mandatory `Co-authored-by:` trailer present
   exactly once in the footer.
 
-If the message fails any of these, correct it - amend a commit that has not been
-pushed for review, otherwise flag the problem rather than rewriting published
-history.
+If the message fails any of these, correct it as part of the same amend you make
+when publishing the result below - unless the commit is already merged into the
+remote's main branch, in which case flag the problem rather than rewriting
+published history.
 
 If the change adds tests, challenge each one: is it necessary, does it add value
 beyond existing coverage, can it fold into another test or use parametrization?
@@ -136,7 +137,12 @@ Finally, publish the result so the scrutiny is not stranded locally:
   `gh pr view --json` metadata. Do this without being asked. Then return to the
   branch you recorded earlier (`git checkout <original-branch>`), report the new
   commit hash, and confirm the PR now reflects the scrutiny.
-- For a commit on a branch: commit the edits per the project's conventions and
-  `git push` so the branch is updated.
+- For a commit on a branch: amend the scrutinized commit (`git commit --amend`,
+  keeping the message unless you corrected it above) rather than adding a
+  follow-up commit, then `git push` (force-push if already pushed, confirming
+  with the user first). Exception: if the commit is already merged into
+  `origin/main` (`git merge-base --is-ancestor <hash> origin/main` after
+  `git fetch origin`), do NOT amend - tell the user and ask how to proceed,
+  offering a force-push that rewrites history or a dedicated follow-up commit.
 - For working changes (empty argument): leave them staged/unstaged as you found
   them and do not commit unless asked.
