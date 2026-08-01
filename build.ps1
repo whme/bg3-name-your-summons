@@ -33,7 +33,7 @@ $ErrorActionPreference = 'Stop'
 
 # Pinned LSLib release. Bump this (and check the CLI still accepts the same
 # flags) when you want a newer packer; divine picks the correct BG3 package
-# version and compression from '-g bg3', so we do not spell those out.
+# version and compression from '--game bg3', so we do not spell those out.
 $LSLibVersion = 'v1.20.4'
 $LSLibAsset   = "ExportTool-$LSLibVersion.zip"
 $LSLibUrl     = "https://github.com/Norbyte/lslib/releases/download/$LSLibVersion/$LSLibAsset"
@@ -46,12 +46,17 @@ $ToolsDir  = Join-Path $Root '.tools'
 $LSLibDir  = Join-Path $ToolsDir "lslib-$LSLibVersion"
 
 function Get-ModVersion {
-    # Parse the module version out of meta.lsx so the zip is self-identifying.
-    # Falls back to a placeholder if the node is missing or malformed.
+    # Decode the mod's packed Version64 so the zip is self-identifying. The
+    # top-level <version> node is the LSX file-format version, not the mod's.
     $meta = Join-Path $SourceDir "Mods/$ModName/meta.lsx"
     try {
-        $node = (Select-Xml -Path $meta -XPath '//version').Node
-        return "$($node.major).$($node.minor).$($node.revision).$($node.build)"
+        $node = Select-Xml -Path $meta -XPath "//attribute[@id='Version64']" | Select-Object -First 1
+        $packed   = [int64]$node.Node.value
+        $major    = ($packed -shr 55) -band 0x7f
+        $minor    = ($packed -shr 47) -band 0xff
+        $revision = ($packed -shr 31) -band 0xffff
+        $build    =  $packed -band 0x7fffffff
+        return "$major.$minor.$revision.$build"
     } catch {
         Write-Warning "Could not read version from meta.lsx: $($_.Exception.Message)"
         return '0.0.0.0'
@@ -81,8 +86,6 @@ function Resolve-Divine {
     return $divine.FullName
 }
 
-# --- Preconditions -----------------------------------------------------------
-
 if (-not (Test-Path (Join-Path $SourceDir "Mods/$ModName/meta.lsx"))) {
     throw "Source folder '$SourceDir' does not look like the mod (no Mods/$ModName/meta.lsx)."
 }
@@ -97,14 +100,9 @@ $pak     = Join-Path $BuildDir "$ModName.pak"
 $zipOut  = Join-Path $BuildDir "$ModName-$version.zip"
 $divine  = Resolve-Divine
 
-# --- Pack --------------------------------------------------------------------
-#
-# divine excludes 'hidden' files by matching the file's ABSOLUTE path against
-# any segment starting with '.', and there is no flag to turn that off. This
-# repo can live under a dotted path (e.g. a .paseo worktree), which would make
-# divine silently drop every file and emit an empty pak. So we stage the mod
-# into a temp dir with no dotted segment and pack from there.
-
+# divine drops any file whose ABSOLUTE path has a dot-segment (e.g. a .paseo
+# worktree) and offers no flag to disable it, silently emitting an empty pak.
+# Stage into a dot-free temp dir and pack from there.
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) "nys-build-$([Guid]::NewGuid().ToString('N'))"
 if ($stage -split '[\\/]' | Where-Object { $_.StartsWith('.') }) {
     throw "Temp path '$stage' contains a dot-segment; divine would exclude all files. Set a TEMP without leading-dot folders."
@@ -126,8 +124,6 @@ try {
 if ((Get-Item $pak).Length -le 64) {
     throw "Packed .pak is empty ($((Get-Item $pak).Length) bytes) - divine found no files to include."
 }
-
-# --- Zip (contains just the .pak, mirroring Multitool output) -----------------
 
 if (Test-Path $zipOut) { Remove-Item $zipOut -Force }
 Compress-Archive -Path $pak -DestinationPath $zipOut
