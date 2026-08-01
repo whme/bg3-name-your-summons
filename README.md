@@ -52,18 +52,18 @@ The community wiki's [Changing an entity's name](https://wiki.bg3.community/Tuto
 tutorial tells you to do this:
 
 ```lua
-local handle = entity.DisplayName.NameKey.Handle.Handle
+local handle = entity.DisplayName.Name.Handle.Handle
 Ext.Loca.UpdateTranslatedString(handle, newName)   -- ⚠ TRAP
 ```
 
-**Do not use that for summons.** `NameKey.Handle` is a *localisation handle*,
+**Do not use that for summons.** `Name.Handle` is a *localisation handle*,
 and every entity spawned from the same root template shares it. Renaming one
 conjured wolf renames **every** conjured wolf — in this save, in every other
 save, until you restart the game. The tutorial's use case (adding a
 "Stoneskin" prefix during a status) hides this because the prefix goes on
 everything anyway.
 
-What the tutorial *does* prove is that `DisplayName.NameKey` is rendered. So
+What the tutorial *does* prove is that `DisplayName.Name` is rendered. So
 rather than overwriting the shared handle, this mod mints a handle of its own
 and points the entity at that. `Ext.Loca.UpdateTranslatedString` inserts into
 the string table (see `TranslatedStringRepository::UpdateTranslatedString` in
@@ -74,8 +74,8 @@ So the whole of the renaming is these two writes, in `Shared/NameWriter.lua`:
 
 ```lua
 Ext.Loca.UpdateTranslatedString(handle, "Fenrir")   -- our own handle, freshly minted
-entity.DisplayName.NameKey.Handle.Handle  = handle
-entity.DisplayName.NameKey.Handle.Version = 0
+entity.DisplayName.Name.Handle.Handle  = handle
+entity.DisplayName.Name.Handle.Version = 0
 entity:Replicate("DisplayName")
 ```
 

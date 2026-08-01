@@ -1,8 +1,8 @@
 --[[
     The renaming primitive, shared by the server and client Lua states. A
-    creature's name comes from DisplayName.NameKey, a localisation handle rather
+    creature's name comes from DisplayName.Name, a localisation handle rather
     than text, so renaming is two writes: register the text under a handle of our
-    own, then point NameKey at it. See the README for why the handle must be ours.
+    own, then point Name at it. See the README for why the handle must be ours.
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
@@ -44,12 +44,12 @@ end
 function Writer.SetDisplayName(e, handle, replicate)
     local dn = e.DisplayName
     if dn == nil then return false, "no DisplayName component" end
-    if dn.NameKey == nil or dn.NameKey.Handle == nil then return false, "no NameKey" end
+    if dn.Name == nil or dn.Name.Handle == nil then return false, "no Name" end
 
     local ok, err = pcall(function()
-        dn.NameKey.Handle.Handle = handle
+        dn.Name.Handle.Handle = handle
         -- Loca registers at version 0; a stale version makes the lookup miss.
-        dn.NameKey.Handle.Version = 0
+        dn.Name.Handle.Version = 0
     end)
     if not ok then return false, tostring(err) end
 

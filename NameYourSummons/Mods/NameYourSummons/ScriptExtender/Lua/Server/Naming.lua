@@ -19,8 +19,8 @@ function Naming.GetCurrentName(ref)
     end
 
     local dn = e.DisplayName
-    if dn and dn.NameKey and dn.NameKey.Handle and dn.NameKey.Handle.Handle then
-        local ok, text = pcall(Ext.Loca.GetTranslatedString, dn.NameKey.Handle.Handle)
+    if dn and dn.Name and dn.Name.Handle and dn.Name.Handle.Handle then
+        local ok, text = pcall(Ext.Loca.GetTranslatedString, dn.Name.Handle.Handle)
         if ok and type(text) == "string" and text ~= "" then return text end
     end
 
@@ -111,10 +111,10 @@ function Naming.Diagnose(ref)
         Util.Log("Uuid                     :", uuid)
     end
 
-    if e.DisplayName and e.DisplayName.NameKey and e.DisplayName.NameKey.Handle then
-        local h = e.DisplayName.NameKey.Handle.Handle
-        Util.Log("DisplayName.NameKey      :", tostring(h),
-                 "(version " .. tostring(e.DisplayName.NameKey.Handle.Version) .. ")")
+    if e.DisplayName and e.DisplayName.Name and e.DisplayName.Name.Handle then
+        local h = e.DisplayName.Name.Handle.Handle
+        Util.Log("DisplayName.Name         :", tostring(h),
+                 "(version " .. tostring(e.DisplayName.Name.Handle.Version) .. ")")
         Util.Log("  resolves to            :", tostring(Ext.Loca.GetTranslatedString(h)))
     end
 
