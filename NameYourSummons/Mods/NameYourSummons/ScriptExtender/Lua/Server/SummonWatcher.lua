@@ -319,8 +319,13 @@ function Watcher.RegisterNet()
 
 		local name = Util.Sanitise(data.Name)
 		if name == "" then
-			-- Dismissed without a name: a session-only skip the config can undo.
-			sessionSkipped[data.Key] = true
+			if data.Abort then
+				-- Aborted via the X: clear the "already asked" mark so it re-prompts.
+				askedThisSession[data.Key] = nil
+			else
+				-- Dismissed via Skip: a session-only skip the config can undo.
+				sessionSkipped[data.Key] = true
+			end
 			pending[data.Key] = nil
 			unpauseIfIdle()
 			return

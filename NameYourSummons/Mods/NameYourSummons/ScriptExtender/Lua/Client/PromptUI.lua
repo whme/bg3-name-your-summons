@@ -14,9 +14,11 @@ local promptWindow, promptLabel, promptInput
 local queue = {} -- pending requests, FIFO
 local current = nil -- the request currently on screen
 
----@param save boolean   whether to persist the typed name
+--- Send the player's decision to the server.
+---@param save boolean  persist the typed name
 ---@param alwaysSkip boolean|nil  never prompt for this summon again
-local function submit(save, alwaysSkip)
+---@param abort boolean|nil  dismiss without recording a skip
+local function submit(save, alwaysSkip, abort)
 	if not current then
 		return
 	end
@@ -28,6 +30,7 @@ local function submit(save, alwaysSkip)
 		SummonUuid = current.SummonUuid,
 		Name = name,
 		AlwaysSkip = alwaysSkip == true,
+		Abort = abort or nil,
 	})
 
 	current = nil
@@ -87,10 +90,10 @@ local function buildPrompt()
 	local hint = promptWindow:AddText("The name is remembered and reapplied next time you summon this creature.")
 	hint.Disabled = true
 
-	-- Closing via the X counts as skipping, so the queue keeps moving.
+	-- The X aborts rather than skips, so this summon is prompted for again.
 	promptWindow.OnClose = function()
 		if current then
-			submit(false)
+			submit(false, false, true)
 		end
 	end
 end
