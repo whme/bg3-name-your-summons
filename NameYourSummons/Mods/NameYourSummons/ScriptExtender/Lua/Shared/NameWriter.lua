@@ -42,12 +42,13 @@ function Writer.RegisterLoca(handle, text)
 	return res ~= false
 end
 
---- Points the entity's display name at `handle`.
+--- Points the entity's display name at `handle` at localisation `version`.
 ---@param e EntityHandle
 ---@param handle string  a handle already registered via RegisterLoca
+---@param version integer  0 for our runtime loca; a template handle keeps its own
 ---@param replicate boolean  true on the server, false on a client
 ---@return boolean ok, string|nil err
-function Writer.SetDisplayName(e, handle, replicate)
+function Writer.SetDisplayName(e, handle, version, replicate)
 	local dn = e.DisplayName
 	if dn == nil then
 		return false, "no DisplayName component"
@@ -58,8 +59,7 @@ function Writer.SetDisplayName(e, handle, replicate)
 
 	local ok, err = pcall(function()
 		dn.Name.Handle.Handle = handle
-		-- Loca registers at version 0; a stale version makes the lookup miss.
-		dn.Name.Handle.Version = 0
+		dn.Name.Handle.Version = version
 	end)
 	if not ok then
 		return false, tostring(err)

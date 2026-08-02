@@ -57,6 +57,19 @@ local function templateLabel(templateId)
 	return "Summon"
 end
 
+--- Run `action(summon, template)` for every live summon whose owner+template maps to `key`.
+---@param key string
+---@param action fun(summon: EntityHandle, template: string)
+local function forLiveSummons(key, action)
+	for _, summon in ipairs(Naming.AllSummons()) do
+		local owner = Naming.OwnerOf(summon)
+		local template = Naming.TemplateOf(summon)
+		if owner and template and Util.MakeKey(owner, template) == key then
+			action(summon, template)
+		end
+	end
+end
+
 --- The current party's player characters (host plus companions).
 ---@return string[]
 local function partyMembers()
@@ -306,6 +319,11 @@ function Watcher.RegisterNet()
 		end
 		Store.Forget(data.Key)
 		askedThisSession[data.Key] = nil
+
+		-- Revert any live summon still wearing the forgotten name to its template default.
+		forLiveSummons(data.Key, function(summon, template)
+			Naming.Restore(summon, template)
+		end)
 		Util.Log("Forgot saved name for key " .. data.Key)
 	end)
 
@@ -324,13 +342,9 @@ function Watcher.RegisterNet()
 		Store.Set(data.Key, name)
 
 		-- Naming.Apply registers the new handle; update any live summon on the spot.
-		for _, summon in ipairs(Naming.AllSummons()) do
-			local owner = Naming.OwnerOf(summon)
-			local template = Naming.TemplateOf(summon)
-			if owner and template and Util.MakeKey(owner, template) == data.Key then
-				Naming.Apply(summon, name)
-			end
-		end
+		forLiveSummons(data.Key, function(summon)
+			Naming.Apply(summon, name)
+		end)
 		Util.Log(("Renamed key %s to '%s'"):format(data.Key, name))
 	end)
 

@@ -54,8 +54,10 @@ The naming prompt has a *Settings* button that opens the config window (also
 reachable from the console with `!nys_ui`). There you can:
 
 - Review every saved name in the current save, grouped by the character that
-  summoned it, and edit or forget any of them. Editing a name updates any
-  matching summon that is currently out, immediately.
+  summoned it, then edit or forget any of them. Nothing takes effect until you
+  press Save; closing the window discards unsaved edits. Saving applies each
+  rename to any matching summon that is currently out, and reverts any summon
+  whose name you forgot back to its original.
 - Choose when the prompt appears:
   - **Ask me to name new summons** - turn the prompt on or off entirely.
   - **Also re-ask for summons I have already named** - when on, the prompt

@@ -56,7 +56,8 @@ function Naming.Apply(ref, name)
 		return false, "could not register localisation handle"
 	end
 
-	local ok, err = Writer.SetDisplayName(e, handle, true)
+	-- Our runtime loca registers at version 0; a stale version makes it miss.
+	local ok, err = Writer.SetDisplayName(e, handle, 0, true)
 	if not ok then
 		return false, err
 	end
@@ -84,6 +85,34 @@ function Naming.ApplyDeferred(guid, name, delayMs)
 			Util.Warn(("Could not name %s '%s': %s"):format(tostring(guid), tostring(name), tostring(err)))
 		end
 	end)
+end
+
+--- Points a summon's display name back at its template's original handle,
+--- undoing a custom name. The template handle is a shipped game loca entry, so
+--- co-op peers already have it - no broadcast needed, unlike Apply.
+---@param ref string|EntityHandle
+---@param rootTemplate string
+---@return boolean success, string|nil err
+function Naming.Restore(ref, rootTemplate)
+	local e = Writer.Resolve(ref)
+	if not e then
+		return false, "entity not found"
+	end
+
+	local ok, template = pcall(Ext.Template.GetTemplate, rootTemplate)
+	local original = ok and template and template.DisplayName and template.DisplayName.Handle
+	if not (original and original.Handle) then
+		return false, "template has no display name"
+	end
+
+	local restored, err = Writer.SetDisplayName(e, original.Handle, original.Version, true)
+	if not restored then
+		return false, err
+	end
+
+	local uuid = e.Uuid and tostring(e.Uuid.EntityUuid) or tostring(ref)
+	Util.Log(("Restored %s to its original name"):format(uuid))
+	return true
 end
 
 --- Re-registers every saved name's handle. Runtime localisation entries do not

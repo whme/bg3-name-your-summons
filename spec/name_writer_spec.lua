@@ -45,37 +45,43 @@ end
 
 TestSetDisplayName = {}
 
-function TestSetDisplayName:testPointsHandleAndPinsVersionZero()
+function TestSetDisplayName:testPointsHandleAndWritesVersion()
 	local e = fakeEntity()
-	lu.assertEquals(Writer.SetDisplayName(e, "hHandle", false), true)
+	lu.assertEquals(Writer.SetDisplayName(e, "hHandle", 0, false), true)
 	lu.assertEquals(e.DisplayName.Name.Handle.Handle, "hHandle")
 	lu.assertEquals(e.DisplayName.Name.Handle.Version, 0)
 end
 
+function TestSetDisplayName:testWritesNonZeroVersion()
+	local e = fakeEntity()
+	Writer.SetDisplayName(e, "hOriginal", 3, false)
+	lu.assertEquals(e.DisplayName.Name.Handle.Version, 3)
+end
+
 function TestSetDisplayName:testReplicatesOnlyWhenAsked()
 	local server = fakeEntity()
-	Writer.SetDisplayName(server, "hHandle", true)
+	Writer.SetDisplayName(server, "hHandle", 0, true)
 	lu.assertEquals(server.replicated, { "DisplayName" })
 
 	local client = fakeEntity()
-	Writer.SetDisplayName(client, "hHandle", false)
+	Writer.SetDisplayName(client, "hHandle", 0, false)
 	lu.assertEquals(client.replicated, {})
 end
 
 function TestSetDisplayName:testAlwaysMarksChanged()
 	local e = fakeEntity()
-	Writer.SetDisplayName(e, "hHandle", false)
+	Writer.SetDisplayName(e, "hHandle", 0, false)
 	lu.assertEquals(e.marked, { "DisplayName" })
 end
 
 function TestSetDisplayName:testFailsWhenComponentMissing()
-	local ok, err = Writer.SetDisplayName({ DisplayName = nil }, "h", false)
+	local ok, err = Writer.SetDisplayName({ DisplayName = nil }, "h", 0, false)
 	lu.assertEquals(ok, false)
 	lu.assertEquals(err, "no DisplayName component")
 end
 
 function TestSetDisplayName:testFailsWhenNameMissing()
-	local ok, err = Writer.SetDisplayName({ DisplayName = { Name = nil } }, "h", false)
+	local ok, err = Writer.SetDisplayName({ DisplayName = { Name = nil } }, "h", 0, false)
 	lu.assertEquals(ok, false)
 	lu.assertEquals(err, "no Name")
 end
