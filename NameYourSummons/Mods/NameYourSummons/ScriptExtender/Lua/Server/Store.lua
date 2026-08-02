@@ -5,7 +5,14 @@ local VAR_SETTINGS = "Settings"
 
 local DEFAULT_SETTINGS = {
 	PromptOnSummon = true, -- pop the naming window the first time a summon appears
+	PromptForNamed = false, -- also re-prompt for summons that already have a saved name
 	ApplyToExisting = true, -- re-apply saved names to summons already alive on load
+}
+
+--- The settings a client is allowed to change from the in-game config.
+local WRITABLE_SETTINGS = {
+	PromptOnSummon = true,
+	PromptForNamed = true,
 }
 
 --- Must be called from BootstrapServer.lua (before a savegame is loaded)
@@ -80,6 +87,23 @@ function Store.Settings()
 		end
 	end
 	return out
+end
+
+--- Persist a single setting. Only whitelisted keys are honoured, so a client
+--- cannot write arbitrary fields into the ModVar.
+---@param key string
+---@param value boolean
+---@return boolean persisted
+function Store.SetSetting(key, value)
+	if not WRITABLE_SETTINGS[key] or type(value) ~= "boolean" then
+		return false
+	end
+	local v = vars()
+	local t = v[VAR_SETTINGS] or {}
+	t[key] = value
+	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
+	v[VAR_SETTINGS] = t
+	return true
 end
 
 return Store

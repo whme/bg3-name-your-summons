@@ -1,6 +1,7 @@
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Writer = Ext.Require("Shared/NameWriter.lua")
+local ConfigUI = Ext.Require("Client/ConfigUI.lua")
 
 local UI = {}
 
@@ -66,6 +67,12 @@ local function buildPrompt()
 		submit(false)
 	end
 
+	local settings = promptWindow:AddButton("Settings")
+	settings.SameLine = true
+	settings.OnClick = function()
+		ConfigUI.Open()
+	end
+
 	promptWindow:AddSeparator()
 	local hint = promptWindow:AddText("The name is remembered and reapplied next time you summon this creature.")
 	hint.Disabled = true
@@ -101,65 +108,6 @@ function UI.ShowNext()
 end
 
 ---------------------------------------------------------------------------
--- Saved names manager
----------------------------------------------------------------------------
-
-local managerWindow, managerList
-
-local function refreshManager()
-	if not managerList then
-		return
-	end
-
-	for _, child in ipairs(managerList.Children or {}) do
-		child:Destroy()
-	end
-
-	Channels.ListNames:RequestToServer({}, function(response)
-		local entries = (response and response.Entries) or {}
-		if #entries == 0 then
-			managerList:AddText("No saved names yet.")
-			return
-		end
-
-		local tbl = managerList:AddTable("SavedNames", 3)
-		for _, entry in ipairs(entries) do
-			local row = tbl:AddRow()
-			row:AddCell():AddText(entry.Name)
-
-			-- The key is "<ownerUuid>|<rootTemplate>"; show only the template.
-			local template = entry.Key:match("|(.+)$") or entry.Key
-			local templateText = row:AddCell():AddText(template)
-			templateText.Disabled = true
-
-			local forget = row:AddCell():AddButton("Forget")
-			forget.IDContext = "forget_" .. entry.Key
-			forget.OnClick = function()
-				Channels.ForgetName:SendToServer({ Key = entry.Key })
-				Ext.Timer.WaitForRealtime(120, refreshManager)
-			end
-		end
-	end)
-end
-
-function UI.OpenManager()
-	if not managerWindow then
-		managerWindow = Ext.IMGUI.NewWindow("Summon Names")
-		managerWindow.Closeable = true
-		managerWindow.Open = false
-
-		local refresh = managerWindow:AddButton("Refresh")
-		refresh.OnClick = refreshManager
-
-		managerWindow:AddSeparator()
-		managerList = managerWindow:AddGroup("SavedNamesList")
-	end
-
-	managerWindow.Open = true
-	refreshManager()
-end
-
----------------------------------------------------------------------------
 -- Wiring
 ---------------------------------------------------------------------------
 
@@ -191,11 +139,6 @@ function UI.Register()
 				Writer.RegisterLoca(handle, text)
 			end
 		end
-	end)
-
-	-- Type  client  then  !nys_ui  in the Script Extender console.
-	Ext.RegisterConsoleCommand("nys_ui", function()
-		UI.OpenManager()
 	end)
 end
 

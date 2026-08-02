@@ -43,6 +43,22 @@ comes back automatically every time you re-summon that creature.
 Each summoner keeps its own names, and different familiar shapes (cat, raven,
 spider) are remembered separately.
 
+### In-game config
+
+The naming prompt has a *Settings* button that opens the config window (also
+reachable from the console with `!nys_ui`). There you can:
+
+- Review every saved name in the current save, grouped by the character that
+  summoned it, and edit or forget any of them. Editing a name updates any
+  matching summon that is currently out, immediately.
+- Choose when the prompt appears:
+  - **Ask me to name new summons** - turn the prompt on or off entirely.
+  - **Also re-ask for summons I have already named** - when on, the prompt
+    reappears for a summon that already has a saved name (pre-filled, so you can
+    keep or change it); when off, a saved name is reapplied silently.
+
+Settings and names live in the host's save.
+
 ### Console commands
 
 The commands run in the Script Extender console - a separate window that opens
@@ -59,7 +75,7 @@ alongside the game once you enable it in
 | `!nys_diag` | server | dump what the game thinks your summons are named |
 | `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
 | `!nys_clear` | server | wipe all saved names |
-| `!nys_ui` | **client** (type `client` first) | open the saved-names manager |
+| `!nys_ui` | **client** (type `client` first) | open the in-game config (settings + saved-name manager) |
 
 If a name won't stick, run `!nys_diag` and paste the output when asking for help.
 

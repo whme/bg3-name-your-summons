@@ -17,6 +17,15 @@ Channels.ListNames = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListName
 -- Client -> Server: "forget this saved name"
 Channels.ForgetName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ForgetName")
 
+-- Client -> Server: "change the text of this saved name"
+Channels.RenameName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameName")
+
+-- Client -> Server (request/reply): "give me the current settings"
+Channels.GetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSettings")
+
+-- Client -> Server: "store these settings"
+Channels.SetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SetSettings")
+
 -- Server -> All Clients: the text behind a localisation handle, for remote peers
 -- whose separate string table has never seen a handle the host minted.
 Channels.ApplyName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ApplyName")

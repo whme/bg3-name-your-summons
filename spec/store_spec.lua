@@ -49,12 +49,31 @@ end
 function TestStoreSettings:testDefaultsWhenUnset()
 	local s = Store.Settings()
 	lu.assertEquals(s.PromptOnSummon, true)
+	lu.assertEquals(s.PromptForNamed, false)
 	lu.assertEquals(s.ApplyToExisting, true)
 end
 
 function TestStoreSettings:testHonoursStoredOverride()
-	backing["Settings"] = { PromptOnSummon = false }
+	backing["Settings"] = { PromptOnSummon = false, PromptForNamed = true }
 	local s = Store.Settings()
 	lu.assertEquals(s.PromptOnSummon, false)
+	lu.assertEquals(s.PromptForNamed, true)
 	lu.assertEquals(s.ApplyToExisting, true)
+end
+
+function TestStoreSettings:testSetSettingPersistsWhitelistedKey()
+	lu.assertTrue(Store.SetSetting("PromptForNamed", true))
+	lu.assertEquals(backing["Settings"]["PromptForNamed"], true)
+	lu.assertEquals(Store.Settings().PromptForNamed, true)
+end
+
+function TestStoreSettings:testSetSettingRejectsUnknownKey()
+	lu.assertFalse(Store.SetSetting("ApplyToExisting", false))
+	lu.assertFalse(Store.SetSetting("Nonsense", true))
+	lu.assertNil(backing["Settings"])
+end
+
+function TestStoreSettings:testSetSettingRejectsNonBoolean()
+	lu.assertFalse(Store.SetSetting("PromptOnSummon", "yes"))
+	lu.assertNil(backing["Settings"])
 end

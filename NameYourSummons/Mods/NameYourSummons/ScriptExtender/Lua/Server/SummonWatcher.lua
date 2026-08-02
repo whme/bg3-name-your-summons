@@ -31,6 +31,29 @@ local function ownerIsPlayer(ownerUuid)
 	return ok and result == 1
 end
 
+--- A readable label for a root template (e.g. "Cat"), for the saved-name list.
+--- Falls back to the template's dev name and finally "Summon"; never a uuid.
+---@param templateId string
+---@return string
+local function templateLabel(templateId)
+	local ok, template = pcall(Ext.Template.GetTemplate, templateId)
+	if not (ok and template) then
+		return "Summon"
+	end
+	local displayName = template.DisplayName
+	local handle = displayName and displayName.Handle and displayName.Handle.Handle
+	if handle then
+		local okLoca, text = pcall(Ext.Loca.GetTranslatedString, handle)
+		if okLoca and type(text) == "string" and text ~= "" then
+			return text
+		end
+	end
+	if type(template.Name) == "string" and template.Name ~= "" then
+		return template.Name
+	end
+	return "Summon"
+end
+
 ---------------------------------------------------------------------------
 -- Core
 ---------------------------------------------------------------------------
@@ -60,19 +83,26 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	local ownerUuid = Util.ToUuid(ownerRaw)
 	local key = Util.MakeKey(ownerUuid, rootTemplate)
 
+	local settings = Store.Settings()
 	local saved = Store.Get(key)
+
+	-- Saved names are always reapplied. With PromptForNamed on we also re-ask so
+	-- the player can rename; that path ignores askedThisSession, which only stops
+	-- repeat prompts for summons left UNNAMED this session.
 	if saved then
 		Naming.ApplyDeferred(summonGuid, saved)
-		return
+		if not (settings.PromptOnSummon and settings.PromptForNamed) then
+			return
+		end
+	else
+		if not settings.PromptOnSummon then
+			return
+		end
+		if askedThisSession[key] then
+			return
+		end
 	end
 
-	local settings = Store.Settings()
-	if not settings.PromptOnSummon then
-		return
-	end
-	if askedThisSession[key] then
-		return
-	end
 	if not ownerIsPlayer(ownerUuid) then
 		return
 	end
@@ -87,7 +117,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 			Key = key,
 			SummonUuid = Util.ToUuid(summonGuid),
 			OwnerUuid = ownerUuid,
-			DefaultName = Naming.GetCurrentName(summonGuid),
+			DefaultName = saved or Naming.GetCurrentName(summonGuid),
 			Template = rootTemplate,
 		}, ownerRaw)
 	end)
@@ -171,9 +201,22 @@ function Watcher.RegisterNet()
 	Channels.ListNames:SetRequestHandler(function(_data, _user)
 		local out = {}
 		for key, name in pairs(Store.All()) do
-			table.insert(out, { Key = key, Name = name })
+			-- The key is "<ownerUuid>|<rootTemplate>"; split it so the client can
+			-- group saved names by character and label each by its summon type.
+			local owner, template = key:match("^(.-)|(.+)$")
+			out[#out + 1] = {
+				Key = key,
+				Name = name,
+				Owner = owner or key,
+				-- Empty when the summoner is not loaded; the client shows the uuid.
+				OwnerName = owner and Naming.GetCurrentName(owner) or "",
+				TemplateName = templateLabel(template or key),
+			}
 		end
 		table.sort(out, function(a, b)
+			if a.OwnerName ~= b.OwnerName then
+				return a.OwnerName:lower() < b.OwnerName:lower()
+			end
 			return a.Name:lower() < b.Name:lower()
 		end)
 		return { Entries = out }
@@ -186,6 +229,45 @@ function Watcher.RegisterNet()
 		Store.Forget(data.Key)
 		askedThisSession[data.Key] = nil
 		Util.Log("Forgot saved name for key " .. data.Key)
+	end)
+
+	Channels.RenameName:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.Key) ~= "string" then
+			return
+		end
+		if not Store.Get(data.Key) then
+			return
+		end
+		local name = Util.Sanitise(data.Name)
+		if name == "" then
+			return
+		end
+
+		Store.Set(data.Key, name)
+
+		-- Naming.Apply registers the new handle; update any live summon on the spot.
+		for _, summon in ipairs(Naming.AllSummons()) do
+			local owner = Naming.OwnerOf(summon)
+			local template = Naming.TemplateOf(summon)
+			if owner and template and Util.MakeKey(owner, template) == data.Key then
+				Naming.Apply(summon, name)
+			end
+		end
+		Util.Log(("Renamed key %s to '%s'"):format(data.Key, name))
+	end)
+
+	Channels.GetSettings:SetRequestHandler(function(_data, _user)
+		return Store.Settings()
+	end)
+
+	Channels.SetSettings:SetHandler(function(data, _user)
+		if type(data) ~= "table" then
+			return
+		end
+		-- Store.SetSetting whitelists writable keys and rejects non-booleans.
+		for key, value in pairs(data) do
+			Store.SetSetting(key, value)
+		end
 	end)
 end
 

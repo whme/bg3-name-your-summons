@@ -57,7 +57,8 @@ NameYourSummons/                     <- pak this folder
           Naming.lua                 applying names + diagnostics
           SummonWatcher.lua          detection, prompting, net handlers
         Client/
-          PromptUI.lua               ImGui prompt + saved-name manager
+          PromptUI.lua               ImGui naming prompt (Settings button opens ConfigUI)
+          ConfigUI.lua               ImGui config: prompt settings + saved-name manager
 ```
 
 ## Reference docs
@@ -102,7 +103,7 @@ Diagnostic console commands (server state unless noted):
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
 | `!nys_clear` | wipe all saved names |
-| `!nys_ui` | open the saved-names manager (client state; type `client` first) |
+| `!nys_ui` | open the in-game config: prompt settings + saved-name manager (client state; type `client` first) |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to
