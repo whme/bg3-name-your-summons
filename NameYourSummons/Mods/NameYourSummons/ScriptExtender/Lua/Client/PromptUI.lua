@@ -14,7 +14,9 @@ local promptWindow, promptLabel, promptInput
 local queue = {} -- pending requests, FIFO
 local current = nil -- the request currently on screen
 
-local function submit(save)
+---@param save boolean   whether to persist the typed name
+---@param alwaysSkip boolean|nil  never prompt for this summon again
+local function submit(save, alwaysSkip)
 	if not current then
 		return
 	end
@@ -25,6 +27,7 @@ local function submit(save)
 		Key = current.Key,
 		SummonUuid = current.SummonUuid,
 		Name = name,
+		AlwaysSkip = alwaysSkip == true,
 	})
 
 	current = nil
@@ -66,6 +69,12 @@ local function buildPrompt()
 	skip.SameLine = true
 	skip.OnClick = function()
 		submit(false)
+	end
+
+	local alwaysSkip = promptWindow:AddButton("Never for this summon")
+	alwaysSkip.SameLine = true
+	alwaysSkip.OnClick = function()
+		submit(false, true)
 	end
 
 	local settings = promptWindow:AddButton("Settings")

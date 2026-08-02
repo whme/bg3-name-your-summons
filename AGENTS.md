@@ -29,7 +29,10 @@ the game.
   created in both states in `Shared/Channels.lua`. The deprecated NetMessage
   API is not used.
 - **Persistence**: names live in ModVars (`Ext.Vars.RegisterModVariable`),
-  written into the savegame. `PersistentVars` is deprecated and not used.
+  written into the savegame. `PersistentVars` is deprecated and not used. A
+  parallel `SkippedSummons` ModVar is the set of keys the player chose to always
+  skip; it is mutually exclusive with a saved name (naming clears the skip and
+  vice versa).
 - **Stable key**: a summon's UUID changes every conjure, so the key is
   `"<owner uuid>|<root template>"` (`Util.MakeKey`). Runtime loca entries do
   not survive a restart, so every saved name's handle is re-registered on
@@ -59,8 +62,8 @@ NameYourSummons/                     <- pak this folder
         Client/
           Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
-          PromptUI.lua               ImGui naming prompt (Settings button opens ConfigUI)
-          ConfigUI.lua               ImGui config: prompt settings + saved-name manager
+          PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
+          ConfigUI.lua               ImGui config: prompt settings + saved-name, always-skipped and session-skipped managers
 ```
 
 ## Reference docs
@@ -101,11 +104,11 @@ Diagnostic console commands (server state unless noted):
 
 | Command | What it does |
 |---|---|
-| `!nys_list` | list all saved names |
+| `!nys_list` | list all saved names, always-skipped and session-skipped summons |
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
-| `!nys_clear` | wipe all saved names |
-| `!nys_ui` | open the in-game config: prompt settings + saved-name manager (client state; type `client` first) |
+| `!nys_clear` | wipe all saved names and always-skip choices |
+| `!nys_ui` | open the in-game config: prompt settings + saved-name, always-skipped and session-skipped managers (client state; type `client` first) |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to

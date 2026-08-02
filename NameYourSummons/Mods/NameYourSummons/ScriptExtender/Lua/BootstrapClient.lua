@@ -20,6 +20,13 @@ Ext.Vars.RegisterModVariable(ModuleUUID, "Settings", {
 	Persistent = true,
 	SyncToClient = false,
 })
+Ext.Vars.RegisterModVariable(ModuleUUID, "SkippedSummons", {
+	Server = true,
+	Client = false,
+	WriteableOnServer = true,
+	Persistent = true,
+	SyncToClient = false,
+})
 
 UI.Register()
 ConfigUI.Register()

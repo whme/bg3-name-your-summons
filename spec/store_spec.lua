@@ -40,6 +40,44 @@ function TestStoreNames:testForget()
 	lu.assertNil(Store.Get("k"))
 end
 
+TestStoreSkipped = {}
+
+function TestStoreSkipped:setUp()
+	freshBacking()
+end
+
+function TestStoreSkipped:testEmptyBeforeAnythingSkipped()
+	lu.assertEquals(Store.AllSkipped(), {})
+	lu.assertFalse(Store.IsSkipped("k"))
+end
+
+function TestStoreSkipped:testSkipAndQuery()
+	Store.Skip("owner|tmpl")
+	lu.assertTrue(Store.IsSkipped("owner|tmpl"))
+	lu.assertEquals(backing["SkippedSummons"]["owner|tmpl"], true)
+end
+
+function TestStoreSkipped:testUnskip()
+	Store.Skip("k")
+	Store.Unskip("k")
+	lu.assertFalse(Store.IsSkipped("k"))
+end
+
+function TestStoreSkipped:testSkipClearsSavedName()
+	Store.Set("k", "Rex")
+	Store.Skip("k")
+	-- A name and an always-skip are mutually exclusive.
+	lu.assertNil(Store.Get("k"))
+	lu.assertTrue(Store.IsSkipped("k"))
+end
+
+function TestStoreSkipped:testNamingClearsSkip()
+	Store.Skip("k")
+	Store.Set("k", "Rex")
+	lu.assertFalse(Store.IsSkipped("k"))
+	lu.assertEquals(Store.Get("k"), "Rex")
+end
+
 TestStoreSettings = {}
 
 function TestStoreSettings:setUp()

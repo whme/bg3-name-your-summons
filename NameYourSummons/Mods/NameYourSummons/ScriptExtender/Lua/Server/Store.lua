@@ -2,6 +2,7 @@ local Store = {}
 
 local VAR_NAMES = "SummonNames"
 local VAR_SETTINGS = "Settings"
+local VAR_SKIPPED = "SkippedSummons"
 
 local DEFAULT_SETTINGS = {
 	PromptOnSummon = true, -- pop the naming window the first time a summon appears
@@ -27,6 +28,13 @@ function Store.Register()
 		SyncToClient = false,
 	})
 	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_SETTINGS, {
+		Server = true,
+		Client = false,
+		WriteableOnServer = true,
+		Persistent = true,
+		SyncToClient = false,
+	})
+	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_SKIPPED, {
 		Server = true,
 		Client = false,
 		WriteableOnServer = true,
@@ -62,6 +70,8 @@ function Store.Set(key, name)
 	t[key] = name
 	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
 	v[VAR_NAMES] = t
+	-- A name and an always-skip are mutually exclusive; naming clears the skip.
+	Store.Unskip(key)
 end
 
 ---@param key string
@@ -70,6 +80,44 @@ function Store.Forget(key)
 	local t = v[VAR_NAMES] or {}
 	t[key] = nil
 	v[VAR_NAMES] = t
+end
+
+---------------------------------------------------------------------------
+-- Always-skip
+--
+-- Keys the player has chosen never to be prompted about. Stored as a set
+-- (key -> true) alongside the names, and mutually exclusive with them: a
+-- saved name clears the skip, and skipping clears any saved name.
+---------------------------------------------------------------------------
+
+---@return table<string,boolean>
+function Store.AllSkipped()
+	return vars()[VAR_SKIPPED] or {}
+end
+
+---@param key string
+---@return boolean
+function Store.IsSkipped(key)
+	return Store.AllSkipped()[key] == true
+end
+
+---@param key string
+function Store.Skip(key)
+	local v = vars()
+	local t = v[VAR_SKIPPED] or {}
+	t[key] = true
+	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
+	v[VAR_SKIPPED] = t
+	-- A name and an always-skip are mutually exclusive; skipping clears the name.
+	Store.Forget(key)
+end
+
+---@param key string
+function Store.Unskip(key)
+	local v = vars()
+	local t = v[VAR_SKIPPED] or {}
+	t[key] = nil
+	v[VAR_SKIPPED] = t
 end
 
 ---------------------------------------------------------------------------

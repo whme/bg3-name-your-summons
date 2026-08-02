@@ -20,6 +20,18 @@ Channels.ForgetName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ForgetN
 -- Client -> Server: "change the text of this saved name"
 Channels.RenameName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameName")
 
+-- Client -> Server (request/reply): "give me the always-skipped summons"
+Channels.ListSkipped = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListSkipped")
+
+-- Client -> Server: "stop always-skipping this summon"
+Channels.Unskip = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_Unskip")
+
+-- Client -> Server (request/reply): "give me the summons skipped this session"
+Channels.ListSessionSkipped = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListSessionSkipped")
+
+-- Client -> Server: "prompt me again this session for this summon"
+Channels.UnskipSession = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_UnskipSession")
+
 -- Client -> Server (request/reply): "give me the current settings"
 Channels.GetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSettings")
 

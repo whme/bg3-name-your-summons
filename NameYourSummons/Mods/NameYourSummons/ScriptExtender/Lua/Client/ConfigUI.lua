@@ -8,7 +8,7 @@ local ConfigUI = {}
 -- Key under which this window's geometry is persisted (see WindowState.lua).
 local WINDOW_KEY = "config"
 
-local configWindow, namesGroup, saveButton
+local configWindow, namesGroup, skippedGroup, sessionGroup, saveButton
 local promptOnSummon, promptForNamed
 
 -- Edits stay local until Save; reopening reloads from the server, which is
@@ -18,6 +18,8 @@ local baseSettings = { PromptOnSummon = true, PromptForNamed = false }
 local originalNames = {}
 local pendingRenames = {}
 local pendingForgets = {}
+local pendingUnskips = {}
+local pendingSessionUnskips = {}
 
 -- Geometry is staged like every other edit: a live resize/move sets this dirty
 -- (which enables Save) but nothing hits disk until Save. Closing discards it.
@@ -25,7 +27,7 @@ local geometryDirty = false
 local geometryBaseline -- { pos = {x,y}, size = {w,h} } snapshotted when the window opens
 local geometryPolling = false
 
-local refreshNames, saveGeometry, startGeometryPoll
+local refreshNames, refreshSkipped, refreshSessionSkipped, saveGeometry, startGeometryPoll
 
 ---------------------------------------------------------------------------
 -- Staged-change tracking
@@ -40,6 +42,8 @@ local function updateSaveButton()
 		and promptForNamed.Checked == baseSettings.PromptForNamed
 		and next(pendingRenames) == nil
 		and next(pendingForgets) == nil
+		and next(pendingUnskips) == nil
+		and next(pendingSessionUnskips) == nil
 		and not geometryDirty
 end
 
@@ -90,12 +94,26 @@ local function onSave()
 	end
 	pendingRenames = {}
 
+	for key in pairs(pendingUnskips) do
+		Channels.Unskip:SendToServer({ Key = key })
+	end
+	pendingUnskips = {}
+
+	for key in pairs(pendingSessionUnskips) do
+		Channels.UnskipSession:SendToServer({ Key = key })
+	end
+	pendingSessionUnskips = {}
+
 	saveGeometry()
 	geometryDirty = false
 	geometryBaseline = nil
 	updateSaveButton()
 	-- Pull the canonical state back (server-side sanitising, owner names).
-	Ext.Timer.WaitForRealtime(120, refreshNames)
+	Ext.Timer.WaitForRealtime(120, function()
+		refreshNames()
+		refreshSkipped()
+		refreshSessionSkipped()
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -110,6 +128,23 @@ local function ownerLabel(entry)
 		return entry.OwnerName
 	end
 	return "Unknown summoner (" .. entry.Owner:sub(1, 8) .. ")"
+end
+
+--- Bucket entries by summoner, preserving the server's sort order.
+---@param entries table[]
+---@return string[] order  owner uuids in first-seen order
+---@return table<string, {label: string, rows: table[]}> groups
+local function groupBySummoner(entries)
+	local order, groups = {}, {}
+	for _, entry in ipairs(entries) do
+		local owner = entry.Owner or entry.Key
+		if not groups[owner] then
+			groups[owner] = { label = ownerLabel(entry), rows = {} }
+			order[#order + 1] = owner
+		end
+		table.insert(groups[owner].rows, entry)
+	end
+	return order, groups
 end
 
 function refreshNames()
@@ -132,17 +167,7 @@ function refreshNames()
 			return
 		end
 
-		-- Group by summoner, preserving the server's (owner, name) sort order.
-		local order, groups = {}, {}
-		for _, entry in ipairs(entries) do
-			local owner = entry.Owner or entry.Key
-			if not groups[owner] then
-				groups[owner] = { label = ownerLabel(entry), rows = {} }
-				order[#order + 1] = owner
-			end
-			table.insert(groups[owner].rows, entry)
-		end
-
+		local order, groups = groupBySummoner(entries)
 		for _, owner in ipairs(order) do
 			local group = groups[owner]
 			local header = namesGroup:AddCollapsingHeader(group.label)
@@ -188,6 +213,95 @@ function refreshNames()
 				end
 			end
 		end
+	end)
+end
+
+---------------------------------------------------------------------------
+-- Skip managers (always-skipped and skipped-this-session share a layout)
+---------------------------------------------------------------------------
+
+--- Render a per-summoner list of skipped summons into `group`. Each row's button
+--- stages an undo into `pendingSet`; nothing is sent until Save flushes it.
+---@param group any
+---@param entries table[]
+---@param pendingSet table<string, boolean>
+---@param emptyText string
+---@param idPrefix string
+local function buildSkipList(group, entries, pendingSet, emptyText, idPrefix)
+	if #entries == 0 then
+		group:AddText(emptyText)
+		return
+	end
+
+	local order, groups = groupBySummoner(entries)
+	for _, owner in ipairs(order) do
+		local ownerGroup = groups[owner]
+		local header = group:AddCollapsingHeader(ownerGroup.label)
+		header.DefaultOpen = true
+
+		local tbl = header:AddTable(idPrefix .. "_" .. owner, 2)
+		for _, entry in ipairs(ownerGroup.rows) do
+			local row = tbl:AddRow()
+
+			local templateText = row:AddCell():AddText(entry.TemplateName or "Summon")
+			templateText.Disabled = true
+
+			local undo = row:AddCell():AddButton("Prompt again")
+			undo.IDContext = idPrefix .. "_" .. entry.Key
+			-- Staged, not immediate; toggle the label until Save flushes it.
+			undo.OnClick = function()
+				if pendingSet[entry.Key] then
+					pendingSet[entry.Key] = nil
+					undo.Label = "Prompt again"
+				else
+					pendingSet[entry.Key] = true
+					undo.Label = "Undo"
+				end
+				updateSaveButton()
+			end
+		end
+	end
+end
+
+function refreshSkipped()
+	if not skippedGroup then
+		return
+	end
+	for _, child in ipairs(skippedGroup.Children or {}) do
+		child:Destroy()
+	end
+	pendingUnskips = {}
+	updateSaveButton()
+
+	Channels.ListSkipped:RequestToServer({}, function(response)
+		buildSkipList(
+			skippedGroup,
+			(response and response.Entries) or {},
+			pendingUnskips,
+			"No always-skipped summons yet.",
+			"unskip"
+		)
+	end)
+end
+
+function refreshSessionSkipped()
+	if not sessionGroup then
+		return
+	end
+	for _, child in ipairs(sessionGroup.Children or {}) do
+		child:Destroy()
+	end
+	pendingSessionUnskips = {}
+	updateSaveButton()
+
+	Channels.ListSessionSkipped:RequestToServer({}, function(response)
+		buildSkipList(
+			sessionGroup,
+			(response and response.Entries) or {},
+			pendingSessionUnskips,
+			"Nothing skipped this session.",
+			"unsession"
+		)
 	end)
 end
 
@@ -302,6 +416,14 @@ end
 -- Window
 ---------------------------------------------------------------------------
 
+--- Reload every list and the settings from the server (the Refresh button).
+local function refreshAll()
+	loadSettings()
+	refreshNames()
+	refreshSkipped()
+	refreshSessionSkipped()
+end
+
 function ConfigUI.Open()
 	if not configWindow then
 		configWindow = Ext.IMGUI.NewWindow("Name Your Summons")
@@ -313,18 +435,34 @@ function ConfigUI.Open()
 		configWindow.OnClose = discardGeometry
 		applySavedGeometry()
 
-		configWindow:AddText("Prompt")
+		-- Title row: Refresh sits top-right (empty stretch column pushes it over).
+		local topBar = configWindow:AddTable("TopBar", 2)
+		topBar:AddColumn("", "WidthStretch")
+		topBar:AddColumn("", "WidthFixed")
+		local topRow = topBar:AddRow()
+		topRow:AddCell()
+		local refresh = topRow:AddCell():AddButton("Refresh")
+		refresh.OnClick = refreshAll
+
+		configWindow:AddSeparatorText("Prompt")
 		promptOnSummon = configWindow:AddCheckbox("Ask me to name new summons", true)
 		promptOnSummon.OnChange = onSettingChange
 		promptForNamed = configWindow:AddCheckbox("Also re-ask for summons I have already named", false)
 		promptForNamed.OnChange = onSettingChange
 
-		configWindow:AddSeparator()
-		configWindow:AddText("Saved names")
-		local refresh = configWindow:AddButton("Refresh")
-		refresh.OnClick = refreshNames
-		configWindow:AddSpacing()
+		configWindow:AddSeparatorText("Saved names")
 		namesGroup = configWindow:AddGroup("SavedNamesList")
+
+		configWindow:AddSeparatorText("Always skipped")
+		local skipHint =
+			configWindow:AddText("Summons you chose never to be prompted about. Use 'Prompt again' to undo.")
+		skipHint.Disabled = true
+		skippedGroup = configWindow:AddGroup("SkippedList")
+
+		configWindow:AddSeparatorText("Skipped this session")
+		local sessionHint = configWindow:AddText("Summons you skipped since the game loaded; forgotten on reload.")
+		sessionHint.Disabled = true
+		sessionGroup = configWindow:AddGroup("SessionSkippedList")
 
 		configWindow:AddSeparator()
 		-- Save centered (middle fixed column); reset sits in the left column.
@@ -344,6 +482,8 @@ function ConfigUI.Open()
 	configWindow.Open = true
 	loadSettings()
 	refreshNames()
+	refreshSkipped()
+	refreshSessionSkipped()
 	startGeometryPoll()
 end
 
