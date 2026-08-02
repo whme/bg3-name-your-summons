@@ -61,6 +61,27 @@ function TestMakeKey:testStableRegardlessOfTemplatePrefix()
 	lu.assertEquals(Util.MakeKey(owner, "S_Wolf_" .. tmpl), Util.MakeKey(owner, tmpl))
 end
 
+TestIsStorySummon = {}
+
+local US_TEMPLATE = "27b9089b-9aef-44e9-aaf7-100e3e320823"
+
+function TestIsStorySummon:testTrueForKnownStoryTemplate()
+	lu.assertTrue(Util.IsStorySummon(US_TEMPLATE))
+end
+
+function TestIsStorySummon:testTrueRegardlessOfGuidstringPrefix()
+	lu.assertTrue(Util.IsStorySummon("Intellect_Devourer_" .. string.upper(US_TEMPLATE)))
+end
+
+function TestIsStorySummon:testFalseForOrdinarySummon()
+	lu.assertFalse(Util.IsStorySummon("S_Wolf_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))
+end
+
+function TestIsStorySummon:testFalseForNonStrings()
+	lu.assertFalse(Util.IsStorySummon(nil))
+	lu.assertFalse(Util.IsStorySummon(42))
+end
+
 TestHash32 = {}
 
 -- Canonical FNV-1a 32-bit test vectors.

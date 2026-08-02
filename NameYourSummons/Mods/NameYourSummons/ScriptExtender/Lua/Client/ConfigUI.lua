@@ -9,12 +9,12 @@ local ConfigUI = {}
 local WINDOW_KEY = "config"
 
 local configWindow, namesGroup, skippedGroup, sessionGroup, saveButton
-local promptOnSummon, promptForNamed
+local promptOnSummon, promptForNamed, allowStorySummons
 
 -- Edits stay local until Save; reopening reloads from the server, which is
 -- what discards unsaved edits. baseSettings is the checkbox baseline;
 -- originalNames the per-row name baseline that keystrokes diff against.
-local baseSettings = { PromptOnSummon = true, PromptForNamed = false }
+local baseSettings = { PromptOnSummon = true, PromptForNamed = false, AllowStorySummons = false }
 local originalNames = {}
 local pendingRenames = {}
 local pendingForgets = {}
@@ -40,6 +40,7 @@ local function updateSaveButton()
 	end
 	saveButton.Disabled = promptOnSummon.Checked == baseSettings.PromptOnSummon
 		and promptForNamed.Checked == baseSettings.PromptForNamed
+		and allowStorySummons.Checked == baseSettings.AllowStorySummons
 		and next(pendingRenames) == nil
 		and next(pendingForgets) == nil
 		and next(pendingUnskips) == nil
@@ -63,10 +64,12 @@ local function loadSettings()
 		local s = response or {}
 		local onSummon = s.PromptOnSummon ~= false
 		local forNamed = s.PromptForNamed == true
-		baseSettings = { PromptOnSummon = onSummon, PromptForNamed = forNamed }
+		local allowStory = s.AllowStorySummons == true
+		baseSettings = { PromptOnSummon = onSummon, PromptForNamed = forNamed, AllowStorySummons = allowStory }
 		promptOnSummon.Checked = onSummon
 		promptForNamed.Checked = forNamed
 		promptForNamed.Disabled = not onSummon
+		allowStorySummons.Checked = allowStory
 		updateSaveButton()
 	end)
 end
@@ -80,6 +83,7 @@ local function onSave()
 	local settings = {
 		PromptOnSummon = promptOnSummon.Checked,
 		PromptForNamed = promptForNamed.Checked,
+		AllowStorySummons = allowStorySummons.Checked,
 	}
 	Channels.SetSettings:SendToServer(settings)
 	baseSettings = settings
@@ -449,6 +453,8 @@ function ConfigUI.Open()
 		promptOnSummon.OnChange = onSettingChange
 		promptForNamed = configWindow:AddCheckbox("Also re-ask for summons I have already named", false)
 		promptForNamed.OnChange = onSettingChange
+		allowStorySummons = configWindow:AddCheckbox("Allow renaming story-bound summons (e.g. 'Us')", false)
+		allowStorySummons.OnChange = onSettingChange
 
 		configWindow:AddSeparatorText("Saved names")
 		namesGroup = configWindow:AddGroup("SavedNamesList")

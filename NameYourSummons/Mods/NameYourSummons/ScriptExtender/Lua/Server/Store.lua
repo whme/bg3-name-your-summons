@@ -9,12 +9,14 @@ local DEFAULT_SETTINGS = {
 	PromptForNamed = false, -- also re-prompt for summons that already have a saved name
 	ApplyToExisting = true, -- re-apply saved names to summons already alive on load
 	PauseOnPrompt = true, -- freeze the world (solo turn-based mode) while the prompt is up
+	AllowStorySummons = false, -- prompt to rename story-bound summons (e.g. "Us"); off = leave them alone
 }
 
 --- The settings a client is allowed to change from the in-game config.
 local WRITABLE_SETTINGS = {
 	PromptOnSummon = true,
 	PromptForNamed = true,
+	AllowStorySummons = true,
 }
 
 --- Must be called from BootstrapServer.lua (before a savegame is loaded)

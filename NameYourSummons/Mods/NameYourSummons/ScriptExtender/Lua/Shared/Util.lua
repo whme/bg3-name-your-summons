@@ -43,6 +43,24 @@ function Util.MakeKey(ownerUuid, rootTemplate)
 	return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
 end
 
+-- Named story creatures the game classifies as summons but that the player
+-- should not be prompted to rename (e.g. the intellect devourer "Us"). Keyed by
+-- root-template uuid; verify each in game with !nys_diag.
+local STORY_SUMMON_TEMPLATES = {
+	["27b9089b-9aef-44e9-aaf7-100e3e320823"] = true, -- Us
+	["b5deaa14-03b5-41c6-8372-7a9d758b4dfb"] = true, -- Scratch (familiar)
+	["000c1be8-615a-4324-b59d-1f0f5637df36"] = true, -- Shovel
+	["ffb05cca-cf38-4586-981f-7dca89092ff5"] = true, -- Owlbear Cub (combat)
+	["c66b2865-6613-4372-b97a-e330c1d75d09"] = true, -- Owlbear Cub (primary)
+}
+
+--- Whether a root template is one of the story-bound summons above.
+---@param rootTemplate string|nil
+---@return boolean
+function Util.IsStorySummon(rootTemplate)
+	return STORY_SUMMON_TEMPLATES[Util.ToUuid(rootTemplate)] == true
+end
+
 --- FNV-1a, 32 bit.
 ---@param s string
 ---@return integer

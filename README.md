@@ -63,6 +63,9 @@ reachable from the console with `!nys_ui`). There you can:
   - **Also re-ask for summons I have already named** - when on, the prompt
     reappears for a summon that already has a saved name (pre-filled, so you can
     keep or change it); when off, a saved name is reapplied silently.
+  - **Allow renaming story-bound summons (e.g. 'Us')** - off by default, so named
+    story creatures like the intellect devourer "Us" are never offered the rename
+    prompt; turn it on to name them like any other summon.
 
 Settings and names live in the host's save.
 

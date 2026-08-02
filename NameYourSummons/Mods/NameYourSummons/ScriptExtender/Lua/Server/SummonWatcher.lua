@@ -231,6 +231,11 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 		return
 	end
 
+	-- Story summons (e.g. "Us") are not prompted unless opted in; a saved name still reapplies above.
+	if Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons then
+		return
+	end
+
 	askedThisSession[key] = true
 	pending[key] = Util.ToUuid(summonGuid)
 	pauseFor(ownerUuid)

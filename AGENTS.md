@@ -63,7 +63,7 @@ NameYourSummons/                     <- pak this folder
           Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
-          ConfigUI.lua               ImGui config: prompt settings + saved-name, always-skipped and session-skipped managers
+          ConfigUI.lua               ImGui config: prompt settings (incl. the story-summon rename opt-in) + saved-name, always-skipped and session-skipped managers
 ```
 
 ## Reference docs
