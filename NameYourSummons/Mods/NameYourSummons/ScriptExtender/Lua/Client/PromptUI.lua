@@ -104,6 +104,15 @@ function UI.ShowNext()
 
 	promptLabel.Label = ("You summoned: %s"):format(default)
 	promptInput.Text = default
+
+	-- "Appearing" recenters on each open yet still lets the player drag it.
+	local ok, size = pcall(Ext.IMGUI.GetViewportSize)
+	if ok and size then
+		pcall(function()
+			promptWindow:SetPos({ size[1] / 2, size[2] / 2 }, "Appearing", { 0.5, 0.5 })
+		end)
+	end
+
 	promptWindow.Open = true
 end
 

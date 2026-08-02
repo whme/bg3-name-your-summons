@@ -51,6 +51,7 @@ function TestStoreSettings:testDefaultsWhenUnset()
 	lu.assertEquals(s.PromptOnSummon, true)
 	lu.assertEquals(s.PromptForNamed, false)
 	lu.assertEquals(s.ApplyToExisting, true)
+	lu.assertEquals(s.PauseOnPrompt, true)
 end
 
 function TestStoreSettings:testHonoursStoredOverride()

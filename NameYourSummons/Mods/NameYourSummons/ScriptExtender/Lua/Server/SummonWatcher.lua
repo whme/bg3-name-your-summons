@@ -12,6 +12,9 @@ local askedThisSession = {}
 -- Summons we are currently waiting on a name for: key -> summon uuid
 local pending = {}
 
+-- True while a naming prompt holds the world in forced turn-based mode.
+local paused = false
+
 ---------------------------------------------------------------------------
 -- Helpers
 ---------------------------------------------------------------------------
@@ -52,6 +55,78 @@ local function templateLabel(templateId)
 		return template.Name
 	end
 	return "Summon"
+end
+
+--- The current party's player characters (host plus companions).
+---@return string[]
+local function partyMembers()
+	local out = {}
+	local ok, rows = pcall(function()
+		return Osi.DB_Players:Get(nil)
+	end)
+	if not ok or type(rows) ~= "table" then
+		return out
+	end
+	for _, row in pairs(rows) do
+		local guid = row[1]
+		if type(guid) == "string" then
+			out[#out + 1] = guid
+		end
+	end
+	return out
+end
+
+--- Freeze the world while a naming prompt is up, via solo turn-based mode (what
+--- community pause mods use out of combat). Skip in real combat, and skip if the
+--- player already forced turn-based mode - that pause is theirs to lift, not ours.
+---@param ownerUuid string
+local function pauseFor(ownerUuid)
+	if paused then
+		return
+	end
+	if not Store.Settings().PauseOnPrompt then
+		return
+	end
+	local okCombat, inCombat = pcall(Osi.IsInCombat, ownerUuid)
+	if okCombat and inCombat == 1 then
+		return
+	end
+	local okFtb, inFtb = pcall(Osi.IsInForceTurnBasedMode, ownerUuid)
+	if okFtb and inFtb == 1 then
+		return
+	end
+
+	for _, guid in ipairs(partyMembers()) do
+		local okDead, dead = pcall(Osi.IsDead, guid)
+		if not (okDead and dead == 1) and pcall(Osi.ForceTurnBasedMode, guid, 1) then
+			paused = true
+		end
+	end
+end
+
+--- Lift the pause once nothing is waiting on a name. A summon the party controls
+--- is also a participant in the shared turn-based session and holds it open, so
+--- release EVERY FTB participant, exactly like the "Leave Turn-Based Mode" button.
+local function unpauseIfIdle()
+	if not paused then
+		return
+	end
+	if next(pending) ~= nil then
+		return
+	end
+
+	local ok, entities = pcall(Ext.Entity.GetAllEntitiesWithComponent, "FTBParticipant")
+	if ok and type(entities) == "table" then
+		for _, entity in ipairs(entities) do
+			local okUuid, uuid = pcall(function()
+				return entity.Uuid and entity.Uuid.EntityUuid
+			end)
+			if okUuid and type(uuid) == "string" then
+				pcall(Osi.ForceTurnBasedMode, uuid, 0)
+			end
+		end
+	end
+	paused = false
 end
 
 ---------------------------------------------------------------------------
@@ -109,6 +184,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	askedThisSession[key] = true
 	pending[key] = Util.ToUuid(summonGuid)
+	pauseFor(ownerUuid)
 
 	-- Give the summon a moment to finish spawning so the default name we show
 	-- in the prompt is the real one.
@@ -185,6 +261,7 @@ function Watcher.RegisterNet()
 		local name = Util.Sanitise(data.Name)
 		if name == "" then
 			pending[data.Key] = nil
+			unpauseIfIdle()
 			return
 		end
 
@@ -195,6 +272,7 @@ function Watcher.RegisterNet()
 			Naming.Apply(target, name)
 		end
 		pending[data.Key] = nil
+		unpauseIfIdle()
 		Util.Log(("Saved name '%s' for key %s"):format(name, data.Key))
 	end)
 

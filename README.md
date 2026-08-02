@@ -35,10 +35,15 @@ Pass `./make.ps1 build -Clean` to wipe `build/` first. (The **BG3 Modder's Multi
 
 ## Using it
 
-Summon something. A window appears with a text box pre-filled with the
-creature's current name. Type a name and press Enter (or *Name it*). *Skip*
-declines, and you won't be asked again for that creature this session. The name
-comes back automatically every time you re-summon that creature.
+Summon something. The world freezes and a window appears in the center of the
+screen with a text box pre-filled with the creature's current name, so you can
+name it in peace. Type a name and press Enter (or *Name it*). *Skip* declines,
+and you won't be asked again for that creature this session. The name comes back
+automatically every time you re-summon that creature.
+
+Out of combat the freeze is solo turn-based mode (the same pause the tactical
+camera uses); in combat your turn is already paused, so nothing extra happens.
+Play resumes as soon as you name or skip.
 
 Each summoner keeps its own names, and different familiar shapes (cat, raven,
 spider) are remembered separately.

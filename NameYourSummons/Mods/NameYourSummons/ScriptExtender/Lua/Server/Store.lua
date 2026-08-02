@@ -7,6 +7,7 @@ local DEFAULT_SETTINGS = {
 	PromptOnSummon = true, -- pop the naming window the first time a summon appears
 	PromptForNamed = false, -- also re-prompt for summons that already have a saved name
 	ApplyToExisting = true, -- re-apply saved names to summons already alive on load
+	PauseOnPrompt = true, -- freeze the world (solo turn-based mode) while the prompt is up
 }
 
 --- The settings a client is allowed to change from the in-game config.
