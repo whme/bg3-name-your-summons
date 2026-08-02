@@ -114,6 +114,7 @@ function ConfigUI.Open()
 	if not configWindow then
 		configWindow = Ext.IMGUI.NewWindow("Name Your Summons")
 		configWindow.Closeable = true
+		configWindow.NoSavedSettings = true
 		configWindow.Open = false
 		configWindow:SetSize({ 480, 400 }, "FirstUseEver")
 
