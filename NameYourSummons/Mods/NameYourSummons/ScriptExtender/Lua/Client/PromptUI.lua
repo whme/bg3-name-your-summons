@@ -2,6 +2,7 @@ local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Writer = Ext.Require("Shared/NameWriter.lua")
 local ConfigUI = Ext.Require("Client/ConfigUI.lua")
+local Layout = Ext.Require("Client/Layout.lua")
 
 local UI = {}
 
@@ -49,7 +50,7 @@ local function buildPrompt()
 	promptInput.Hint = "Enter a name..."
 	promptInput.EnterReturnsTrue = true
 	promptInput.AutoSelectAll = true
-	promptInput.ItemWidth = 260
+	promptInput.ItemWidth = Layout.ScaleW(260)
 	promptInput.OnChange = function()
 		submit(true)
 	end
@@ -106,12 +107,10 @@ function UI.ShowNext()
 	promptInput.Text = default
 
 	-- "Appearing" recenters on each open yet still lets the player drag it.
-	local ok, size = pcall(Ext.IMGUI.GetViewportSize)
-	if ok and size then
-		pcall(function()
-			promptWindow:SetPos({ size[1] / 2, size[2] / 2 }, "Appearing", { 0.5, 0.5 })
-		end)
-	end
+	local vw, vh = Layout.Viewport()
+	pcall(function()
+		promptWindow:SetPos({ vw / 2, vh / 2 }, "Appearing", { 0.5, 0.5 })
+	end)
 
 	promptWindow.Open = true
 end

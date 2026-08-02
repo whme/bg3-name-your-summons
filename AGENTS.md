@@ -57,6 +57,8 @@ NameYourSummons/                     <- pak this folder
           Naming.lua                 applying names + diagnostics
           SummonWatcher.lua          detection, prompting, net handlers
         Client/
+          Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
+          WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Settings button opens ConfigUI)
           ConfigUI.lua               ImGui config: prompt settings + saved-name manager
 ```

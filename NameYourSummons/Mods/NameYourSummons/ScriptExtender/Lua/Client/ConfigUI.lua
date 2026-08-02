@@ -1,7 +1,12 @@
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
+local Layout = Ext.Require("Client/Layout.lua")
+local WindowState = Ext.Require("Client/WindowState.lua")
 
 local ConfigUI = {}
+
+-- Key under which this window's geometry is persisted (see WindowState.lua).
+local WINDOW_KEY = "config"
 
 local configWindow, namesGroup, saveButton
 local promptOnSummon, promptForNamed
@@ -14,7 +19,13 @@ local originalNames = {}
 local pendingRenames = {}
 local pendingForgets = {}
 
-local refreshNames
+-- Geometry is staged like every other edit: a live resize/move sets this dirty
+-- (which enables Save) but nothing hits disk until Save. Closing discards it.
+local geometryDirty = false
+local geometryBaseline -- { pos = {x,y}, size = {w,h} } snapshotted when the window opens
+local geometryPolling = false
+
+local refreshNames, saveGeometry, startGeometryPoll
 
 ---------------------------------------------------------------------------
 -- Staged-change tracking
@@ -29,6 +40,7 @@ local function updateSaveButton()
 		and promptForNamed.Checked == baseSettings.PromptForNamed
 		and next(pendingRenames) == nil
 		and next(pendingForgets) == nil
+		and not geometryDirty
 end
 
 ---------------------------------------------------------------------------
@@ -78,6 +90,9 @@ local function onSave()
 	end
 	pendingRenames = {}
 
+	saveGeometry()
+	geometryDirty = false
+	geometryBaseline = nil
 	updateSaveButton()
 	-- Pull the canonical state back (server-side sanitising, owner names).
 	Ext.Timer.WaitForRealtime(120, refreshNames)
@@ -140,7 +155,7 @@ function refreshNames()
 
 				local input = row:AddCell():AddInputText("", entry.Name)
 				input.IDContext = "rename_" .. entry.Key
-				input.ItemWidth = 200
+				input.ItemWidth = Layout.ScaleW(200)
 				-- Stage on every keystroke; nothing is sent until Save.
 				input.OnChange = function()
 					local name = Util.Sanitise(input.Text or "")
@@ -177,6 +192,113 @@ function refreshNames()
 end
 
 ---------------------------------------------------------------------------
+-- Window geometry (persisted ourselves; see WindowState.lua)
+---------------------------------------------------------------------------
+
+--- Seed a freshly created window with its saved position and size, clamped to
+--- the current viewport so geometry saved on a bigger monitor still fits.
+local function applySavedGeometry()
+	local saved = WindowState.Get(WINDOW_KEY)
+	if not (saved and saved.size) then
+		configWindow:SetSize(Layout.Size(1200, 900), "FirstUseEver")
+		return
+	end
+
+	local vw, vh = Layout.Viewport()
+	local w = math.min(saved.size[1], vw * 0.98)
+	local h = math.min(saved.size[2], vh * 0.98)
+	configWindow:SetSize({ w, h }, "FirstUseEver")
+
+	if saved.pos then
+		-- Keep the title bar reachable if the window was saved partly off-screen.
+		local x = math.max(0, math.min(saved.pos[1], vw - w))
+		local y = math.max(0, math.min(saved.pos[2], vh - h))
+		configWindow:SetPos({ x, y }, "FirstUseEver")
+	end
+end
+
+--- The window's live geometry (its last drawn frame), or nil if not yet drawn.
+---@return table|nil
+local function currentGeometry()
+	if not configWindow then
+		return nil
+	end
+	local pos, size = configWindow.LastPosition, configWindow.LastSize
+	if pos and size and size[1] > 0 and size[2] > 0 then
+		return { pos = { pos[1], pos[2] }, size = { size[1], size[2] } }
+	end
+	return nil
+end
+
+--- Persist the window's current geometry. Only called from Save.
+function saveGeometry()
+	local g = currentGeometry()
+	if g then
+		WindowState.Set(WINDOW_KEY, g.pos, g.size)
+	end
+end
+
+--- Forget the persisted geometry and snap the live window back to the centered
+--- default. This one is immediate (like Refresh), not staged behind Save.
+local function resetGeometry()
+	WindowState.Clear(WINDOW_KEY)
+	geometryDirty = false
+	geometryBaseline = nil
+	if configWindow then
+		local vw, vh = Layout.Viewport()
+		configWindow:SetSize(Layout.Size(1200, 900), "Always")
+		configWindow:SetPos({ vw / 2, vh / 2 }, "Always", { 0.5, 0.5 })
+	end
+	updateSaveButton()
+end
+
+--- Discard an unsaved resize/move when the window closes.
+local function discardGeometry()
+	geometryDirty = false
+	geometryBaseline = nil
+end
+
+---@param a table
+---@param b table
+---@return boolean
+local function geometryDiffers(a, b)
+	return math.abs(a.pos[1] - b.pos[1]) > 1
+		or math.abs(a.pos[2] - b.pos[2]) > 1
+		or math.abs(a.size[1] - b.size[1]) > 1
+		or math.abs(a.size[2] - b.size[2]) > 1
+end
+
+--- While the window is open, watch for the player dragging or resizing it and
+--- flag Save. ImGui has no resize event, so we sample the geometry each tick and
+--- diff it against the snapshot taken when the window opened.
+local function pollGeometry()
+	if not (configWindow and configWindow.Open) then
+		geometryPolling = false
+		return
+	end
+	local g = currentGeometry()
+	if g then
+		if not geometryBaseline then
+			geometryBaseline = g
+		elseif not geometryDirty and geometryDiffers(g, geometryBaseline) then
+			geometryDirty = true
+			updateSaveButton()
+		end
+	end
+	Ext.Timer.WaitForRealtime(300, pollGeometry)
+end
+
+function startGeometryPoll()
+	geometryDirty = false
+	geometryBaseline = nil
+	if geometryPolling then
+		return
+	end
+	geometryPolling = true
+	Ext.Timer.WaitForRealtime(300, pollGeometry)
+end
+
+---------------------------------------------------------------------------
 -- Window
 ---------------------------------------------------------------------------
 
@@ -184,9 +306,12 @@ function ConfigUI.Open()
 	if not configWindow then
 		configWindow = Ext.IMGUI.NewWindow("Name Your Summons")
 		configWindow.Closeable = true
+		-- Never let BG3SE persist open-state (it would reopen on its own next
+		-- launch); we persist only geometry ourselves. See WindowState.lua.
 		configWindow.NoSavedSettings = true
 		configWindow.Open = false
-		configWindow:SetSize({ 480, 400 }, "FirstUseEver")
+		configWindow.OnClose = discardGeometry
+		applySavedGeometry()
 
 		configWindow:AddText("Prompt")
 		promptOnSummon = configWindow:AddCheckbox("Ask me to name new summons", true)
@@ -202,13 +327,14 @@ function ConfigUI.Open()
 		namesGroup = configWindow:AddGroup("SavedNamesList")
 
 		configWindow:AddSeparator()
-		-- Center the button: the outer columns stretch, the middle fits it.
+		-- Save centered (middle fixed column); reset sits in the left column.
 		local saveBar = configWindow:AddTable("SaveBar", 3)
 		saveBar:AddColumn("", "WidthStretch")
 		saveBar:AddColumn("", "WidthFixed")
 		saveBar:AddColumn("", "WidthStretch")
 		local saveRow = saveBar:AddRow()
-		saveRow:AddCell()
+		local reset = saveRow:AddCell():AddButton("Reset window size & position")
+		reset.OnClick = resetGeometry
 		saveButton = saveRow:AddCell():AddButton("Save")
 		saveRow:AddCell()
 		saveButton.Disabled = true
@@ -218,6 +344,7 @@ function ConfigUI.Open()
 	configWindow.Open = true
 	loadSettings()
 	refreshNames()
+	startGeometryPoll()
 end
 
 function ConfigUI.Register()
