@@ -4,7 +4,13 @@ Names your summoned creatures, remembers the names, and reapplies them
 automatically the next time you summon the same creature. Optionally pops a
 text-entry prompt the moment a summon appears.
 
-Requires [Norbyte's Script Extender](https://github.com/Norbyte/bg3se) (BG3SE).
+## Requirements
+
+### Off-site requirements
+
+| Mod name | Notes |
+|---|---|
+| [Baldur's Gate 3 Script Extender](https://github.com/Norbyte/bg3se) (BG3SE) | **Required.** Built against Script Extender API v30 - install a build that supports v30 or newer. |
 
 ## Installing
 
