@@ -32,10 +32,26 @@ binaries fetched on first use into `.tools/` (gitignored).
 ./make.ps1 typecheck     # lua-language-server
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+./make.ps1 build         # pack the mod into build/ (.pak + .zip)
 ```
 
 Run `./make.ps1 check` before you push; CI runs the exact same commands via
 `pwsh` on Linux, so a green local `check` means a green CI.
+
+## Building the mod
+
+`./make.ps1 build` packs the mod into `build/`. On first run it downloads a
+pinned [LSLib](https://github.com/Norbyte/lslib) release into `.tools/` (needs
+the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)),
+then produces:
+
+- `build/NameYourSummons-<version>.pak` - the installable mod; drop it in
+  `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.
+- `build/NameYourSummons-<version>.zip` - the same `.pak` zipped for upload.
+
+Pass `-Clean` (`./make.ps1 build -Clean`) to wipe `build/` first. (The **BG3
+Modder's Multitool** *Create Package* still works too - it wraps the same LSLib
+packer.)
 
 ## Quality gates
 
@@ -82,8 +98,29 @@ You **cannot run the game** in CI, and neither can a reviewer quickly. So:
   net, ImGui, and timing code into the thin glue modules (`SummonWatcher`,
   `Naming`, `PromptUI`, `Channels`).
 - **In-game behaviour** is verified with the Script Extender console commands
-  (`!nys_diag`, `!nys_rename`, `!nys_list`, ...). If a change needs in-game
-  confirmation, say so in your PR and name the command a reviewer should run.
+  (see below). If a change needs in-game confirmation, say so in your PR and
+  name the command a reviewer should run.
+
+## Console commands
+
+These commands run in the Script Extender console - a separate window that opens
+alongside the game once you enable it in
+`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Script Extender\ScriptExtenderSettings.json`:
+
+```json
+{ "CreateConsole": true, "DeveloperMode": true }
+```
+
+| Command | Context | What it does |
+|---|---|---|
+| `!nys_list` | server | list all saved names |
+| `!nys_diag` | server | dump what the game thinks your summons are named |
+| `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
+| `!nys_clear` | server | wipe all saved names |
+| `!nys_ui` | **client** (type `client` first) | open the in-game config (settings + saved-name manager) |
+
+`!nys_diag` is the primary debugging tool: when a name will not stick, paste its
+output when reporting the issue.
 
 ## Coding conventions
 
