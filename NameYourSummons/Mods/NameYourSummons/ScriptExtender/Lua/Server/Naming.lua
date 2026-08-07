@@ -182,6 +182,25 @@ function Naming.Diagnose(ref)
 	Util.Log("-------------------------------")
 end
 
+--- The resolved creature/type tag names on a summon, for classification.
+--- Runtime tags are GUIDs; each resolves to a Tag resource whose Name is the
+--- creature type (e.g. "UNDEAD", "FIND_FAMILIAR"). Unresolvable tags are dropped.
+---@param ref string|EntityHandle
+---@return string[]
+function Naming.TagNamesOf(ref)
+	local e = Writer.Resolve(ref)
+	local names = {}
+	if e and e.Tag and e.Tag.Tags then
+		for _, tagGuid in ipairs(e.Tag.Tags) do
+			local ok, tag = pcall(Ext.StaticData.Get, tostring(tagGuid), "Tag")
+			if ok and tag and tag.Name and tag.Name ~= "" then
+				names[#names + 1] = tostring(tag.Name)
+			end
+		end
+	end
+	return names
+end
+
 --- Every live summon in the session.
 --- SummonContainer.Characters is userdata that will not iterate from Lua, so we
 --- enumerate by the IsSummon marker component instead.

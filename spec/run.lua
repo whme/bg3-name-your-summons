@@ -16,5 +16,6 @@ local lu = require("luaunit")
 require("util_spec")
 require("store_spec")
 require("name_writer_spec")
+require("classifier_spec")
 
 os.exit(lu.LuaUnit.run())

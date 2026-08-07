@@ -1,3 +1,5 @@
+local Classifier = Ext.Require("Shared/SummonClassifier.lua")
+
 local Store = {}
 
 local VAR_NAMES = "SummonNames"
@@ -18,6 +20,13 @@ local WRITABLE_SETTINGS = {
 	PromptForNamed = true,
 	AllowStorySummons = true,
 }
+
+-- Per-summon-type toggles (GH #14): one boolean per creature type plus the
+-- "every summon" master. All client-writable; only familiars default on.
+for key, def in pairs(Classifier.DefaultSettings()) do
+	DEFAULT_SETTINGS[key] = def
+	WRITABLE_SETTINGS[key] = true
+end
 
 --- Must be called from BootstrapServer.lua (before a savegame is loaded)
 --- and mirrored in BootstrapClient.lua.

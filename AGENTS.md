@@ -18,6 +18,14 @@ the game.
   is `Osi.EnteredLevel` -> `Osi.IsSummon` -> `Osi.CharacterGetOwner`. This
   covers Find Familiar, Find Companion, Conjure Animals, Animate Dead, and
   anything else the game classifies as a summon, with no per-spell casing.
+- **Creature-type filter** (`Shared/SummonClassifier.lua`): which summons are
+  prompted for is gated by type. A summon's type is read from its character
+  tags - each of the 14 D&D creature types is a plain tag (`UNDEAD`, `BEAST`,
+  ...), and `FIND_FAMILIAR` marks Find Familiar summons and takes priority over
+  the creature type. The classifier is pure (tag names in, category out); the
+  glue that resolves a live summon's tag GUIDs to names is `Naming.TagNamesOf`.
+  Per-type toggles live in settings; only familiars are named by default, and a
+  `NameEverySummon` master reproduces the old name-everything behaviour.
 - **The renaming primitive** (`Shared/NameWriter.lua`): a creature's name is
   `DisplayName.Name`, a localisation handle rather than text. Renaming is two
   writes - register the text under a handle of the mod's own via
@@ -54,16 +62,17 @@ NameYourSummons/                     <- pak this folder
         Shared/
           Channels.lua               net channels, created in both states
           NameWriter.lua             the two writes that do the renaming
+          SummonClassifier.lua       pure tag-name -> creature-type category + per-type setting keys
           Util.lua                   uuid / sanitising / key / loca-handle helpers
         Server/
           Store.lua                  ModVar persistence
-          Naming.lua                 applying names + diagnostics
+          Naming.lua                 applying names + diagnostics + reading a summon's tag names
           SummonWatcher.lua          detection, prompting, net handlers
         Client/
           Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
-          ConfigUI.lua               ImGui config: prompt settings (incl. the story-summon rename opt-in) + saved-name, always-skipped and session-skipped managers
+          ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter) + saved-name, always-skipped and session-skipped managers
 ```
 
 ## Reference docs

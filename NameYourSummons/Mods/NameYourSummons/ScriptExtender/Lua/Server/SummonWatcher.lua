@@ -2,6 +2,7 @@ local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Store = Ext.Require("Server/Store.lua")
 local Naming = Ext.Require("Server/Naming.lua")
+local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 
 local Watcher = {}
 
@@ -233,6 +234,12 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	-- Story summons (e.g. "Us") are not prompted unless opted in; a saved name still reapplies above.
 	if Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons then
+		return
+	end
+
+	-- Only prompt for summon types the player has enabled (GH #14); a saved name
+	-- still reapplies above regardless of type.
+	if not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
 		return
 	end
 
