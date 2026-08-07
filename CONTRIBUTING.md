@@ -33,6 +33,9 @@ binaries fetched on first use into `.tools/` (gitignored).
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip)
+./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md
+./make.ps1 prepare-release     # maintainers: bump version, changelog, branch, PR
+./make.ps1 create-release-tag  # maintainers: tag the release (fires release.yml)
 ```
 
 Run `./make.ps1 check` before you push; CI runs the exact same commands via
@@ -135,11 +138,66 @@ output when reporting the issue.
 
 See [AGENTS.md](AGENTS.md) for the full standards and the BG3SE gotchas.
 
+## News fragments
+
+User-facing changes are recorded in `news/` as a **news fragment** - a short
+markdown file that [changelogging](https://github.com/nekitdev/changelogging)
+assembles into `CHANGELOG.md` at release time. Add one in the same PR as your
+change:
+
+- **Filename**: `news/<id>.<type>.md`. The `<id>` is the PR or issue number
+  (e.g. `news/42.feature.md`), or an arbitrary name prefixed with `~` when
+  there is no number (e.g. `news/~fix-summon-name.bugfix.md`). A bare
+  non-numeric name without the `~` is silently ignored.
+- **Type**: one of `feature`, `bugfix`, `security`, `deprecation`, `removal`.
+- **Body**: one or two sentences describing the change from a player's point of
+  view. Plain markdown, ASCII punctuation, **no byte-order mark** (a BOM ends up
+  verbatim in the changelog - the `make.ps1`/editor default of UTF-8 without BOM
+  is correct).
+
+The `news-fragment-check` workflow fails a PR that neither adds a fragment nor
+carries the `no-news-fragment-needed` label. Use that label for docs, CI, or
+internal changes that players never see.
+
+To preview the assembled changelog locally, run `./make.ps1 changelog` - but
+note it consumes (deletes) the fragments, so revert before committing unless you
+are actually cutting a release.
+
+## Releasing (maintainers)
+
+Releases are driven by two `make.ps1` commands and one tag-triggered workflow.
+Run the `git`/`gh` steps from PowerShell (the SSH `origin` remote only works
+there on this machine).
+
+1. **Prepare** - from `main` (major/minor) or a `*-maintenance` branch (patch):
+
+   ```powershell
+   ./make.ps1 prepare-release
+   ```
+
+   It bumps `meta.lsx`, assembles the changelog, commits `Version X.Y.Z`, and
+   either opens a PR against the maintenance branch (major/minor from `main`) or
+   pushes straight to the maintenance branch (patch).
+
+2. **Merge** the release PR if one was opened, then check out and pull the
+   maintenance branch.
+
+3. **Tag** - creates and pushes the annotated `X.Y.Z` tag:
+
+   ```powershell
+   ./make.ps1 create-release-tag
+   ```
+
+   The tag push fires `.github/workflows/release.yml`, which packs the `.pak`,
+   attests it, and publishes a **draft** release. Review and publish it from the
+   GitHub Releases page.
+
 ## Submitting changes
 
 1. Make sure `./make.ps1 check` is green and specs are added/updated.
-2. Write a clear commit message (subject + body explaining the "why"). Keep it
+2. Add a news fragment (see above) or the `no-news-fragment-needed` label.
+3. Write a clear commit message (subject + body explaining the "why"). Keep it
    ASCII. For AI-assisted commits, add a `Co-authored-by:` trailer naming the
    model.
-3. Open a pull request describing the change and how you verified it in game (if
+4. Open a pull request describing the change and how you verified it in game (if
    applicable).

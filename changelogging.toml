@@ -1,0 +1,16 @@
+order = ["security", "feature", "bugfix", "deprecation", "removal"]
+
+[context]
+name = "Name Your Summons"
+version = "1.0.0"
+url = "https://github.com/whme/bg3-name-your-summons"
+
+[paths]
+directory = "news"
+
+[types]
+security = "Security"
+feature = "Features"
+bugfix = "Bug Fixes"
+deprecation = "Deprecations"
+removal = "Removals"

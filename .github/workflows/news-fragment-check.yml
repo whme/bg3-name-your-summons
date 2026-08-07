@@ -1,0 +1,104 @@
+#
+#   News Fragment Check
+#
+# Ensures PRs either include a news fragment or explicitly acknowledge they
+# don't need one. Runs on PR events and label changes. The result is posted
+# back to the PR as a comment by post-pr-comment.yml (which runs with write
+# permissions the fork-originated PR event does not have).
+
+name: News Fragment Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+    branches:
+      - main
+      - "*-maintenance"
+
+env:
+  OVERRIDE_LABEL: "no-news-fragment-needed"
+  NEWS_FRAGMENT_PATTERN: '^news/.*\.(feature|bugfix|security|deprecation|removal)\.md$'
+
+jobs:
+  news-fragment-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for news fragments
+        id: check
+        shell: bash
+        run: |
+          echo "Checking for news fragments in PR..."
+
+          # Diff against the PR's actual base so this works for both `main`
+          # and `*-maintenance`.
+          FRAGMENTS=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" | \
+            grep -E '${{ env.NEWS_FRAGMENT_PATTERN }}' || true)
+
+          if [ -n "$FRAGMENTS" ]; then
+            echo "News fragment(s) found:"
+            echo "$FRAGMENTS" | sed 's/^/  - /'
+            echo "status=success" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, env.OVERRIDE_LABEL) }}" == "true" ]]; then
+            echo "No news fragment needed (acknowledged via '${{ env.OVERRIDE_LABEL }}' label)"
+            echo "status=success" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "No news fragment found and no acknowledgment label present"
+          echo "status=failed" >> $GITHUB_OUTPUT
+
+      - name: Prepare comment content
+        shell: bash
+        run: |
+          mkdir -p comment
+          echo "${{ github.event.number }}" > comment/pr_number.txt
+          echo "news-fragment-check" > comment/header.txt
+
+      - name: Prepare comment content - Success
+        if: steps.check.outputs.status == 'success'
+        shell: bash
+        run: |
+          cat > comment/body.txt << 'EOF'
+          **News Fragment Check**
+
+          Success! This PR meets the news fragment requirements.
+          EOF
+
+      - name: Prepare comment content - Missing news fragment
+        if: steps.check.outputs.status == 'failed'
+        shell: bash
+        run: |
+          cat > comment/body.txt << 'EOF'
+          **News Fragment Check**
+
+          This PR appears to be missing a news fragment.
+
+          **If this change affects users** (new features, bug fixes, security fixes):
+          -> Add a news fragment in the `news/` directory
+          -> Example: `news/123.feature.md` or `news/~fix-issue.bugfix.md`
+          -> Fragment ids are a PR/issue number, or an arbitrary name prefixed with `~`
+
+          **If this change doesn't need a news fragment** (docs, CI, internal changes):
+          -> Add the `${{ env.OVERRIDE_LABEL }}` label to this PR
+
+          For more information about news fragments, see: https://github.com/nekitdev/changelogging
+          EOF
+
+      - name: Upload comment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: comment
+          path: comment/
+
+      - if: steps.check.outputs.status == 'failed'
+        shell: bash
+        run: exit 1
