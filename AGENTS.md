@@ -125,6 +125,21 @@ worktree), silently emitting an empty pak - `make.ps1 build` stages the mod into
 a dot-free temp dir to dodge this. For iteration the folder is symlinked into the
 game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
 
+Releasing: the mod version is a packed `Version64` int64 in `meta.lsx` (the
+`ModuleInfo` node and its nested `PublishVersion`), and is the single source of
+truth - `Get-ModVersion` decodes it, `Set-ModVersion` re-encodes a semver into
+it. `./make.ps1 prepare-release` bumps that version, assembles pending `news/`
+fragments into `CHANGELOG.md` via [changelogging](https://github.com/nekitdev/changelogging)
+(a pinned prebuilt binary fetched into `.tools/`, like every other tool),
+commits `Version X.Y.Z`, and manages the `main` -> `X.Y-maintenance` branch flow
+(major/minor open a `release-X.Y.Z` PR; patches commit onto the maintenance
+branch). `./make.ps1 create-release-tag` validates and pushes the `X.Y.Z`
+annotated tag, which fires `.github/workflows/release.yml`: it packs the `.pak`,
+attests its provenance, and publishes a draft release built from
+`templates/release_template.md` + the tagged `CHANGELOG.md` section. News
+fragments are gated on PRs by `news-fragment-check.yml` (bypass with the
+`no-news-fragment-needed` label). See CONTRIBUTING.md for the full workflow.
+
 Diagnostic console commands (server state unless noted):
 
 | Command | What it does |
@@ -162,6 +177,9 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 all           # format + lint + typecheck + test (verify locally)
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md (changelogging)
+./make.ps1 prepare-release      # bump version, changelog, branch, commit, push, open PR
+./make.ps1 create-release-tag   # tag the release commit and push (fires release.yml)
 ```
 
 **To verify a change locally, run `./make.ps1 all` and nothing else.** It formats

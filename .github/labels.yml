@@ -18,3 +18,7 @@
 - name: "internal"
   color: "d4c5f9"
   description: "Internal maintenance, tooling, or chores"
+
+- name: "no-news-fragment-needed"
+  color: "ededed"
+  description: "Change does not require a news fragment (docs, CI, internal)"

@@ -11,6 +11,9 @@
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 all           format + lint + typecheck + test (verify locally)
 #   ./make.ps1 check         format-check + lint + typecheck + test (what CI runs)
+#   ./make.ps1 changelog     assemble news/ fragments into CHANGELOG.md (changelogging)
+#   ./make.ps1 prepare-release      bump version, changelog, branch, commit, push, open PR
+#   ./make.ps1 create-release-tag   tag the release commit and push (fires release.yml)
 #   ./make.ps1 help          show this text
 #
 # Every tool is a prebuilt binary fetched on first use into .tools/; nothing
@@ -41,6 +44,7 @@ $V = @{
     LuaUnit       = "LUAUNIT_V3_5"
     ExtIdeHelpers = "main"
     LSLib         = "v1.20.4"
+    Changelogging = "0.7.0"
 }
 
 # ---------------------------------------------------------------------------
@@ -199,6 +203,35 @@ function Get-Divine {
     return $divine.FullName
 }
 
+# nekitdev's changelogging CLI - consumes news/ fragments into CHANGELOG.md.
+# Prebuilt per-target binaries; the archive layout has the binary at the root,
+# but locate it by search to stay robust across releases.
+function Get-Changelogging {
+    $clDir = Join-Path $ToolsDir "changelogging-$($V.Changelogging)"
+    $existing = Get-ChildItem -Path $clDir -Filter "changelogging$Exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($existing) { return $existing.FullName }
+    Write-Host "Installing changelogging $($V.Changelogging)..."
+    $arch = if ($Arch -eq "arm64") { "aarch64" } else { "x86_64" }
+    switch ($Plat) {
+        "windows" { $triple = "$arch-pc-windows-msvc"; $ext = "zip"; $tmp = "_changelogging.zip" }
+        "linux" { $triple = "$arch-unknown-linux-gnu"; $ext = "tar.gz"; $tmp = "_changelogging.tar.gz" }
+        "macos" { $triple = "$arch-apple-darwin"; $ext = "tar.gz"; $tmp = "_changelogging.tar.gz" }
+    }
+    $asset = "changelogging-$($V.Changelogging)-$triple.$ext"
+    $tmp = Join-Path $ToolsDir $tmp
+    Get-File "https://github.com/nekitdev/changelogging/releases/download/v$($V.Changelogging)/$asset" $tmp
+    Expand-Into $tmp $clDir
+    Remove-Item $tmp -Force
+    $cl = Get-ChildItem -Path $clDir -Filter "changelogging$Exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $cl) {
+        throw "changelogging binary not found in $asset after extraction - the release layout may have changed."
+    }
+    Set-Executable $cl.FullName
+    return $cl.FullName
+}
+
 # ---------------------------------------------------------------------------
 # Commands - each returns a process exit code (0 = ok)
 # ---------------------------------------------------------------------------
@@ -291,6 +324,70 @@ function Get-ModVersion($MetaPath) {
     }
 }
 
+# Absolute path to the mod manifest that carries the version.
+function Get-MetaPath {
+    $modName = "NameYourSummons"
+    return (Join-Path $Root "$modName/Mods/$modName/meta.lsx")
+}
+
+# Encode a semantic version (X.Y.Z) into BG3's packed Version64 int64 - the
+# inverse of Get-ModVersion (major<<55 | minor<<47 | revision<<31 | build).
+# Releases carry a zero build field, so only the first three fields are set.
+function ConvertTo-Version64([string]$SemVer) {
+    $parts = $SemVer -split "\."
+    if ($parts.Count -ne 3) { throw "version '$SemVer' is not X.Y.Z" }
+    $major = [int64]$parts[0]
+    $minor = [int64]$parts[1]
+    $revision = [int64]$parts[2]
+    return ($major -shl 55) -bor ($minor -shl 47) -bor ($revision -shl 31)
+}
+
+# Repoint every Version64 attribute in meta.lsx (the ModuleInfo node and its
+# nested PublishVersion) at the packed value. A targeted regex keeps the file's
+# formatting and UTF-8 (no BOM) encoding intact.
+function Set-ModVersion([string]$MetaPath, [string]$SemVer) {
+    $packed = ConvertTo-Version64 $SemVer
+    $content = Get-Content -Raw -Path $MetaPath
+    $updated = [regex]::Replace(
+        $content,
+        '(id="Version64" type="int64" value=")\d+(")',
+        "`${1}$packed`${2}"
+    )
+    [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# ---------------------------------------------------------------------------
+# Git helpers for the release commands - each throws on a non-zero git exit so
+# a failed step aborts the release rather than silently continuing.
+# ---------------------------------------------------------------------------
+
+function Invoke-GitOut([string[]]$GitArgs) {
+    $out = & git @GitArgs
+    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE" }
+    return ($out | Out-String).Trim()
+}
+
+function Invoke-Git([string[]]$GitArgs) {
+    & git @GitArgs | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE" }
+}
+
+# git show-ref exits 0 when the ref exists, non-zero otherwise.
+function Test-GitRef([string]$Ref) {
+    & git show-ref --verify --quiet $Ref *> $null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Get-GitCount([string]$Range) {
+    $n = & git rev-list --count $Range
+    if ($LASTEXITCODE -ne 0) { throw "git rev-list --count $Range failed with exit code $LASTEXITCODE" }
+    return [int](($n | Out-String).Trim())
+}
+
+function Read-Prompt([string]$Message) {
+    return (Read-Host -Prompt $Message).Trim()
+}
+
 # Pack the mod into build/ via divine.exe, exactly like the Modder's Multitool
 # Create Package. Pass -Clean (via `./make.ps1 build -Clean`) to wipe build/ first.
 function Cmd-Build {
@@ -347,10 +444,212 @@ function Cmd-Build {
     return 0
 }
 
+# Assemble the pending news/ fragments into CHANGELOG.md via changelogging.
+# The version (source of truth: meta.lsx) is synced into changelogging.toml
+# first so the new section is headed with the version being released.
+function Cmd-Changelog {
+    $meta = Get-MetaPath
+    $version = Get-ModVersion $meta
+    Write-Host "Generating changelog for version $version"
+
+    $configPath = Join-Path $Root "changelogging.toml"
+    $config = Get-Content -Raw -Path $configPath
+    $updated = [regex]::Replace($config, '(?m)^version = ".*"$', "version = `"$version`"")
+    [System.IO.File]::WriteAllText($configPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
+
+    $cl = Get-Changelogging
+    & $cl build --remove | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "changelogging build --remove failed with exit code $LASTEXITCODE" }
+    return 0
+}
+
+# Suggest the next version and release type from the current branch:
+# main -> minor bump; *-maintenance -> patch bump.
+function Get-SuggestedVersion([string]$Current, [string]$Branch) {
+    $p = $Current -split "\."
+    $maj = [int]$p[0]; $min = [int]$p[1]; $pat = [int]$p[2]
+    if ($Branch -eq "main") {
+        return @{ Type = "minor"; Version = "$maj.$($min + 1).0" }
+    }
+    elseif ($Branch -like "*-maintenance") {
+        return @{ Type = "patch"; Version = "$maj.$min.$($pat + 1)" }
+    }
+    else {
+        throw "must be on 'main' or a '*-maintenance' branch to prepare a release (current branch: $Branch)"
+    }
+}
+
+# Most significant component that changed between two versions.
+function Get-ReleaseType([string]$Current, [string]$Next) {
+    $c = $Current -split "\."; $n = $Next -split "\."
+    if ([int]$n[0] -gt [int]$c[0]) { return "major" }
+    elseif ([int]$n[1] -gt [int]$c[1]) { return "minor" }
+    else { return "patch" }
+}
+
+# Ensure the maintenance branch exists and is checked out before a release
+# prepared from main. Fetches once (fatal on failure - every subsequent
+# decision depends on origin refs being current), then handles the four
+# (local exists, origin exists) combinations.
+function Assert-MaintenanceBranchReady([string]$Branch) {
+    Write-Host "INFO - Fetching origin to check maintenance branch state"
+    Invoke-Git @("fetch")
+    $local = Test-GitRef "refs/heads/$Branch"
+    $origin = Test-GitRef "refs/remotes/origin/$Branch"
+    if (-not $local -and -not $origin) {
+        Write-Host "INFO - Maintenance branch $Branch does not exist; creating from current HEAD and pushing to origin"
+        Invoke-Git @("checkout", "-b", $Branch)
+        Invoke-Git @("push", "-u", "origin", $Branch)
+    }
+    elseif ($local -and -not $origin) {
+        Write-Host "INFO - Maintenance branch $Branch exists locally only; switching to it and pushing to origin"
+        Invoke-Git @("checkout", $Branch)
+        Invoke-Git @("push", "-u", "origin", $Branch)
+    }
+    elseif (-not $local -and $origin) {
+        Write-Host "INFO - Maintenance branch $Branch exists on origin only; creating a local tracking branch"
+        Invoke-Git @("checkout", $Branch)
+    }
+    else {
+        Write-Host "INFO - Maintenance branch $Branch exists locally and on origin; switching to local branch"
+        Invoke-Git @("checkout", $Branch)
+        $behind = Get-GitCount "HEAD..origin/$Branch"
+        if ($behind -gt 0) {
+            throw "local maintenance branch $Branch is $behind commit(s) behind origin - run 'git pull' first"
+        }
+        # Unpushed local commits would otherwise leak into the release PR.
+        $ahead = Get-GitCount "origin/$Branch..HEAD"
+        if ($ahead -gt 0) {
+            throw "local maintenance branch $Branch is $ahead commit(s) ahead of origin - push it before preparing a release"
+        }
+    }
+}
+
+# Prepare a new release: bump the version, generate the changelog, commit, and
+# push. A major/minor release from main branches off release-X.Y.Z and opens a
+# PR against the X.Y-maintenance branch (created if missing); a patch release
+# commits straight onto the maintenance branch.
+function Cmd-PrepareRelease {
+    $status = Invoke-GitOut @("status", "--porcelain")
+    if ($status -ne "") {
+        throw "git working directory is not clean - commit or stash changes first:`n$status"
+    }
+
+    $branch = Invoke-GitOut @("branch", "--show-current")
+    $meta = Get-MetaPath
+    $current = Get-ModVersion $meta
+    Write-Host "INFO - Current branch: $branch"
+    Write-Host "INFO - Current version: $current"
+
+    $suggest = Get-SuggestedVersion $current $branch
+    $answer = Read-Prompt "Preparing $($suggest.Type) release: $current -> $($suggest.Version). Continue? [Y/n]"
+    if ($answer -match "^(n|no)$") {
+        $custom = Read-Prompt "Enter custom version (current: $current)"
+        if ($custom -eq "") { throw "version cannot be empty" }
+        if ($custom -notmatch "^\d+\.\d+\.\d+$") {
+            throw "invalid version format - use semantic versioning (e.g. 1.2.3)"
+        }
+        $next = $custom
+        $type = Get-ReleaseType $current $next
+    }
+    elseif ($answer -eq "" -or $answer -match "^(y|yes)$") {
+        $next = $suggest.Version
+        $type = $suggest.Type
+    }
+    else {
+        throw "invalid input - please enter Y or n"
+    }
+
+    $fromMain = ($branch -eq "main")
+    $opensPr = $fromMain -and ($type -in @("major", "minor"))
+    $nparts = $next -split "\."
+    $maintenance = if ($fromMain) { "$($nparts[0]).$($nparts[1])-maintenance" } else { $branch }
+    $prBranch = if ($opensPr) { "release-$next" } else { $null }
+
+    Write-Host "INFO - Preparing $type release: $current -> $next"
+    Write-Host "INFO - Maintenance branch: $maintenance"
+
+    if ($fromMain) { Assert-MaintenanceBranchReady $maintenance }
+    if ($prBranch) {
+        Write-Host "INFO - Creating release branch: $prBranch"
+        Invoke-Git @("checkout", "-b", $prBranch)
+    }
+
+    Write-Host "INFO - Updating meta.lsx version to $next"
+    Set-ModVersion $meta $next
+
+    Write-Host "INFO - Generating changelog"
+    Cmd-Changelog | Out-Null
+
+    # Stage `news` too: changelogging consumed the fragments, and the version
+    # bump must commit those deletions, not leave them dangling in the tree.
+    $metaRel = "NameYourSummons/Mods/NameYourSummons/meta.lsx"
+    Invoke-Git @("add", $metaRel, "CHANGELOG.md", "changelogging.toml", "news")
+    Write-Host "INFO - Committing: Version $next"
+    Invoke-Git @("commit", "-m", "Version $next")
+
+    if ($prBranch) {
+        Write-Host "INFO - Pushing release branch: $prBranch"
+        Invoke-Git @("push", "-u", "origin", $prBranch)
+        Write-Host "INFO - Opening PR against $maintenance"
+        & gh pr create --base $maintenance --fill | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "gh pr create --base $maintenance failed with exit code $LASTEXITCODE" }
+        Write-Host "INFO - Release $next prepared on branch $prBranch with a PR against $maintenance"
+        Write-Host "INFO - After the PR is merged, switch to $maintenance, pull, and run './make.ps1 create-release-tag'"
+    }
+    else {
+        Write-Host "INFO - Pushing to remote"
+        Invoke-Git @("push")
+        Write-Host "INFO - Release $next prepared on branch $maintenance"
+        Write-Host "INFO - Run './make.ps1 create-release-tag' to tag the release"
+    }
+    return 0
+}
+
+# Create and push the annotated tag for the version recorded in meta.lsx. The
+# tag push is what fires the release workflow. Validates the branch, the tag is
+# new, the HEAD commit is the version bump, and the branch is not behind origin.
+function Cmd-CreateReleaseTag {
+    $branch = Invoke-GitOut @("branch", "--show-current")
+    if ($branch -notlike "*-maintenance") {
+        throw "must be on a maintenance branch to create a release tag (current branch: $branch) - run './make.ps1 prepare-release' first"
+    }
+
+    $meta = Get-MetaPath
+    $version = Get-ModVersion $meta
+    Write-Host "INFO - Current branch: $branch"
+    Write-Host "INFO - Version to tag: $version"
+
+    $existing = Invoke-GitOut @("tag", "-l", $version)
+    if ($existing -ne "") { throw "tag $version already exists" }
+
+    $subject = Invoke-GitOut @("log", "-1", "--pretty=format:%s")
+    if ($subject -ne "Version $version") {
+        throw "latest commit message does not match expected version commit`nexpected: Version $version`nactual:   $subject`nrun './make.ps1 prepare-release' first"
+    }
+
+    Write-Host "INFO - Fetching latest changes from remote"
+    try { Invoke-Git @("fetch") } catch { Write-Warning "Failed to fetch from remote, continuing anyway: $($_.Exception.Message)" }
+
+    $behind = Get-GitCount "HEAD..origin/$branch"
+    if ($behind -gt 0) { throw "local branch is $behind commit(s) behind remote - run 'git pull' first" }
+
+    $answer = Read-Prompt "About to create and push tag '$version'. Continue? [Y/n]"
+    if ($answer -match "^(n|no)$") { Write-Host "INFO - Tag creation cancelled"; return 0 }
+
+    Write-Host "INFO - Creating annotated tag: $version"
+    Invoke-Git @("tag", "-a", $version, "-m", "Version $version")
+    Write-Host "INFO - Pushing tag to remote"
+    Invoke-Git @("push", "origin", $version)
+    Write-Host "INFO - Tag '$version' created and pushed"
+    Write-Host "INFO - Check: https://github.com/whme/bg3-name-your-summons/actions/workflows/release.yml"
+    return 0
+}
+
 function Show-Help {
     Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
         if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 16 | Out-Host
+    } | Select-Object -First 19 | Out-Host
 }
 
 # ---------------------------------------------------------------------------
@@ -374,6 +673,9 @@ try {
         "build" { $code = Cmd-Build }
         "all" { $code = Cmd-All }
         { $_ -in "check", "ci" } { $code = Cmd-Check }
+        "changelog" { $code = Cmd-Changelog }
+        { $_ -in "prepare-release", "prepare_release" } { $code = Cmd-PrepareRelease }
+        { $_ -in "create-release-tag", "create_release_tag" } { $code = Cmd-CreateReleaseTag }
         default { Show-Help; $code = 0 }
     }
 }

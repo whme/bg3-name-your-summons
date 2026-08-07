@@ -1,0 +1,53 @@
+#
+#   Post PR Comment
+#
+# Posts a comment to a PR from an artifact produced by the News Fragment
+# Check workflow. Runs via `workflow_run` so it executes in the base repo
+# context with write permissions - the check workflow itself runs with the
+# read-only token a fork-originated PR event grants and cannot comment.
+#
+# Artifact structure expected:
+#   comment/body.txt      - the comment body (markdown)
+#   comment/pr_number.txt - the PR number
+#   comment/header.txt    - a unique header so the comment is updated, not duplicated
+
+name: Post PR Comment
+
+on:
+  workflow_run:
+    workflows: ["News Fragment Check"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  post-comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Download artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: comment
+          path: comment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read comment data
+        id: comment
+        if: steps.download.outcome == 'success'
+        shell: bash
+        run: |
+          echo "pr_number=$(cat comment/pr_number.txt)" >> $GITHUB_OUTPUT
+          echo "header=$(cat comment/header.txt)" >> $GITHUB_OUTPUT
+
+      - name: Post comment
+        if: steps.comment.outputs.pr_number != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ steps.comment.outputs.pr_number }}
+          header: ${{ steps.comment.outputs.header }}
+          path: comment/body.txt
