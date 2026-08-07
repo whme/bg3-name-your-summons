@@ -116,3 +116,23 @@ function TestStoreSettings:testSetSettingRejectsNonBoolean()
 	lu.assertFalse(Store.SetSetting("PromptOnSummon", "yes"))
 	lu.assertNil(backing["Settings"])
 end
+
+function TestStoreSettings:testSummonTypeDefaults()
+	local s = Store.Settings()
+	-- Only familiars are named out of the box.
+	lu.assertEquals(s.NameFamiliar, true)
+	lu.assertEquals(s.NameUndead, false)
+	lu.assertEquals(s.NameElemental, false)
+	lu.assertEquals(s.NameEverySummon, false)
+end
+
+function TestStoreSettings:testSetSummonTypePersists()
+	lu.assertTrue(Store.SetSetting("NameUndead", true))
+	lu.assertEquals(backing["Settings"]["NameUndead"], true)
+	lu.assertEquals(Store.Settings().NameUndead, true)
+end
+
+function TestStoreSettings:testSetEverySummonMasterPersists()
+	lu.assertTrue(Store.SetSetting("NameEverySummon", true))
+	lu.assertEquals(Store.Settings().NameEverySummon, true)
+end

@@ -2,6 +2,7 @@ local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Layout = Ext.Require("Client/Layout.lua")
 local WindowState = Ext.Require("Client/WindowState.lua")
+local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 
 local ConfigUI = {}
 
@@ -9,7 +10,9 @@ local ConfigUI = {}
 local WINDOW_KEY = "config"
 
 local configWindow, namesGroup, skippedGroup, sessionGroup, saveButton
-local promptOnSummon, promptForNamed, allowStorySummons
+local promptOnSummon, promptForNamed, allowStorySummons, everySummonCheck
+-- settings key ("NameUndead", ...) -> its checkbox widget.
+local typeChecks = {}
 
 -- Edits stay local until Save; reopening reloads from the server, which is
 -- what discards unsaved edits. baseSettings is the checkbox baseline;
@@ -33,14 +36,34 @@ local refreshNames, refreshSkipped, refreshSessionSkipped, saveGeometry, startGe
 -- Staged-change tracking
 ---------------------------------------------------------------------------
 
+--- Whether any settings checkbox differs from the saved baseline.
+local function settingsDirty()
+	if promptOnSummon.Checked ~= baseSettings.PromptOnSummon then
+		return true
+	end
+	if promptForNamed.Checked ~= baseSettings.PromptForNamed then
+		return true
+	end
+	if allowStorySummons.Checked ~= baseSettings.AllowStorySummons then
+		return true
+	end
+	if everySummonCheck.Checked ~= baseSettings[Classifier.MASTER_KEY] then
+		return true
+	end
+	for key, cb in pairs(typeChecks) do
+		if cb.Checked ~= baseSettings[key] then
+			return true
+		end
+	end
+	return false
+end
+
 --- Grey the Save button out unless something differs from the saved baseline.
 local function updateSaveButton()
 	if not saveButton then
 		return
 	end
-	saveButton.Disabled = promptOnSummon.Checked == baseSettings.PromptOnSummon
-		and promptForNamed.Checked == baseSettings.PromptForNamed
-		and allowStorySummons.Checked == baseSettings.AllowStorySummons
+	saveButton.Disabled = not settingsDirty()
 		and next(pendingRenames) == nil
 		and next(pendingForgets) == nil
 		and next(pendingUnskips) == nil
@@ -52,9 +75,30 @@ end
 -- Prompt settings
 ---------------------------------------------------------------------------
 
+--- Grey the per-type toggles when they cannot take effect: the "every summon"
+--- master overrides them, and nothing is filtered when prompting is off.
+local function applyTypeMasterState()
+	if not everySummonCheck then
+		return
+	end
+	local locked = everySummonCheck.Checked or not promptOnSummon.Checked
+	for _, cb in pairs(typeChecks) do
+		cb.Disabled = locked
+	end
+	everySummonCheck.Disabled = not promptOnSummon.Checked
+end
+
 local function onSettingChange()
 	-- Re-prompting named summons is meaningless if we never prompt at all.
 	promptForNamed.Disabled = not promptOnSummon.Checked
+	applyTypeMasterState()
+	updateSaveButton()
+end
+
+--- The type toggles and their master only affect the Save button and each
+--- other's enabled state.
+local function onTypeChange()
+	applyTypeMasterState()
 	updateSaveButton()
 end
 
@@ -70,6 +114,16 @@ local function loadSettings()
 		promptForNamed.Checked = forNamed
 		promptForNamed.Disabled = not onSummon
 		allowStorySummons.Checked = allowStory
+
+		local every = s[Classifier.MASTER_KEY] == true
+		baseSettings[Classifier.MASTER_KEY] = every
+		everySummonCheck.Checked = every
+		for key, cb in pairs(typeChecks) do
+			local on = s[key] == true
+			baseSettings[key] = on
+			cb.Checked = on
+		end
+		applyTypeMasterState()
 		updateSaveButton()
 	end)
 end
@@ -84,7 +138,11 @@ local function onSave()
 		PromptOnSummon = promptOnSummon.Checked,
 		PromptForNamed = promptForNamed.Checked,
 		AllowStorySummons = allowStorySummons.Checked,
+		[Classifier.MASTER_KEY] = everySummonCheck.Checked,
 	}
+	for key, cb in pairs(typeChecks) do
+		settings[key] = cb.Checked
+	end
 	Channels.SetSettings:SendToServer(settings)
 	baseSettings = settings
 
@@ -455,6 +513,18 @@ function ConfigUI.Open()
 		promptForNamed.OnChange = onSettingChange
 		allowStorySummons = configWindow:AddCheckbox("Allow renaming story-bound summons (e.g. 'Us')", false)
 		allowStorySummons.OnChange = onSettingChange
+
+		local typesHeader = configWindow:AddCollapsingHeader("Summon types to name")
+		local typesHint =
+			typesHeader:AddText("Which kinds of summon to prompt for. A creature's type is read from its tags.")
+		typesHint.Disabled = true
+		everySummonCheck = typesHeader:AddCheckbox("Every summon (ignore the type filter below)", false)
+		everySummonCheck.OnChange = onTypeChange
+		for _, cat in ipairs(Classifier.CATEGORIES) do
+			local cb = typesHeader:AddCheckbox(cat.label, cat.key == "Familiar")
+			cb.OnChange = onTypeChange
+			typeChecks[Classifier.SettingKey(cat.key)] = cb
+		end
 
 		configWindow:AddSeparatorText("Saved names")
 		namesGroup = configWindow:AddGroup("SavedNamesList")
