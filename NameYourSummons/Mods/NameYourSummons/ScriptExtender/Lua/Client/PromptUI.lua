@@ -28,6 +28,8 @@ local function submit(save, alwaysSkip, abort)
 	Channels.SubmitName:SendToServer({
 		Key = current.Key,
 		SummonUuid = current.SummonUuid,
+		Scope = current.Scope,
+		Slot = current.Slot,
 		Name = name,
 		AlwaysSkip = alwaysSkip == true,
 		Abort = abort or nil,
@@ -98,6 +100,25 @@ local function buildPrompt()
 	end
 end
 
+--- Drop any queued or on-screen prompt for a key the server has retracted (it
+--- turned out to be a multi-summon we should not have asked about). No submit is
+--- sent - the server already resolved this key.
+---@param key string
+local function cancel(key)
+	for i = #queue, 1, -1 do
+		if queue[i].Key == key then
+			table.remove(queue, i)
+		end
+	end
+	if current and current.Key == key then
+		current = nil
+		if promptWindow then
+			promptWindow.Open = false
+		end
+		UI.ShowNext()
+	end
+end
+
 function UI.ShowNext()
 	if current ~= nil then
 		return
@@ -138,6 +159,13 @@ function UI.Register()
 		end
 		table.insert(queue, data)
 		UI.ShowNext()
+	end)
+
+	Channels.RetractPrompt:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.Key) ~= "string" then
+			return
+		end
+		cancel(data.Key)
 	end)
 
 	Channels.ApplyName:SetHandler(function(data, _user)

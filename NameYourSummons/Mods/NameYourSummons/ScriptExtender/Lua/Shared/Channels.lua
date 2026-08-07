@@ -11,6 +11,10 @@ Channels.AskName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_AskName")
 -- Client -> Server: "the player typed this name"
 Channels.SubmitName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SubmitName")
 
+-- Server -> Client: "cancel the naming prompt for this key" - a sibling arrived
+-- and revealed it to be a multi-summon we should not have asked about.
+Channels.RetractPrompt = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RetractPrompt")
+
 -- Client -> Server (request/reply): "give me the full list of saved names"
 Channels.ListNames = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListNames")
 

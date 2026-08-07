@@ -10,14 +10,45 @@ local ConfigUI = {}
 local WINDOW_KEY = "config"
 
 local configWindow, namesGroup, skippedGroup, sessionGroup, saveButton
-local promptOnSummon, promptForNamed, allowStorySummons, everySummonCheck
+local promptOnSummon, promptForNamed, allowStorySummons, everySummonCheck, multiSummonMode
 -- settings key ("NameUndead", ...) -> its checkbox widget.
 local typeChecks = {}
+
+-- The MultiSummonMode enum, in the order it appears in the dropdown (a combo's
+-- SelectedIndex is 0-based, so index = position - 1).
+local MULTI_MODES = { "skip", "shared", "unique" }
+local MULTI_MODE_LABELS = {
+	"Do not name them",
+	"Share one name",
+	"Name each individually",
+}
+
+--- The 0-based combo index for a stored mode value (defaults to "skip").
+---@param value any
+---@return integer
+local function multiModeIndex(value)
+	for i, mode in ipairs(MULTI_MODES) do
+		if mode == value then
+			return i - 1
+		end
+	end
+	return 0
+end
+
+--- The currently selected mode value, or "skip" before the combo exists.
+---@return string
+local function selectedMultiMode()
+	if not multiSummonMode then
+		return "skip"
+	end
+	return MULTI_MODES[multiSummonMode.SelectedIndex + 1] or "skip"
+end
 
 -- Edits stay local until Save; reopening reloads from the server, which is
 -- what discards unsaved edits. baseSettings is the checkbox baseline;
 -- originalNames the per-row name baseline that keystrokes diff against.
-local baseSettings = { PromptOnSummon = true, PromptForNamed = false, AllowStorySummons = false }
+local baseSettings =
+	{ PromptOnSummon = true, PromptForNamed = false, AllowStorySummons = false, MultiSummonMode = "skip" }
 local originalNames = {}
 local pendingRenames = {}
 local pendingForgets = {}
@@ -42,6 +73,9 @@ local function settingsDirty()
 		return true
 	end
 	if promptForNamed.Checked ~= baseSettings.PromptForNamed then
+		return true
+	end
+	if selectedMultiMode() ~= baseSettings.MultiSummonMode then
 		return true
 	end
 	if allowStorySummons.Checked ~= baseSettings.AllowStorySummons then
@@ -109,11 +143,18 @@ local function loadSettings()
 		local onSummon = s.PromptOnSummon ~= false
 		local forNamed = s.PromptForNamed == true
 		local allowStory = s.AllowStorySummons == true
-		baseSettings = { PromptOnSummon = onSummon, PromptForNamed = forNamed, AllowStorySummons = allowStory }
+		local modeIdx = multiModeIndex(s.MultiSummonMode)
+		baseSettings = {
+			PromptOnSummon = onSummon,
+			PromptForNamed = forNamed,
+			AllowStorySummons = allowStory,
+			MultiSummonMode = MULTI_MODES[modeIdx + 1],
+		}
 		promptOnSummon.Checked = onSummon
 		promptForNamed.Checked = forNamed
 		promptForNamed.Disabled = not onSummon
 		allowStorySummons.Checked = allowStory
+		multiSummonMode.SelectedIndex = modeIdx
 
 		local every = s[Classifier.MASTER_KEY] == true
 		baseSettings[Classifier.MASTER_KEY] = every
@@ -138,6 +179,7 @@ local function onSave()
 		PromptOnSummon = promptOnSummon.Checked,
 		PromptForNamed = promptForNamed.Checked,
 		AllowStorySummons = allowStorySummons.Checked,
+		MultiSummonMode = selectedMultiMode(),
 		[Classifier.MASTER_KEY] = everySummonCheck.Checked,
 	}
 	for key, cb in pairs(typeChecks) do
@@ -146,13 +188,15 @@ local function onSave()
 	Channels.SetSettings:SendToServer(settings)
 	baseSettings = settings
 
-	for key in pairs(pendingForgets) do
-		Channels.ForgetName:SendToServer({ Key = key })
+	-- Staged edits are keyed by row (key + optional unique-set slot); the stored
+	-- value carries the Key/Slot the server needs.
+	for _, payload in pairs(pendingForgets) do
+		Channels.ForgetName:SendToServer(payload)
 	end
 	pendingForgets = {}
 
-	for key, name in pairs(pendingRenames) do
-		Channels.RenameName:SendToServer({ Key = key, Name = name })
+	for _, payload in pairs(pendingRenames) do
+		Channels.RenameName:SendToServer(payload)
 	end
 	pendingRenames = {}
 
@@ -209,6 +253,29 @@ local function groupBySummoner(entries)
 	return order, groups
 end
 
+--- A stable per-row id. A unique set has several rows under one key, so the slot
+--- disambiguates them; a plain saved name has no slot and keys by itself.
+---@param entry table
+---@return string
+local function stageId(entry)
+	if entry.Slot then
+		return entry.Key .. "#" .. tostring(entry.Slot)
+	end
+	return entry.Key
+end
+
+--- The template label for a row, suffixed with its slot for a unique set so the
+--- several rows of one creature type are told apart (e.g. "Wolf #2").
+---@param entry table
+---@return string
+local function rowLabel(entry)
+	local name = entry.TemplateName or "Summon"
+	if entry.Slot then
+		return name .. " #" .. tostring(entry.Slot)
+	end
+	return name
+end
+
 function refreshNames()
 	if not namesGroup then
 		return
@@ -238,36 +305,37 @@ function refreshNames()
 			local tbl = header:AddTable("Names_" .. owner, 3)
 			for _, entry in ipairs(group.rows) do
 				local row = tbl:AddRow()
-				originalNames[entry.Key] = entry.Name
+				local id = stageId(entry)
+				originalNames[id] = entry.Name
 
 				local input = row:AddCell():AddInputText("", entry.Name)
-				input.IDContext = "rename_" .. entry.Key
+				input.IDContext = "rename_" .. id
 				input.ItemWidth = Layout.ScaleW(200)
 				-- Stage on every keystroke; nothing is sent until Save.
 				input.OnChange = function()
 					local name = Util.Sanitise(input.Text or "")
-					if name ~= "" and name ~= originalNames[entry.Key] then
-						pendingRenames[entry.Key] = name
+					if name ~= "" and name ~= originalNames[id] then
+						pendingRenames[id] = { Key = entry.Key, Slot = entry.Slot, Name = name }
 					else
-						pendingRenames[entry.Key] = nil
+						pendingRenames[id] = nil
 					end
 					updateSaveButton()
 				end
 
-				local templateText = row:AddCell():AddText(entry.TemplateName or "Summon")
+				local templateText = row:AddCell():AddText(rowLabel(entry))
 				templateText.Disabled = true
 
 				local forget = row:AddCell():AddButton("Forget")
-				forget.IDContext = "forget_" .. entry.Key
+				forget.IDContext = "forget_" .. id
 				-- Removal is staged, not immediate; toggle it and grey the row's field.
 				forget.OnClick = function()
-					if pendingForgets[entry.Key] then
-						pendingForgets[entry.Key] = nil
+					if pendingForgets[id] then
+						pendingForgets[id] = nil
 						forget.Label = "Forget"
 						input.Disabled = false
 					else
-						pendingForgets[entry.Key] = true
-						pendingRenames[entry.Key] = nil
+						pendingForgets[id] = { Key = entry.Key, Slot = entry.Slot }
+						pendingRenames[id] = nil
 						forget.Label = "Undo"
 						input.Disabled = true
 					end
@@ -525,6 +593,16 @@ function ConfigUI.Open()
 			cb.OnChange = onTypeChange
 			typeChecks[Classifier.SettingKey(cat.key)] = cb
 		end
+
+		local multiLabel = configWindow:AddText("When one spell summons several creatures at once:")
+		multiLabel.Disabled = true
+		multiSummonMode = configWindow:AddCombo("")
+		multiSummonMode.IDContext = "multiSummonMode"
+		multiSummonMode.Options = MULTI_MODE_LABELS
+		multiSummonMode.SelectedIndex = 0
+		multiSummonMode.OnChange = updateSaveButton
+		local multiHint = configWindow:AddText("The names are remembered and reused the next time you summon.")
+		multiHint.Disabled = true
 
 		configWindow:AddSeparatorText("Saved names")
 		namesGroup = configWindow:AddGroup("SavedNamesList")

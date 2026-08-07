@@ -90,6 +90,7 @@ function TestStoreSettings:testDefaultsWhenUnset()
 	lu.assertEquals(s.PromptForNamed, false)
 	lu.assertEquals(s.ApplyToExisting, true)
 	lu.assertEquals(s.PauseOnPrompt, true)
+	lu.assertEquals(s.MultiSummonMode, "skip")
 end
 
 function TestStoreSettings:testHonoursStoredOverride()
@@ -135,4 +136,71 @@ end
 function TestStoreSettings:testSetEverySummonMasterPersists()
 	lu.assertTrue(Store.SetSetting("NameEverySummon", true))
 	lu.assertEquals(Store.Settings().NameEverySummon, true)
+end
+
+function TestStoreSettings:testSetSettingAcceptsMultiSummonModeEnum()
+	lu.assertTrue(Store.SetSetting("MultiSummonMode", "shared"))
+	lu.assertEquals(Store.Settings().MultiSummonMode, "shared")
+	lu.assertTrue(Store.SetSetting("MultiSummonMode", "unique"))
+	lu.assertEquals(Store.Settings().MultiSummonMode, "unique")
+end
+
+function TestStoreSettings:testSetSettingRejectsUnknownMultiSummonMode()
+	lu.assertFalse(Store.SetSetting("MultiSummonMode", "sometimes"))
+	lu.assertFalse(Store.SetSetting("MultiSummonMode", true))
+	lu.assertNil(backing["Settings"])
+end
+
+TestStoreUniqueSets = {}
+
+function TestStoreUniqueSets:setUp()
+	freshBacking()
+end
+
+function TestStoreUniqueSets:testAppendBuildsDenseArray()
+	Store.AppendUnique("k", "Alpha")
+	Store.AppendUnique("k", "Beta")
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta" })
+end
+
+function TestStoreUniqueSets:testAppendPromotesExistingString()
+	Store.Set("k", "Alpha")
+	Store.AppendUnique("k", "Beta")
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta" })
+end
+
+function TestStoreUniqueSets:testSetSlotOverwrites()
+	Store.AppendUnique("k", "Alpha")
+	Store.AppendUnique("k", "Beta")
+	Store.SetSlot("k", 2, "Gamma")
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Gamma" })
+end
+
+function TestStoreUniqueSets:testSetSlotIgnoresOutOfRange()
+	Store.AppendUnique("k", "Alpha")
+	Store.SetSlot("k", 5, "Nope")
+	lu.assertEquals(Store.Get("k"), { "Alpha" })
+end
+
+function TestStoreUniqueSets:testForgetSlotCompacts()
+	Store.AppendUnique("k", "Alpha")
+	Store.AppendUnique("k", "Beta")
+	Store.AppendUnique("k", "Gamma")
+	Store.ForgetSlot("k", 2)
+	-- The array stays dense (1..N), never sparse, or it serialises as an object.
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Gamma" })
+end
+
+function TestStoreUniqueSets:testForgetLastSlotDropsKey()
+	Store.AppendUnique("k", "Alpha")
+	Store.ForgetSlot("k", 1)
+	lu.assertNil(Store.Get("k"))
+end
+
+function TestStoreUniqueSets:testAppendIgnoredWhenSkipped()
+	Store.Skip("k")
+	Store.AppendUnique("k", "Alpha")
+	-- A name and an always-skip are mutually exclusive; skipping wins.
+	lu.assertNil(Store.Get("k"))
+	lu.assertTrue(Store.IsSkipped("k"))
 end

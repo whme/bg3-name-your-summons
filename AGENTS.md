@@ -38,6 +38,8 @@ the game.
   API is not used.
 - **Persistence**: names live in ModVars (`Ext.Vars.RegisterModVariable`),
   written into the savegame. `PersistentVars` is deprecated and not used. A
+  saved value is EITHER one string (the shared name) OR an array of strings (a
+  "unique set" - one distinct name per creature of a multi-summon; see below). A
   parallel `SkippedSummons` ModVar is the set of keys the player chose to always
   skip; it is mutually exclusive with a saved name (naming clears the skip and
   vice versa).
@@ -47,6 +49,20 @@ the game.
   `SessionLoaded` before names are reapplied. Handles are derived from the name
   text (FNV-1a), which is what makes that re-registration possible without
   finding the entity first.
+- **Multi-summon** (one spell, several creatures of the same type at once, e.g.
+  Conjure Animals): those creatures share one owner and template, hence one key.
+  The `MultiSummonMode` setting (`skip` default / `shared` / `unique`) decides
+  handling. The summon count is NOT knowable up front (it lives in
+  `StatsFunctors` that Lua cannot read; container spells resolve creatures by
+  player choice + upcast), so detection stays reactive per-creature: `shared`
+  prompts once and applies to every live sibling; `unique` prompts per creature
+  (guarded per-UUID) and stores a set; `skip` prompts the first creature and
+  retracts (`Channels.RetractPrompt`) if a sibling reveals it to be a group.
+  Re-summoning an already-named key is handled by a debounced per-cast resolver
+  (`scheduleResolve` -> `resolveGroup`) scoped to only THAT cast's creatures (so
+  older summons of the type keep their names), and it follows the CURRENT
+  `MultiSummonMode`, not how the value was stored - switching `unique` -> `shared`
+  collapses the stored set to its first name on the next summon and re-asks once.
 
 ## Project Structure
 
@@ -72,7 +88,7 @@ NameYourSummons/                     <- pak this folder
           Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
-          ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter) + saved-name, always-skipped and session-skipped managers
+          ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter, multi-summon mode) + saved-name, always-skipped and session-skipped managers
 ```
 
 ## Reference docs

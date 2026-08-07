@@ -117,16 +117,26 @@ end
 
 --- Re-registers every saved name's handle. Runtime localisation entries do not
 --- survive a restart, so this runs on session load before any name is re-applied.
----@param names table<string,string>  key -> name
+--- A stored value is either one name (string) or a unique set (array of names).
+---@param names table<string,string|string[]>  key -> name or unique set
 function Naming.SeedLoca(names)
 	local seeded = {}
 	local n = 0
-	for _, name in pairs(names) do
+	local function seed(name)
 		local handle = Util.LocaHandleFor(name)
 		if not seeded[handle] then
 			seeded[handle] = name
 			Writer.RegisterLoca(handle, name)
 			n = n + 1
+		end
+	end
+	for _, value in pairs(names) do
+		if type(value) == "table" then
+			for _, name in ipairs(value) do
+				seed(name)
+			end
+		else
+			seed(value)
 		end
 	end
 	if n > 0 then
