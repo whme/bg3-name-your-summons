@@ -105,3 +105,27 @@ function TestLocaHandleFor:testShape()
 	lu.assertEquals(Util.LocaHandleFor(""), "hNameYourSummons811c9dc5")
 	lu.assertStrMatches(Util.LocaHandleFor("x"), "hNameYourSummons%x%x%x%x%x%x%x%x")
 end
+
+TestAssignByOrder = {}
+
+function TestAssignByOrder:testAssignsBySortedUuidOrder()
+	local out = Util.AssignByOrder({ "ccc", "aaa", "bbb" }, { "Alpha", "Beta", "Gamma" })
+	-- Sorted uuids: aaa, bbb, ccc -> Alpha, Beta, Gamma.
+	lu.assertEquals(out, { aaa = "Alpha", bbb = "Beta", ccc = "Gamma" })
+end
+
+function TestAssignByOrder:testConvergesRegardlessOfInputOrder()
+	local a = Util.AssignByOrder({ "aaa", "bbb" }, { "One", "Two" })
+	local b = Util.AssignByOrder({ "bbb", "aaa" }, { "One", "Two" })
+	lu.assertEquals(a, b)
+end
+
+function TestAssignByOrder:testLeavesExtraUuidsUnassigned()
+	local out = Util.AssignByOrder({ "aaa", "bbb", "ccc" }, { "Only" })
+	lu.assertEquals(out, { aaa = "Only" })
+end
+
+function TestAssignByOrder:testIgnoresExtraNames()
+	local out = Util.AssignByOrder({ "aaa" }, { "One", "Two", "Three" })
+	lu.assertEquals(out, { aaa = "One" })
+end

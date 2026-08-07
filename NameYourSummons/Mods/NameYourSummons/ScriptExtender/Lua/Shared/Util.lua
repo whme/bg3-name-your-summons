@@ -61,6 +61,29 @@ function Util.IsStorySummon(rootTemplate)
 	return STORY_SUMMON_TEMPLATES[Util.ToUuid(rootTemplate)] == true
 end
 
+--- Assign a set of names to a set of uuids by sorted-uuid order: the i-th uuid
+--- (sorted ascending) gets names[i]. Uuids beyond #names are left unassigned
+--- (an upcast summoned more creatures than there are saved names). Deterministic
+--- and independent of call order, so distributing a unique set converges as the
+--- creatures trickle in one by one, without any per-creature identity.
+---@param uuids string[]
+---@param names string[]
+---@return table<string,string>  uuid -> name
+function Util.AssignByOrder(uuids, names)
+	local sorted = {}
+	for _, uuid in ipairs(uuids) do
+		sorted[#sorted + 1] = uuid
+	end
+	table.sort(sorted)
+	local out = {}
+	for i, uuid in ipairs(sorted) do
+		if names[i] ~= nil then
+			out[uuid] = names[i]
+		end
+	end
+	return out
+end
+
 --- FNV-1a, 32 bit.
 ---@param s string
 ---@return integer
