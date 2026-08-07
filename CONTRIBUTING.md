@@ -32,10 +32,26 @@ binaries fetched on first use into `.tools/` (gitignored).
 ./make.ps1 typecheck     # lua-language-server
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+./make.ps1 build         # pack the mod into build/ (.pak + .zip)
 ```
 
 Run `./make.ps1 check` before you push; CI runs the exact same commands via
 `pwsh` on Linux, so a green local `check` means a green CI.
+
+## Building the mod
+
+`./make.ps1 build` packs the mod into `build/`. On first run it downloads a
+pinned [LSLib](https://github.com/Norbyte/lslib) release into `.tools/` (needs
+the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)),
+then produces:
+
+- `build/NameYourSummons-<version>.pak` - the installable mod; drop it in
+  `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.
+- `build/NameYourSummons-<version>.zip` - the same `.pak` zipped for upload.
+
+Pass `-Clean` (`./make.ps1 build -Clean`) to wipe `build/` first. (The **BG3
+Modder's Multitool** *Create Package* still works too - it wraps the same LSLib
+packer.)
 
 ## Quality gates
 

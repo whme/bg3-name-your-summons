@@ -14,24 +14,7 @@ Requires [Norbyte's Script Extender](https://github.com/Norbyte/bg3se) (BG3SE).
    `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.
 3. Enable the mod in-game from the **Mods** menu.
 
-### Building from source
-
-Run the build command from PowerShell:
-
-```powershell
-./make.ps1 build
-```
-
-It downloads a pinned [LSLib](https://github.com/Norbyte/lslib) release into
-`.tools/` on first run (needs the
-[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)),
-then packs the mod into `build/`:
-
-- `build/NameYourSummons-<version>.pak` - drop it in per the install steps above.
-- `build/NameYourSummons-<version>.zip` - the same `.pak` zipped for upload.
-
-Pass `./make.ps1 build -Clean` to wipe `build/` first. (The **BG3 Modder's Multitool**
-*Create Package* still works too - it wraps the same LSLib packer.)
+Want to build from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Using it
 
