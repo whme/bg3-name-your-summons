@@ -6,19 +6,19 @@ text-entry prompt the moment a summon appears.
 
 ## Requirements
 
-### Off-site requirements
-
 | Mod name | Notes |
 |---|---|
 | [Baldur's Gate 3 Script Extender](https://github.com/Norbyte/bg3se) (BG3SE) | **Required.** Built against Script Extender API v30 - install a build that supports v30 or newer. |
 
 ## Installing
 
-1. Download the latest `.pak` from the
-   [Releases](https://github.com/whme/bg3-name-your-summons/releases) page.
-2. Drop the `.pak` in
-   `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.
-3. Enable the mod in-game from the **Mods** menu.
+Install both parts in order.
+
+| Step | How |
+|---|---|
+| 1. Script Extender | Download the latest updater from the [BG3SE releases](https://github.com/Norbyte/bg3se/releases) page and extract `DWrite.dll` into the game's `bin` folder, next to `bg3.exe` (e.g. `...\steamapps\common\Baldurs Gate 3\bin\`). It downloads and updates itself the next time you launch the game. |
+| 2. Name Your Summons | Download the latest `.pak` from the [Releases](https://github.com/whme/bg3-name-your-summons/releases) page and drop it in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`. |
+| 3. Enable it | Launch the game and enable **Name Your Summons** from the **Mods** menu. |
 
 ### Building from source
 
