@@ -98,8 +98,29 @@ You **cannot run the game** in CI, and neither can a reviewer quickly. So:
   net, ImGui, and timing code into the thin glue modules (`SummonWatcher`,
   `Naming`, `PromptUI`, `Channels`).
 - **In-game behaviour** is verified with the Script Extender console commands
-  (`!nys_diag`, `!nys_rename`, `!nys_list`, ...). If a change needs in-game
-  confirmation, say so in your PR and name the command a reviewer should run.
+  (see below). If a change needs in-game confirmation, say so in your PR and
+  name the command a reviewer should run.
+
+## Console commands
+
+These commands run in the Script Extender console - a separate window that opens
+alongside the game once you enable it in
+`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Script Extender\ScriptExtenderSettings.json`:
+
+```json
+{ "CreateConsole": true, "DeveloperMode": true }
+```
+
+| Command | Context | What it does |
+|---|---|---|
+| `!nys_list` | server | list all saved names |
+| `!nys_diag` | server | dump what the game thinks your summons are named |
+| `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
+| `!nys_clear` | server | wipe all saved names |
+| `!nys_ui` | **client** (type `client` first) | open the in-game config (settings + saved-name manager) |
+
+`!nys_diag` is the primary debugging tool: when a name will not stick, paste its
+output when reporting the issue.
 
 ## Coding conventions
 

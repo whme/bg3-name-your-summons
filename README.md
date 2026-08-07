@@ -33,8 +33,8 @@ spider) are remembered separately.
 
 ### In-game config
 
-The naming prompt has a *Settings* button that opens the config window (also
-reachable from the console with `!nys_ui`). There you can:
+The naming prompt has a *Settings* button that opens the config window. There
+you can:
 
 - Review every saved name in the current save, grouped by the character that
   summoned it, then edit or forget any of them. Nothing takes effect until you
@@ -51,26 +51,6 @@ reachable from the console with `!nys_ui`). There you can:
     prompt; turn it on to name them like any other summon.
 
 Settings and names live in the host's save.
-
-### Console commands
-
-The commands run in the Script Extender console - a separate window that opens
-alongside the game once you enable it in
-`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Script Extender\ScriptExtenderSettings.json`:
-
-```json
-{ "CreateConsole": true, "DeveloperMode": true }
-```
-
-| Command | Context | What it does |
-|---|---|---|
-| `!nys_list` | server | list all saved names |
-| `!nys_diag` | server | dump what the game thinks your summons are named |
-| `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
-| `!nys_clear` | server | wipe all saved names |
-| `!nys_ui` | **client** (type `client` first) | open the in-game config (settings + saved-name manager) |
-
-If a name won't stick, run `!nys_diag` and paste the output when asking for help.
 
 ## Multiplayer
 
