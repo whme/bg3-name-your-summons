@@ -63,22 +63,6 @@ the game.
   older summons of the type keep their names), and it follows the CURRENT
   `MultiSummonMode`, not how the value was stored - switching `unique` -> `shared`
   collapses the stored set to its first name on the next summon and re-asks once.
-- **Native Examine rename** (`Client/NativeRenameUI.lua` + `GUI/`): the Examine
-  panel gets an editable name field (`NYS_NameInput`) and a settings gear
-  (`NYS_SettingsButton`) via an `Examine.xaml` override (a state override in
-  `StateMachines/Keyboard.xaml` points the Examine state at our page). The
-  examined creature's uuid is read from the panel's Noesis DataContext
-  (`DCExamine.EntityUUID` + `CharacterType == "Summon"`) and renames go to the
-  server over `Channels.RenameSummon`. Commit is driven by GLOBAL input events
-  (`Ext.Events.MouseButtonInput` / `KeyInput`), NOT the panel's routed UI events:
-  the panel is a separate Noesis popup tree (`Ext.UI.GetRoot()` never sees its
-  events) and the field's focus events do not fire on the first open after a load.
-  Enter and click-away both commit (deduped); the gear opens config via its own
-  reliable tunneling `PreviewMouseLeftButtonDown`. The mouse hook is always live
-  (it is the only "panel opened" detector - `Ext.UI.GetStateMachine()` is stubbed
-  to `nullptr` in this SE build, so there is no cheap/event-driven signal); the key
-  hook is subscribed only while the panel is open. See GH issue for the
-  state-machine follow-up.
 
 ## Project Structure
 
@@ -105,12 +89,6 @@ NameYourSummons/                     <- pak this folder
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
           ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter, multi-summon mode) + saved-name, always-skipped and session-skipped managers
-          NativeRenameUI.lua         native Examine-panel rename field + gear (see "Native Examine rename" below)
-    GUI/                             UI-mod overlay (packed alongside ScriptExtender)
-      metadata.lsf                   UI-mod marker (empty config)
-      Pages/Examine.xaml             Examine.xaml override: injects the editable name field + settings gear for summons
-      StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
-      StateMachines/Controller.xaml  empty (no controller overrides)
 ```
 
 ## Reference docs

@@ -84,24 +84,6 @@ function Util.AssignByOrder(uuids, names)
 	return out
 end
 
--- A bare or trailing uuid, matching Util.ToUuid's accepted shape.
-local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
-
---- Validate a client "rename this summon" request: a table carrying a uuid-shaped
---- SummonUuid and a name that survives sanitising non-empty. Client input is
---- trusted but sanitised (AGENTS.md), so the caller still confirms Osi.IsSummon.
----@param payload any
----@return boolean
-function Util.IsRenameRequestValid(payload)
-	if type(payload) ~= "table" then
-		return false
-	end
-	if type(payload.SummonUuid) ~= "string" or not payload.SummonUuid:match(UUID_PATTERN) then
-		return false
-	end
-	return Util.Sanitise(payload.Name) ~= ""
-end
-
 --- FNV-1a, 32 bit.
 ---@param s string
 ---@return integer

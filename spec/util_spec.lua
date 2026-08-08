@@ -82,32 +82,6 @@ function TestIsStorySummon:testFalseForNonStrings()
 	lu.assertFalse(Util.IsStorySummon(42))
 end
 
-TestIsRenameRequestValid = {}
-
-function TestIsRenameRequestValid:testTrueForUuidAndName()
-	lu.assertTrue(Util.IsRenameRequestValid({ SummonUuid = UUID, Name = "Fluffy" }))
-end
-
-function TestIsRenameRequestValid:testAcceptsPrefixedGuidstring()
-	lu.assertTrue(Util.IsRenameRequestValid({ SummonUuid = "S_Wolf_" .. UUID, Name = "Rex" }))
-end
-
-function TestIsRenameRequestValid:testFalseForNonTable()
-	lu.assertFalse(Util.IsRenameRequestValid(nil))
-	lu.assertFalse(Util.IsRenameRequestValid("nope"))
-end
-
-function TestIsRenameRequestValid:testFalseForMissingOrMalformedUuid()
-	lu.assertFalse(Util.IsRenameRequestValid({ Name = "Fluffy" }))
-	lu.assertFalse(Util.IsRenameRequestValid({ SummonUuid = "not-a-uuid", Name = "Fluffy" }))
-	lu.assertFalse(Util.IsRenameRequestValid({ SummonUuid = 42, Name = "Fluffy" }))
-end
-
-function TestIsRenameRequestValid:testFalseForEmptyName()
-	lu.assertFalse(Util.IsRenameRequestValid({ SummonUuid = UUID, Name = "   " }))
-	lu.assertFalse(Util.IsRenameRequestValid({ SummonUuid = UUID }))
-end
-
 TestHash32 = {}
 
 -- Canonical FNV-1a 32-bit test vectors.

@@ -24,10 +24,6 @@ Channels.ForgetName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ForgetN
 -- Client -> Server: "change the text of this saved name"
 Channels.RenameName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameName")
 
--- Client -> Server: "rename this specific live summon" (from a native UI control
--- that only knows the creature's uuid, not the storage key).
-Channels.RenameSummon = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameSummon")
-
 -- Client -> Server (request/reply): "give me the always-skipped summons"
 Channels.ListSkipped = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListSkipped")
 

@@ -148,19 +148,6 @@ function Store.AppendUnique(key, name)
 	v[VAR_NAMES] = t
 end
 
---- Replace a key's unique set with a dense array of names, seeding one that does
---- not exist yet (unlike SetSlot). Clears any always-skip, like Store.Set.
----@param key string
----@param list string[]
-function Store.SetUnique(key, list)
-	local v = vars()
-	local t = v[VAR_NAMES] or {}
-	t[key] = list
-	v[VAR_NAMES] = t
-	-- A name and an always-skip are mutually exclusive; naming clears the skip.
-	Store.Unskip(key)
-end
-
 --- Overwrite one entry of a key's unique set. Out-of-range slots are ignored.
 ---@param key string
 ---@param slot integer

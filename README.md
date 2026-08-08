@@ -37,14 +37,6 @@ Play resumes as soon as you name or skip.
 Each summoner keeps its own names, and different familiar shapes (cat, raven,
 spider) are remembered separately.
 
-### Renaming from the Examine panel
-
-You can also rename a summon any time from its Examine screen (right-click the
-creature -> *Examine*). Summons get an editable name field in place of the usual
-name: click it, type, and press Enter - or just click away - to rename. The gear
-button next to the field opens the config window. This uses the same saved names
-as the prompt, so a rename here sticks and comes back on the next summon.
-
 ### In-game config
 
 The naming prompt has a *Settings* button that opens the config window. There
