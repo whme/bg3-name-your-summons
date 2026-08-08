@@ -68,9 +68,25 @@ function TestSetDisplayName:testReplicatesOnlyWhenAsked()
 	lu.assertEquals(client.replicated, {})
 end
 
-function TestSetDisplayName:testAlwaysMarksChanged()
+function TestSetDisplayName:testMarksChangedWhenValueChanges()
 	local e = fakeEntity()
 	Writer.SetDisplayName(e, "hHandle", 0, false)
+	lu.assertEquals(e.marked, { "DisplayName" })
+end
+
+function TestSetDisplayName:testNoOpWhenHandleAndVersionUnchanged()
+	local e = fakeEntity()
+	e.DisplayName.Name.Handle = { Handle = "hHandle", Version = 0 }
+	lu.assertEquals(Writer.SetDisplayName(e, "hHandle", 0, true), true)
+	lu.assertEquals(e.replicated, {})
+	lu.assertEquals(e.marked, {})
+end
+
+function TestSetDisplayName:testRewritesWhenOnlyVersionDiffers()
+	local e = fakeEntity()
+	e.DisplayName.Name.Handle = { Handle = "hHandle", Version = 7 }
+	Writer.SetDisplayName(e, "hHandle", 0, false)
+	lu.assertEquals(e.DisplayName.Name.Handle.Version, 0)
 	lu.assertEquals(e.marked, { "DisplayName" })
 end
 
