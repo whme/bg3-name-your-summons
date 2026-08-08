@@ -14,7 +14,7 @@ that proves it, and batch your investigation so one run answers many questions.
    need to confirm each, and how to procure them (extract the game's files, probe
    live state, read the API/source).
 3. **Instrument as broadly as you can**, so one run gives the full picture -
-   every candidate event/field logged (timestamped, gated behind `DEBUG`).
+   every candidate event/field logged (gated behind `DEBUG`).
 4. **Agree a runbook with the user**: the exact, ordered steps they will take in
    game, and what each should log - so you know which lines to expect and,
    crucially, what a *missing* line means.
@@ -43,7 +43,7 @@ what each step should produce. A real example the user settled on:
 > Enter, hover the portrait to check the rename took, click the gear. Close
 > Examine, reopen it, and repeat the rename. Then paste the full log.
 
-## Instrument broadly, and timestamp everything
+## Instrument broadly
 
 When you do not know which engine event/field/path is live, **do not subscribe to
 one guess - subscribe to the whole candidate set**, each handler logging when it
@@ -56,13 +56,8 @@ PreviewGot/LostKeyboardFocus, KeyDown, PreviewKeyDown, KeyUp,
 TextInput, PreviewTextInput, MouseLeft*, MouseDown, MouseUp
 ```
 
-- **Every line is timestamped.** `Util.Log`/`Util.Warn` prefix each line with
-  `Ext.Timer.ClockTime()` - a sub-second wall clock (e.g.
-  `2026-08-08 14:23:01.1234567`) - so ordering and inter-event gaps are visible
-  in one pasted log. The fast-typing truncation bug in #9 was only diagnosable
-  from those gaps.
-- Gate verbose output behind `local DEBUG = true` / a `dbg(...)` helper so you
-  can silence and strip it before shipping.
+Gate verbose output behind `local DEBUG = true` / a `dbg(...)` helper so you can
+silence and strip it before shipping.
 
 ## Isolate a failure with a verbatim variant
 
