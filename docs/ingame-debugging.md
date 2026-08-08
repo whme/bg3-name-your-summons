@@ -6,14 +6,19 @@ output the user pastes back. Every game run costs the user a full restart, so
 **make each run count**: never claim something works in game without a pasted log
 that proves it, and batch your investigation so one run answers many questions.
 
-## The loop
+## The workflow
 
-1. Form specific questions ("which event fires when the field is left?"), not
-   vague ones ("why is rename broken?").
-2. Instrument for **all** current theories at once - one build that logs every
-   path you are unsure about, so a single run decides between them.
-3. Agree with the user on the exact in-game steps before they run (see below).
-4. Read the pasted console output; change one thing based on evidence; repeat.
+1. **Understand the goal.** Pin down the broad objective (e.g. "native text
+   input on the Examine screen") fully before touching code.
+2. **Research and reason.** Work out which approaches are viable, what facts you
+   need to confirm each, and how to procure them (extract the game's files, probe
+   live state, read the API/source).
+3. **Instrument as broadly as you can**, so one run gives the full picture -
+   every candidate event/field logged (timestamped, gated behind `DEBUG`).
+4. **Agree a runbook with the user**: the exact, ordered steps they will take in
+   game, and what each should log - so you know which lines to expect and,
+   crucially, what a *missing* line means.
+5. **Analyze, reshape, repeat** until it works.
 
 ### Deploy and reload
 
@@ -51,10 +56,11 @@ PreviewGot/LostKeyboardFocus, KeyDown, PreviewKeyDown, KeyUp,
 TextInput, PreviewTextInput, MouseLeft*, MouseDown, MouseUp
 ```
 
-- **Prefix every log line with a UTC timestamp at microsecond precision**
-  (`%Y-%m-%d %H:%M:%S.%f %z`, the format used elsewhere in these repos). Ordering
-  and inter-event gaps are what expose races - the fast-typing truncation bug in
-  #9 was only visible from timestamps.
+- **Every line is timestamped.** `Util.Log`/`Util.Warn` prefix each line with
+  `Ext.Timer.ClockTime()` - a sub-second wall clock (e.g.
+  `2026-08-08 14:23:01.1234567`) - so ordering and inter-event gaps are visible
+  in one pasted log. The fast-typing truncation bug in #9 was only diagnosable
+  from those gaps.
 - Gate verbose output behind `local DEBUG = true` / a `dbg(...)` helper so you
   can silence and strip it before shipping.
 
@@ -102,16 +108,8 @@ The SE console is a separate window that stays up while the game runs. Signals:
   - `UI State verification failed ... state 'X'` -> that page failed to parse
     (often an unresolved `StaticResource` or an unstyled bare control).
 
-## Checklist
+## Before you finish
 
-1. One specific question set per iteration; instrument for all of them in one
-   build.
-2. Log broadly when the live path is unknown; timestamp every line (UTC, us);
-   gate behind `DEBUG`.
-3. Tell the user `reset` (Lua) or full restart (XAML/assets), and agree the exact
-   in-game steps first.
-4. Read engine errors literally; confirm suspected-renamed APIs from bg3se
-   source.
-5. Keep per-tick work cheap; prefer events over polling.
-6. Never claim in-game success without a log that shows it.
-7. Strip all `TEMPORARY` tooling and `DEBUG` logging before the PR.
+Strip all `TEMPORARY` discovery tooling and turn off (or remove) `DEBUG` logging
+once the feature works - the throwaway commands, bridges, and verbose logs should
+never reach the PR.
