@@ -1,14 +1,9 @@
 --[[
     Client side of the native "rename this summon" control (GH #9).
 
-    The examined creature's identity is read from the Examine panel's Noesis
-    DataContext, which exposes EntityUUID + CharacterType. This module:
-      - reads the uuid of the summon on the open Examine screen (ExaminedSummonUuid),
-      - sends a rename to the server (SubmitRename), and
-      - drives the native name field: Enter or clicking away renames it, and the
-        gear button opens the config window.
-
-    Commit is driven by global input events, not the panel's own routed UI events -
+    The examined creature's uuid is read from the Examine panel's Noesis
+    DataContext (EntityUUID + CharacterType) and a rename is sent to the server.
+    Commit is driven by global input events, not the panel's routed UI events -
     see the note above the control handlers for why.
 ]]
 
@@ -120,7 +115,7 @@ end
 --- an EntityUUID and a "Summon" CharacterType (the examined-creature view model,
 --- inherited down the subtree).
 ---@return string|nil
-function NativeRenameUI.ExaminedSummonUuid()
+local function examinedSummonUuid()
 	local root = safe(Ext.UI.GetRoot)
 	if root == nil then
 		return nil
@@ -157,7 +152,7 @@ end
 ---@param uuid string
 ---@param rawName string
 ---@return boolean
-function NativeRenameUI.SubmitRename(uuid, rawName)
+local function submitRename(uuid, rawName)
 	local name = Util.Sanitise(rawName)
 	if type(uuid) ~= "string" or name == "" then
 		return false
@@ -175,18 +170,11 @@ end
 -- not fire on the first open after a load. The global SDL-level input events fire on
 -- every click and key regardless, so commit is driven by those; the gear is a plain
 -- Grid whose own tunneling click is reliable and keeps a per-open subscription.
-local DEBUG = false -- flip to true for verbose client-side lifecycle logging
 local gearWired = false -- gear click subscribed for the current panel open
 local editing = false -- an edit session is active (baseline captured on first click)
-local panelOpen = false -- last-seen panel presence (field exists), for open/close logs
+local panelOpen = false -- last-seen panel presence (field exists)
 local keySub = nil -- KeyInput subscription handle; only held while the panel is open
 local lastSent = nil -- last committed sanitised text, to dedup Enter + click-away
-
-local function dbg(...)
-	if DEBUG then
-		Util.Log(...)
-	end
-end
 
 --- Every visual node whose Name matches, found from the composition root.
 ---@param name string
@@ -229,18 +217,14 @@ end
 --- Enter followed by a click-away (or repeated clicks) sends only once. The uuid
 --- (a DataContext walk) is resolved only after we know the text actually changed.
 ---@param field any
-local function commitField(field, reason)
-	local raw = safe(function()
-		return field.Text
-	end)
-	local name = type(raw) == "string" and Util.Sanitise(raw) or ""
+local function commitField(field)
+	local raw = nodeText(field)
+	local name = Util.Sanitise(raw)
 	if name == "" or name == lastSent then
-		dbg(("NYS: commit(%s) skipped (name='%s' last='%s')"):format(reason, name, tostring(lastSent)))
 		return
 	end
-	local uuid = NativeRenameUI.ExaminedSummonUuid()
-	dbg(("NYS: commit(%s) name='%s' uuid=%s"):format(reason, name, tostring(uuid)))
-	if uuid ~= nil and NativeRenameUI.SubmitRename(uuid, raw) then
+	local uuid = examinedSummonUuid()
+	if uuid ~= nil and submitRename(uuid, raw) then
 		lastSent = name
 		Util.Log(("NYS: renamed %s -> '%s'"):format(uuid, name))
 	end
@@ -248,7 +232,6 @@ end
 
 --- Open the config window (subscribed on the gear element's tunneling click).
 local function onGearClick()
-	dbg("NYS: gear clicked -> open config")
 	ConfigUI.Open()
 end
 
@@ -278,8 +261,7 @@ local function onKeyInput(e)
 	end
 	local field = liveField()
 	if field ~= nil then
-		dbg("NYS: enter pressed")
-		commitField(field, "enter")
+		commitField(field)
 	end
 end
 
@@ -293,14 +275,12 @@ local function setPanelOpen(open)
 	end
 	panelOpen = open
 	if open then
-		dbg("NYS: panel open")
 		if keySub == nil then
 			keySub = safe(function()
 				return Ext.Events.KeyInput:Subscribe(onKeyInput)
 			end)
 		end
 	else
-		dbg("NYS: panel closed")
 		gearWired = false
 		editing = false
 		if keySub ~= nil then
@@ -336,11 +316,10 @@ local function onMouseButton(e)
 		gearWired = true
 	end
 	if editing then
-		commitField(field, "click-away")
+		commitField(field)
 	else
 		editing = true
 		lastSent = Util.Sanitise(nodeText(field))
-		dbg(("NYS: edit session start; baseline='%s'"):format(tostring(lastSent)))
 	end
 end
 
