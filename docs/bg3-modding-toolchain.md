@@ -31,6 +31,7 @@ markup, plain text); `.lsx` (Larian XML, plain text) with binary equivalents
 | Official modding docs | `docs.baldursgate3.game` (e.g. `Extending_UI`) | Larian's UI-mod / toolkit docs. |
 | Community wiki | `wiki.bg3.community` | General modding knowledge and formats. |
 | NoesisGUI docs | `noesisengine.com/docs` | The UI engine. Noesis mirrors WPF, so **Microsoft's WPF/XAML docs also apply**. |
+| KEN (KnowEasier Noesis debugger) | `nexusmods.com/baldursgate3/mods/19849` | Mazzle's in-game live Noesis inspector - object tree + property inspector. See "Inspecting the live tree" below. |
 | Reference mods | ImpUI `github.com/TheRealDjmr/BG3ImprovedUI`; Advanced Character Sheet `github.com/Coyote-31/bg3-advanced-character-sheet` | Real UI-mod `GUI/` tree, `metadata.lsf`, state machines. |
 
 **Caveat: the IDE helpers and wikis drift behind the installed build.** When a
@@ -47,7 +48,8 @@ rename and confirm against the extender source. (In #9 the live client event was
   `ls:UIWidget`, etc. (find styles by extracting the game's XAML).
 - **Introspect the live tree** via `Ext.UI.GetRoot()`, then walk
   `.VisualChildrenCount` / `:VisualChild(i)`, reading `.Name` / `.DataContext`;
-  attach handlers with `element:Subscribe("<RoutedEvent>", fn)`.
+  attach handlers with `element:Subscribe("<RoutedEvent>", fn)`. KEN (below) does
+  this interactively, so reach for it before hand-rolling a tree-walk.
 - **A DataContext can be opaque.** Panels sharing the generic `ui::DCWidget` have
   zero SE-typed fields; read their **dynamic Noesis properties** with
   `dc:GetAllProperties()` / `dc:GetProperty(name)`, not `TypeInfo.Members`. Some
@@ -56,6 +58,58 @@ rename and confirm against the extender source. (In #9 the live client event was
 - **Routed events tunnel then bubble:** `PreviewMouseLeftButtonDown` fires before
   `MouseLeftButtonDown`. Prefer the bubbling variant unless you must preempt.
 - **Key names are prefixed `Key_`** (`Key_Enter`, `Key_LeftShift`).
+- **Invoke native commands from SE.** View-model DataContexts expose the game's
+  `ui::DeferredCommand`s as `Noesis::BaseCommand` objects (e.g. `ExamineCommand`,
+  `ShowProfileCommand`). Fetch one with `dc:GetProperty("XCommand")` and call
+  `cmd:CanExecute(param)` / `cmd:Execute(param)`. The parameter must be the exact
+  Noesis object the game's XAML binds as that command's `CommandParameter` - a
+  light C++ object, not an SE `Entity`, a uuid string, or a number (those raise
+  `Param 2: expected a light C++ object` / `Expected Noesis::BaseComponent, got
+  Entity`). This drives native UI that has no SE/Osiris entry point - e.g. opening
+  the Examine panel even though `Ext.UI.GetStateMachine()` is stubbed (see KEN,
+  below).
+
+### Using KEN (live Noesis inspection)
+
+Mazzle's KnowEasier Noesis debugger (KEN,
+`nexusmods.com/baldursgate3/mods/19849`) is an in-game, Script-Extender-based
+inspector for the live Noesis tree - the interactive form of the manual
+`Ext.UI.GetRoot()` walking above. Reach for it before hand-rolling a tree-walk.
+
+**Install.** KEN depends on MCM (Mod Configuration Menu,
+`nexusmods.com/baldursgate3/mods/9162`); without it KEN's client script dies at
+load (`attempt to index a nil value (global 'MCM')`) and never shows a window.
+Install MCM (plus its own requirements), load it before KEN, and restart.
+
+**Use.**
+
+- The left pane is the object tree (rooted at `ContentRoot` or the main root)
+  listing both logical and visual children; the right pane is a property
+  inspector that dumps every property an object holds or inherits, including its
+  `DataContext` view-model.
+- It generates a copy-pasteable path for any node. The `FindChildWithName(...)`
+  step is a **display-only placeholder** - substitute a real child lookup (the
+  visual-tree DFS by `.Name` that `NativeRenameUI` uses); the tree *shape* is
+  accurate.
+- The inspector is read-only and shows only *live* state, so open the panel you
+  want first. Search filters tree nodes (not property names), with
+  case/exact/visual-children/depth toggles.
+
+**What we have mapped with it** (general facts, reusable across UI work):
+
+- `ContentRoot` is the composition root; panels hang off it by name (`Examine`,
+  `PlayerPortraits`, ...), and `PlayerPortraits` is always present.
+- The root `ui::DCWidget` DataContext carries the global command surface - the
+  game's `ui::DeferredCommand`s (`ExamineCommand`, `ShowProfileCommand`, ...) as
+  `Noesis::BaseCommand` objects - plus platform flags. Invoke them with the
+  command technique above.
+- Per-entity view-models expose `EntityUUID`, `CharacterType`, and a Noesis
+  `EntityHandle`; that `EntityHandle` is the object entity-commands take as their
+  `CommandParameter` (confirmed against the game's XAML). `CurrentPlayer` exposes
+  `SelectedCharacter` (the controlled avatar) and the party `AssignedCharacters`
+  collection.
+- The options page uses `UIData.ActiveState` = `GameOptions` / `VideoOptions`
+  (per tab) with `ls.GameData`-typed controls.
 
 ### UI-mod packaging (the `GUI/` tree)
 
