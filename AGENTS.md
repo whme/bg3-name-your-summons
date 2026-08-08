@@ -115,6 +115,10 @@ NameYourSummons/                     <- pak this folder
 
 ## Reference docs
 
+For the full tool/documentation map (BG3SE, Osiris, NoesisGUI, LSLib) and the
+NoesisGUI facts an agent needs for native UI, see
+[docs/bg3-modding-toolchain.md](docs/bg3-modding-toolchain.md). The essentials:
+
 - API docs - `github.com/Norbyte/bg3se/blob/main/Docs/API.md`
 - IDE helpers - `bg3se/blob/main/BG3Extender/IdeHelpers/ExtIdeHelpers.lua` -
   the authoritative reference. Every component and ImGui widget is declared
