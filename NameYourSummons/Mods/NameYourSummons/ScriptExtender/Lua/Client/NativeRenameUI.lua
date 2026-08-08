@@ -214,6 +214,7 @@ end
 
 --- Open the native settings overlay (subscribed on the gear's tunneling click).
 local function onGearClick()
+	Util.Log("NYS: gear clicked; handler set =", onGearClickHandler ~= nil)
 	if onGearClickHandler then
 		onGearClickHandler()
 	end
@@ -267,7 +268,9 @@ local function setPanelOpen(open)
 		end
 		-- Bind the settings viewmodel to this (freshly recreated) panel once.
 		if onPanelOpenHandler then
-			onPanelOpenHandler(liveSettingsPanel())
+			local panel = liveSettingsPanel()
+			Util.Log("NYS: panel opened; NYS_SettingsPanel found =", panel ~= nil)
+			onPanelOpenHandler(panel)
 		end
 	else
 		gearWired = false

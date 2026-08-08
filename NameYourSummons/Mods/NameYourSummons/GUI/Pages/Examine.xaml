@@ -427,9 +427,9 @@
                      DataContext is an SE viewmodel set from Lua (NativeConfigUI) when
                      the panel opens; the gear toggles IsOpen. FallbackValue keeps it
                      collapsed before the DataContext is bound. -->
-                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="100"
-                      Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
-                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1760">
+                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="100">
+                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1760"
+                                         Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                         <Grid Margin="80,60,80,60">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>

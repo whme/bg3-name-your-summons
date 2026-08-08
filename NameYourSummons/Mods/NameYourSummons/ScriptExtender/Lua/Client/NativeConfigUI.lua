@@ -550,12 +550,14 @@ end
 --- The panel is recreated on each open, so its DataContext is set every time.
 ---@param panelNode any  the NYS_SettingsPanel Noesis element
 function NativeConfigUI.OnPanelOpen(panelNode)
+	Util.Log("NYS: OnPanelOpen; vm =", vm ~= nil, "panelNode =", panelNode ~= nil)
 	if not (vm and panelNode) then
 		return
 	end
-	pcall(function()
+	local ok = pcall(function()
 		panelNode.DataContext = vm
 	end)
+	Util.Log("NYS: settings DataContext set ok =", ok)
 end
 
 --- Reset the open flag when the Examine panel closes so the overlay starts
@@ -567,10 +569,12 @@ end
 --- Show the overlay and (re)load everything from the server. Called from the
 --- gear's click handler.
 function NativeConfigUI.Open()
+	Util.Log("NYS: NativeConfigUI.Open; vm =", vm ~= nil)
 	if not vm then
 		return
 	end
 	set(vm, "IsOpen", true)
+	Util.Log("NYS: IsOpen set; reads back =", get(vm, "IsOpen"))
 	refreshAll()
 end
 
@@ -581,6 +585,7 @@ function NativeConfigUI.Register()
 	end
 	registerTypes()
 	buildViewModel()
+	Util.Log("NYS: native settings registered; vm =", vm ~= nil, "toggles =", #typeToggleVms)
 end
 
 return NativeConfigUI
