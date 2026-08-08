@@ -1,0 +1,10 @@
+<ls:StateMachine xmlns:ls="clr-namespace:ls;assembly=Code"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Present only to satisfy the UI-mod loader; we override nothing on the
+         controller layout, so the base MainUI states (incl. Examine_c) merge in
+         unchanged. The native rename control is keyboard/mouse only for now. -->
+    <ls:StateMachine.States>
+    </ls:StateMachine.States>
+</ls:StateMachine>

@@ -3,6 +3,7 @@ Ext.Require("Shared/Channels.lua")
 
 local UI = Ext.Require("Client/PromptUI.lua")
 local ConfigUI = Ext.Require("Client/ConfigUI.lua")
+local NativeRenameUI = Ext.Require("Client/NativeRenameUI.lua")
 
 -- Server-owned and not synced, but the docs recommend identical registrations
 -- on both states to avoid serialisation mismatches.
@@ -30,6 +31,7 @@ Ext.Vars.RegisterModVariable(ModuleUUID, "SkippedSummons", {
 
 UI.Register()
 ConfigUI.Register()
+NativeRenameUI.Register()
 
 Ext.Events.SessionLoaded:Subscribe(function()
 	Util.Log("Client ready. Type 'client' then '!nys_ui' in the console to manage saved names.")

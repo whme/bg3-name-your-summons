@@ -733,6 +733,66 @@ function Watcher.RegisterNet()
 		Util.Log(("Renamed key %s to '%s'"):format(key, name))
 	end)
 
+	-- Rename one specific live summon, addressed by uuid (from a native UI control).
+	-- The uuid is resolved to the stable owner|template key; in unique mode the
+	-- creature's slot (its sorted position among live siblings) is renamed so the
+	-- others keep their names, otherwise the whole key shares the new name.
+	Channels.RenameSummon:SetHandler(function(data, _user)
+		if not Util.IsRenameRequestValid(data) then
+			return
+		end
+		local uuid = Util.ToUuid(data.SummonUuid)
+		if not isSummon(uuid) then
+			return
+		end
+		local ok, entity = pcall(Ext.Entity.Get, uuid)
+		if not ok or not entity then
+			return
+		end
+		local owner = Naming.OwnerOf(entity)
+		local template = Naming.TemplateOf(entity)
+		if not owner or not template then
+			return
+		end
+
+		local key = Util.MakeKey(owner, template)
+		local name = Util.Sanitise(data.Name)
+		sessionSkipped[key] = nil
+
+		local existing = Store.Get(key)
+		if Store.Settings().MultiSummonMode == "unique" or type(existing) == "table" then
+			-- Find this creature's slot: its 1-based position among the key's live
+			-- siblings in sorted-uuid order, matching Util.AssignByOrder.
+			local siblings = {}
+			forLiveSummons(key, function(summon)
+				local sid = summon.Uuid and tostring(summon.Uuid.EntityUuid)
+				if sid then
+					siblings[#siblings + 1] = sid
+				end
+			end)
+			table.sort(siblings)
+			local slot
+			for i, sid in ipairs(siblings) do
+				if sid == uuid then
+					slot = i
+					break
+				end
+			end
+			if slot then
+				Store.SetSlot(key, slot, name)
+			else
+				Store.AppendUnique(key, name)
+			end
+			distributeUnique(key)
+		else
+			Store.Set(key, name)
+			forLiveSummons(key, function(summon)
+				Naming.Apply(summon, name)
+			end)
+		end
+		Util.Log(("Renamed summon %s ('%s') via key %s"):format(uuid, name, key))
+	end)
+
 	Channels.GetSettings:SetRequestHandler(function(_data, _user)
 		return Store.Settings()
 	end)
