@@ -69,55 +69,47 @@ rename and confirm against the extender source. (In #9 the live client event was
   the Examine panel even though `Ext.UI.GetStateMachine()` is stubbed (see KEN,
   below).
 
-### Inspecting the live tree: KEN
+### Using KEN (live Noesis inspection)
 
 Mazzle's KnowEasier Noesis debugger (KEN,
-`nexusmods.com/baldursgate3/mods/19849`) is the interactive form of the manual
-introspection above: an in-game, Script-Extender-based inspector with a
-left-hand Noesis object tree (rooted at `ContentRoot` or the main root, listing
-both logical children and visual children) and a right-hand property inspector
-that dumps every property a selected object holds or inherits - including the
-opaque `DataContext` values we otherwise probe with `dc:GetAllProperties()`. It
-also generates a copy-pasteable path expression for any node.
+`nexusmods.com/baldursgate3/mods/19849`) is an in-game, Script-Extender-based
+inspector for the live Noesis tree - the interactive form of the manual
+`Ext.UI.GetRoot()` walking above. Reach for it before hand-rolling a tree-walk.
 
-Install and use (learned the hard way):
+**Install.** KEN depends on MCM (Mod Configuration Menu,
+`nexusmods.com/baldursgate3/mods/9162`); without it KEN's client script dies at
+load (`attempt to index a nil value (global 'MCM')`) and never shows a window.
+Install MCM (plus its own requirements), load it before KEN, and restart.
 
-- **KEN depends on MCM** (Mod Configuration Menu,
-  `nexusmods.com/baldursgate3/mods/9162`). Without it KEN's client script dies at
-  load (`attempt to index a nil value (global 'MCM')`) and never shows a window.
-  Install MCM (plus its own requirements), load it before KEN, and restart.
-- The generated `FindChildWithName(...)` steps are a **display-only placeholder** -
-  substitute a real child lookup (the visual-tree DFS by `.Name` that
-  `NativeRenameUI` uses). The tree *shape* KEN shows is accurate.
-- The inspector is read-only and shows only *live* state, so the panel you want
-  must be open; its search filters tree nodes, not property names.
+**Use.**
 
-Verdict, from a live session driving KEN against this mod's issues:
+- The left pane is the object tree (rooted at `ContentRoot` or the main root)
+  listing both logical and visual children; the right pane is a property
+  inspector that dumps every property an object holds or inherits, including its
+  `DataContext` view-model.
+- It generates a copy-pasteable path for any node. The `FindChildWithName(...)`
+  step is a **display-only placeholder** - substitute a real child lookup (the
+  visual-tree DFS by `.Name` that `NativeRenameUI` uses); the tree *shape* is
+  accurate.
+- The inspector is read-only and shows only *live* state, so open the panel you
+  want first. Search filters tree nodes (not property names), with
+  case/exact/visual-children/depth toggles.
 
-- **General / #9 (shipped):** KEN maps our injected `NYS_NameInput` field (full
-  visual path in two clicks) and the examined creature's DataContext
-  (`EntityUUID`, `CharacterType`, `EntityHandle`). It replaces hand-rolled
-  tree-walk diagnostics outright.
-- **#19 (open Examine without the stubbed state machine) - mechanism solved.**
-  KEN surfaced that the root DataContext (`ui::DCWidget`) exposes an
-  `ExamineCommand`. Using the "invoke native commands from SE" technique above,
-  `ExamineCommand:Execute(handle)` opens the Examine panel, where `handle` is the
-  target's Noesis `EntityHandle` - the `CommandParameter` the game's own XAML
-  binds (`CursorText.xaml`, `Overlay_c.xaml`, and the context-menu items all pass
-  `{Binding ...EntityHandle}`). Read that handle off a live DataContext by
-  `EntityUUID` - the always-on `PlayerPortraits` carry it - with the same
-  visual-tree DFS `NativeRenameUI` already uses. Confirmed end to end in the SE
-  console: find the summon DC by uuid -> read `EntityHandle` ->
-  `ExamineCommand:Execute` -> Examine opens, no state machine. Only feature wiring
-  (when to fire, replacing the custom prompt, the co-op path) remains.
-- **#20 (native settings window):** the options page lives under `ContentRoot`
-  with `UIData.ActiveState` = `GameOptions` / `VideoOptions` (per tab); its
-  controls are `ls.GameData`-typed. KEN reads those controls and bindings so we
-  can model a native config page on them. Not yet prototyped.
+**What we have mapped with it** (general facts, reusable across UI work):
 
-Bottom line: adopt KEN as the default live-Noesis introspection tool, and keep
-the command-invocation technique it revealed - together they turn "the state
-machine is stubbed, so we cannot" into a solved path.
+- `ContentRoot` is the composition root; panels hang off it by name (`Examine`,
+  `PlayerPortraits`, ...), and `PlayerPortraits` is always present.
+- The root `ui::DCWidget` DataContext carries the global command surface - the
+  game's `ui::DeferredCommand`s (`ExamineCommand`, `ShowProfileCommand`, ...) as
+  `Noesis::BaseCommand` objects - plus platform flags. Invoke them with the
+  command technique above.
+- Per-entity view-models expose `EntityUUID`, `CharacterType`, and a Noesis
+  `EntityHandle`; that `EntityHandle` is the object entity-commands take as their
+  `CommandParameter` (confirmed against the game's XAML). `CurrentPlayer` exposes
+  `SelectedCharacter` (the controlled avatar) and the party `AssignedCharacters`
+  collection.
+- The options page uses `UIData.ActiveState` = `GameOptions` / `VideoOptions`
+  (per tab) with `ls.GameData`-typed controls.
 
 ### UI-mod packaging (the `GUI/` tree)
 
