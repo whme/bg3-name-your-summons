@@ -35,10 +35,11 @@ UI.Register()
 -- the !nys_ui console command); only the Examine gear moves to the native panel.
 ConfigUI.Register()
 NativeConfigUI.Register()
--- NativeRenameUI owns Examine-panel detection; feed the native settings overlay
--- through it (avoids a circular require between the two client modules).
+-- NativeRenameUI owns Examine-panel detection and node lookup; wire the two
+-- client modules together here (avoids a circular require between them).
+NativeConfigUI.SetPanelFinder(NativeRenameUI.FindNamed)
 NativeRenameUI.SetGearHandler(NativeConfigUI.Open)
-NativeRenameUI.SetPanelHandlers(NativeConfigUI.OnPanelOpen, NativeConfigUI.OnPanelClose)
+NativeRenameUI.SetPanelCloseHandler(NativeConfigUI.OnPanelClose)
 NativeRenameUI.Register()
 
 Ext.Events.SessionLoaded:Subscribe(function()

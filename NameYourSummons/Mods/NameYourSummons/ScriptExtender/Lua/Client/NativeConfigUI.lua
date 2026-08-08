@@ -30,6 +30,7 @@ local NAME_ROW_VM = "NYS_NameRowVM"
 local SKIP_ROW_VM = "NYS_SkipRowVM"
 
 local vm -- the single settings viewmodel instance
+local panelFinder -- fun(name):node|nil - finds a live Noesis node by x:Name
 local typeToggleVms = {} -- array of { key = "NameBeast", vm = <toggle vm> }
 local rowMeta = {} -- saved-name rowId -> { Key = .., Slot = .. }
 local originalNames = {} -- saved-name rowId -> baseline name text (dirty diff)
@@ -546,22 +547,33 @@ end
 -- Public lifecycle (driven by NativeRenameUI, which owns panel detection)
 ---------------------------------------------------------------------------
 
---- Bind the viewmodel to a freshly-opened Examine panel's settings overlay.
---- The panel is recreated on each open, so its DataContext is set every time.
----@param panelNode any  the NYS_SettingsPanel Noesis element
-function NativeConfigUI.OnPanelOpen(panelNode)
-	Util.Log("NYS: OnPanelOpen; vm =", vm ~= nil, "panelNode =", panelNode ~= nil)
-	if not (vm and panelNode) then
-		return
+--- Find the overlay in the live tree and bind the viewmodel to it, in one scope.
+--- A Noesis node reference does not survive being held across calls, so the panel
+--- is found and assigned together (the Examine panel is recreated on each open).
+---@return boolean  whether the panel was found and bound
+local function attachDataContext()
+	if not panelFinder then
+		return false
 	end
-	local ok = pcall(function()
-		panelNode.DataContext = vm
+	local attached = false
+	pcall(function()
+		local panel = panelFinder("NYS_SettingsPanel")
+		if panel then
+			panel.DataContext = vm
+			attached = true
+		end
 	end)
-	Util.Log("NYS: settings DataContext set ok =", ok)
+	return attached
+end
+
+--- Set the finder that resolves a live Noesis node by x:Name (NativeRenameUI).
+---@param fn fun(name:string):any|nil
+function NativeConfigUI.SetPanelFinder(fn)
+	panelFinder = fn
 end
 
 --- Reset the open flag when the Examine panel closes so the overlay starts
---- collapsed the next time the panel is shown.
+--- hidden the next time the panel is shown.
 function NativeConfigUI.OnPanelClose()
 	set(vm, "IsOpen", false)
 end
@@ -569,12 +581,12 @@ end
 --- Show the overlay and (re)load everything from the server. Called from the
 --- gear's click handler.
 function NativeConfigUI.Open()
-	Util.Log("NYS: NativeConfigUI.Open; vm =", vm ~= nil)
 	if not vm then
 		return
 	end
+	local attached = attachDataContext()
 	set(vm, "IsOpen", true)
-	Util.Log("NYS: IsOpen set; reads back =", get(vm, "IsOpen"))
+	Util.Log("NYS: settings opened; overlay attached =", attached)
 	refreshAll()
 end
 
@@ -585,7 +597,7 @@ function NativeConfigUI.Register()
 	end
 	registerTypes()
 	buildViewModel()
-	Util.Log("NYS: native settings registered; vm =", vm ~= nil, "toggles =", #typeToggleVms)
+	Util.Log("NYS: native settings registered; toggles =", #typeToggleVms)
 end
 
 return NativeConfigUI
