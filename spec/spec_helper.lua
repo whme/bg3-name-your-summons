@@ -60,6 +60,9 @@ _G.Ext = {
 	Timer = {
 		WaitFor = function() end,
 		WaitForRealtime = function() end,
+		ClockTime = function()
+			return "1970-01-01 00:00:00.000"
+		end,
 	},
 	IMGUI = {
 		NewWindow = function()

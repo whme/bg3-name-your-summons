@@ -122,12 +122,14 @@ function Util.LocaHandleFor(text)
 	return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
+-- Prefix every line with Ext.Timer.ClockTime() (sub-second wall clock) so a
+-- single pasted log shows event ordering and inter-event gaps.
 function Util.Log(...)
-	Ext.Utils.Print("[NameYourSummons]", ...)
+	Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
 end
 
 function Util.Warn(...)
-	Ext.Utils.PrintWarning("[NameYourSummons]", ...)
+	Ext.Utils.PrintWarning(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
 end
 
 return Util
