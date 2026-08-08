@@ -31,6 +31,7 @@ markup, plain text); `.lsx` (Larian XML, plain text) with binary equivalents
 | Official modding docs | `docs.baldursgate3.game` (e.g. `Extending_UI`) | Larian's UI-mod / toolkit docs. |
 | Community wiki | `wiki.bg3.community` | General modding knowledge and formats. |
 | NoesisGUI docs | `noesisengine.com/docs` | The UI engine. Noesis mirrors WPF, so **Microsoft's WPF/XAML docs also apply**. |
+| KEN (KnowEasier Noesis debugger) | `nexusmods.com/baldursgate3/mods/19849` | Mazzle's in-game live Noesis inspector - object tree + property inspector. See "Inspecting the live tree" below. |
 | Reference mods | ImpUI `github.com/TheRealDjmr/BG3ImprovedUI`; Advanced Character Sheet `github.com/Coyote-31/bg3-advanced-character-sheet` | Real UI-mod `GUI/` tree, `metadata.lsf`, state machines. |
 
 **Caveat: the IDE helpers and wikis drift behind the installed build.** When a
@@ -47,7 +48,8 @@ rename and confirm against the extender source. (In #9 the live client event was
   `ls:UIWidget`, etc. (find styles by extracting the game's XAML).
 - **Introspect the live tree** via `Ext.UI.GetRoot()`, then walk
   `.VisualChildrenCount` / `:VisualChild(i)`, reading `.Name` / `.DataContext`;
-  attach handlers with `element:Subscribe("<RoutedEvent>", fn)`.
+  attach handlers with `element:Subscribe("<RoutedEvent>", fn)`. KEN (below) does
+  this interactively, so reach for it before hand-rolling a tree-walk.
 - **A DataContext can be opaque.** Panels sharing the generic `ui::DCWidget` have
   zero SE-typed fields; read their **dynamic Noesis properties** with
   `dc:GetAllProperties()` / `dc:GetProperty(name)`, not `TypeInfo.Members`. Some
@@ -56,6 +58,66 @@ rename and confirm against the extender source. (In #9 the live client event was
 - **Routed events tunnel then bubble:** `PreviewMouseLeftButtonDown` fires before
   `MouseLeftButtonDown`. Prefer the bubbling variant unless you must preempt.
 - **Key names are prefixed `Key_`** (`Key_Enter`, `Key_LeftShift`).
+- **Invoke native commands from SE.** View-model DataContexts expose the game's
+  `ui::DeferredCommand`s as `Noesis::BaseCommand` objects (e.g. `ExamineCommand`,
+  `ShowProfileCommand`). Fetch one with `dc:GetProperty("XCommand")` and call
+  `cmd:CanExecute(param)` / `cmd:Execute(param)`. The parameter must be the exact
+  Noesis object the game's XAML binds as that command's `CommandParameter` - a
+  light C++ object, not an SE `Entity`, a uuid string, or a number (those raise
+  `Param 2: expected a light C++ object` / `Expected Noesis::BaseComponent, got
+  Entity`). This drives native UI that has no SE/Osiris entry point - e.g. opening
+  the Examine panel even though `Ext.UI.GetStateMachine()` is stubbed (see KEN,
+  below).
+
+### Inspecting the live tree: KEN
+
+Mazzle's KnowEasier Noesis debugger (KEN,
+`nexusmods.com/baldursgate3/mods/19849`) is the interactive form of the manual
+introspection above: an in-game, Script-Extender-based inspector with a
+left-hand Noesis object tree (rooted at `ContentRoot` or the main root, listing
+both logical children and visual children) and a right-hand property inspector
+that dumps every property a selected object holds or inherits - including the
+opaque `DataContext` values we otherwise probe with `dc:GetAllProperties()`. It
+also generates a copy-pasteable path expression for any node.
+
+Install and use (learned the hard way):
+
+- **KEN depends on MCM** (Mod Configuration Menu,
+  `nexusmods.com/baldursgate3/mods/9162`). Without it KEN's client script dies at
+  load (`attempt to index a nil value (global 'MCM')`) and never shows a window.
+  Install MCM (plus its own requirements), load it before KEN, and restart.
+- The generated `FindChildWithName(...)` steps are a **display-only placeholder** -
+  substitute a real child lookup (the visual-tree DFS by `.Name` that
+  `NativeRenameUI` uses). The tree *shape* KEN shows is accurate.
+- The inspector is read-only and shows only *live* state, so the panel you want
+  must be open; its search filters tree nodes, not property names.
+
+Verdict, from a live session driving KEN against this mod's issues:
+
+- **General / #9 (shipped):** KEN maps our injected `NYS_NameInput` field (full
+  visual path in two clicks) and the examined creature's DataContext
+  (`EntityUUID`, `CharacterType`, `EntityHandle`). It replaces hand-rolled
+  tree-walk diagnostics outright.
+- **#19 (open Examine without the stubbed state machine) - mechanism solved.**
+  KEN surfaced that the root DataContext (`ui::DCWidget`) exposes an
+  `ExamineCommand`. Using the "invoke native commands from SE" technique above,
+  `ExamineCommand:Execute(handle)` opens the Examine panel, where `handle` is the
+  target's Noesis `EntityHandle` - the `CommandParameter` the game's own XAML
+  binds (`CursorText.xaml`, `Overlay_c.xaml`, and the context-menu items all pass
+  `{Binding ...EntityHandle}`). Read that handle off a live DataContext by
+  `EntityUUID` - the always-on `PlayerPortraits` carry it - with the same
+  visual-tree DFS `NativeRenameUI` already uses. Confirmed end to end in the SE
+  console: find the summon DC by uuid -> read `EntityHandle` ->
+  `ExamineCommand:Execute` -> Examine opens, no state machine. Only feature wiring
+  (when to fire, replacing the custom prompt, the co-op path) remains.
+- **#20 (native settings window):** the options page lives under `ContentRoot`
+  with `UIData.ActiveState` = `GameOptions` / `VideoOptions` (per tab); its
+  controls are `ls.GameData`-typed. KEN reads those controls and bindings so we
+  can model a native config page on them. Not yet prototyped.
+
+Bottom line: adopt KEN as the default live-Noesis introspection tool, and keep
+the command-invocation technique it revealed - together they turn "the state
+machine is stubbed, so we cannot" into a solved path.
 
 ### UI-mod packaging (the `GUI/` tree)
 
