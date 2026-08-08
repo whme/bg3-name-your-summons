@@ -323,7 +323,10 @@ dn.Name.Handle.Handle = handle
 
 - You cannot run the game. Reason about correctness from the code, the API
   docs, and console output the user provides. State plainly when a change needs
-  in-game verification you cannot perform.
+  in-game verification you cannot perform. For the full method - temporary
+  discovery commands, instrumenting broadly when the live code path is unknown,
+  and the in-game script/console-reading loop - see
+  [docs/ingame-debugging.md](docs/ingame-debugging.md).
 - Client input is trusted but sanitised (length-clamped, control characters
   stripped) - keep it sanitised, but do not assume it is authenticated.
 - Multiplayer is wired (`SendToClient(payload, ownerGuid)` targets only the
