@@ -73,12 +73,32 @@ the game.
   (`Ext.Events.MouseButtonInput` / `KeyInput`), NOT the panel's routed UI events:
   the panel is a separate Noesis popup tree (`Ext.UI.GetRoot()` never sees its
   events) and the field's focus events do not fire on the first open after a load.
-  Enter and click-away both commit (deduped); the gear opens config via its own
-  reliable tunneling `PreviewMouseLeftButtonDown`. The mouse hook is always live
-  (it is the only "panel opened" detector - `Ext.UI.GetStateMachine()` is stubbed
-  to `nullptr` in this SE build, so there is no cheap/event-driven signal); the key
-  hook is subscribed only while the panel is open. See GH issue for the
-  state-machine follow-up.
+  Enter and click-away both commit (deduped); the gear opens the native settings
+  panel (below) via its own reliable tunneling `PreviewMouseLeftButtonDown`. The
+  mouse hook is always live (it is the only "panel opened" detector -
+  `Ext.UI.GetStateMachine()` is stubbed to `nullptr` in this SE build, so there
+  is no cheap/event-driven signal); the key hook is subscribed only while the
+  panel is open. See GH issue for the state-machine follow-up.
+- **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
+  opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
+  `Examine.xaml` override - that reproduces the ImGui `ConfigUI` (prompt options,
+  per-creature-type filter, multi-summon mode, and the saved-name /
+  always-skipped / session-skipped managers). There is NO SE API to create a
+  standalone native window or push a UI state on demand, so the panel must live
+  inside a page we already override (Examine). It is real MVVM: a viewmodel built
+  via `Ext.UI.RegisterType` / `Ext.UI.Instantiate` (`Bool` props for the
+  checkboxes with `Notify` + `WriteCallback` two-way binding, `Collection` props
+  bound to `ItemsControl`s for the dynamic lists, `Command` props for the
+  buttons) is set as the panel's `DataContext` from Lua. `NativeRenameUI` owns
+  Examine-panel detection and feeds this module via `SetGearHandler` /
+  `SetPanelHandlers` (avoids a circular require). Markup uses Larian `ls:`
+  controls only (`ls:LSToggleButton` + `TickBox`, `ls:LSButton` +
+  `BrownButtonStyle`, `ls:LSTextBox`) extracted from the game's own
+  `OptionTemplates.xaml` / `Buttons.xaml` - bare WPF controls fail UI
+  verification. The ImGui `ConfigUI` is kept for now (reached via the prompt's
+  Settings button and `!nys_ui`); both it and the prompt button are slated for
+  removal once the native panel is proven in game. Edits are staged and flushed
+  on Save through the same net channels as `ConfigUI`; no server changes.
 
 ## Project Structure
 
@@ -93,6 +113,7 @@ NameYourSummons/                     <- pak this folder
         BootstrapClient.lua          client entry point
         Shared/
           Channels.lua               net channels, created in both states
+          MultiSummonMode.lua        pure MultiSummonMode enum <-> control-index mapping (shared by both config UIs)
           NameWriter.lua             the two writes that do the renaming
           SummonClassifier.lua       pure tag-name -> creature-type category + per-type setting keys
           Util.lua                   uuid / sanitising / key / loca-handle helpers
@@ -105,10 +126,11 @@ NameYourSummons/                     <- pak this folder
           WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
           PromptUI.lua               ImGui naming prompt (Skip / Never-for-this-summon / Settings)
           ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter, multi-summon mode) + saved-name, always-skipped and session-skipped managers
-          NativeRenameUI.lua         native Examine-panel rename field + gear (see "Native Examine rename" below)
+          NativeConfigUI.lua         native (Noesis) settings panel (viewmodel + data flow) opened by the Examine gear (see "Native Examine settings")
+          NativeRenameUI.lua         native Examine-panel rename field + gear; owns panel detection and drives NativeConfigUI (see "Native Examine rename")
     GUI/                             UI-mod overlay (packed alongside ScriptExtender)
       metadata.lsf                   UI-mod marker (empty config)
-      Pages/Examine.xaml             Examine.xaml override: injects the editable name field + settings gear for summons
+      Pages/Examine.xaml             Examine.xaml override: injects the editable name field, settings gear, and native settings overlay (NYS_SettingsPanel) for summons
       StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
       StateMachines/Controller.xaml  empty (no controller overrides)
 ```

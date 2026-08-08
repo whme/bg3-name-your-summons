@@ -9,9 +9,14 @@
 
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
-local ConfigUI = Ext.Require("Client/ConfigUI.lua")
 
 local NativeRenameUI = {}
+
+-- Set by BootstrapClient so this module (which owns Examine-panel detection) can
+-- drive the native settings overlay without a circular require.
+local onGearClickHandler -- fun() - called when the gear is clicked
+local onPanelOpenHandler -- fun(panelNode|nil) - called once when the panel opens
+local onPanelCloseHandler -- fun() - called once when the panel closes
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 local MAX_DEPTH = 60
@@ -201,9 +206,17 @@ local function commitField(field)
 	end
 end
 
---- Open the config window (subscribed on the gear element's tunneling click).
+--- The live settings overlay, or nil when no Examine panel is open.
+---@return any|nil
+local function liveSettingsPanel()
+	return findNamed("NYS_SettingsPanel")
+end
+
+--- Open the native settings overlay (subscribed on the gear's tunneling click).
 local function onGearClick()
-	ConfigUI.Open()
+	if onGearClickHandler then
+		onGearClickHandler()
+	end
 end
 
 --- Subscribe the gear's click once per panel open. The gear is a plain Grid, so its
@@ -252,6 +265,10 @@ local function setPanelOpen(open)
 				return Ext.Events.KeyInput:Subscribe(onKeyInput)
 			end)
 		end
+		-- Bind the settings viewmodel to this (freshly recreated) panel once.
+		if onPanelOpenHandler then
+			onPanelOpenHandler(liveSettingsPanel())
+		end
 	else
 		gearWired = false
 		editing = false
@@ -260,6 +277,9 @@ local function setPanelOpen(open)
 				Ext.Events.KeyInput:Unsubscribe(keySub)
 			end)
 			keySub = nil
+		end
+		if onPanelCloseHandler then
+			onPanelCloseHandler()
 		end
 	end
 end
@@ -293,6 +313,20 @@ local function onMouseButton(e)
 		editing = true
 		lastSent = Util.Sanitise(nodeText(field))
 	end
+end
+
+--- Wire the gear-click action (opens the native settings overlay).
+---@param fn fun()
+function NativeRenameUI.SetGearHandler(fn)
+	onGearClickHandler = fn
+end
+
+--- Wire the panel open/close hooks (bind/reset the settings viewmodel).
+---@param openFn fun(panelNode:any|nil)
+---@param closeFn fun()
+function NativeRenameUI.SetPanelHandlers(openFn, closeFn)
+	onPanelOpenHandler = openFn
+	onPanelCloseHandler = closeFn
 end
 
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent
