@@ -109,6 +109,11 @@ depends on a BG3SE or Osiris behaviour, verify the assumption against Script
 Extender console output the user pastes, or against the IDE helpers / API docs,
 before relying on it.
 
+You can, however, read the game's own files directly: LSLib's `divine.exe` (the
+same tool `make.ps1 build` downloads) unpacks BG3's `.pak` files, so you can
+inspect the game's real UI XAML, templates, and stats instead of guessing from
+wikis. See [docs/exploring-bg3-internals.md](docs/exploring-bg3-internals.md).
+
 There **is** a local unit-test suite (LuaUnit) covering the engine-independent
 logic (`Util`, `Store`, `NameWriter`), plus static gates (StyLua, luacheck,
 lua-language-server), all driven by the `./make.ps1` entrypoint and all pinned to
