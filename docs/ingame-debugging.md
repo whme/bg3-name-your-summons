@@ -1,163 +1,117 @@
 # Debugging and exploring in game
 
-You **cannot run Baldur's Gate 3.** The user is your eyes and hands: you write
-instrumented Lua, hand the user a precise in-game script, and reason from the
-Script Extender console output they paste back. This guide is the method that
-made that loop fast and reliable during the native-UI work on issue #9 - where
-almost nothing was documented and the game had to be interrogated live.
+You **cannot run Baldur's Gate 3.** The user runs it; you write instrumented Lua,
+agree on the exact in-game steps, and reason from the Script Extender console
+output the user pastes back. Every game run costs the user a full restart, so
+**make each run count**: never claim something works in game without a pasted log
+that proves it, and batch your investigation so one run answers many questions.
 
-The golden rule: **do not guess and do not claim something works in game until a
-pasted log proves it.** Overstating "it works" and being corrected wastes a full
-round-trip (a game restart for the user). Instrument, get hard data, then claim.
+## The loop
 
-## The debugging loop
+1. Form specific questions ("which event fires when the field is left?"), not
+   vague ones ("why is rename broken?").
+2. Instrument for **all** current theories at once - one build that logs every
+   path you are unsure about, so a single run decides between them.
+3. Agree with the user on the exact in-game steps before they run (see below).
+4. Read the pasted console output; change one thing based on evidence; repeat.
 
-1. **Form one specific question** ("which focus event fires when the field is
-   left?"), not a vague one ("why doesn't rename work?").
-2. **Instrument to answer exactly that** - add temporary logging or a throwaway
-   console command that emits the signal you need.
-3. **Hand the user a numbered, annotated script** with the expected output at
-   each step (see template below).
-4. **Read the pasted console output literally.** The `[ModName]` lines are your
-   logs; engine error lines are precise (see "Reading the console").
-5. **Change one thing** based on the evidence, and repeat. Bisect; do not
-   shotgun-edit.
+### Deploy and reload
 
-### Reloading: `reset` vs. full restart
+The mod is installed one way: **build the `.pak` (`./make.ps1 build`) and drop it
+in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.** Then:
 
-- **Lua-only change** -> tell the user to type `reset` in the SE console. It
-  reloads all Lua without restarting the game. Fast.
-- **XAML / asset / packaging change** -> the user must **fully restart BG3**.
-  `reset` does NOT reload UI or repack assets. Say which one every time, so the
-  user does not test a stale build.
+- **Lua-only change** -> the user types `reset` in the SE console (reloads Lua
+  without restarting the game). Fast.
+- **XAML / asset / packaging change** -> the user must **fully restart BG3**;
+  `reset` does not reload UI or repack assets.
 
-## Temporary discovery tooling
+State which one every time, so the user never tests a stale build.
 
-When you need to inspect live game state, add **throwaway console commands** and
-remove them before the PR:
+### Agree on the in-game steps
 
-- Register `!nys_<verb>` commands in the Lua state that owns the data (UI walks
-  live in the **client** state; entity/Osiris queries in the **server** state).
-- Tag every temporary file/command `TEMPORARY` and wire it via a single
-  `require` so it is trivial to rip out. In #9 these were `Client/UIDump.lua`,
-  `Server/UIDumpBridge.lua`, a `Channels.UIDump`, and a `!nys_renameexamined`
-  command - all removed before finalising.
-- **Console context matters.** Commands only exist in the state they were
-  registered in. The console starts in `server`; the user types `client` to
-  switch (prompt goes `S >>` -> `C >>`). If a client command "does not exist",
-  the user is probably still in the server context. To sidestep the back-and
-  forth, register the command server-side too and bounce it to the client over a
-  net channel - then it works from either prompt.
+You cannot see the run, so a shared, explicit script is what makes a missing log
+line *signal* instead of ambiguity. Have the user confirm the exact sequence and
+what each step should produce. A real example the user settled on:
 
-## Instrument broadly when you do not know the answer
+> Summon the cat familiar; name it on the prompt; wait out turn-based mode.
+> Right-click the cat -> Examine. Click the name field, type "Findus", press
+> Enter, hover the portrait to check the rename took, click the gear. Close
+> Examine, reopen it, and repeat the rename. Then paste the full log.
 
-The highest-leverage technique from #9: when you do not know which engine
-event/field/path is the live one, **do not subscribe to a single guess -
-subscribe to the whole candidate set, each logging when it fires and with what
-payload.** One test run then tells you exactly which path is real, instead of one
-failed guess per round-trip.
+## Instrument broadly, and timestamp everything
 
-Example: rename-on-leave was not firing and it was unclear which focus event the
-node received. Rather than try `LostKeyboardFocus`, rebuild, test, try
-`LostFocus`, rebuild, test... a single diagnostic subscribed the entire battery:
+When you do not know which engine event/field/path is live, **do not subscribe to
+one guess - subscribe to the whole candidate set**, each handler logging when it
+fires and with what payload. One run then shows which paths are real instead of
+costing one restart per guess. Example battery for a stuck focus event:
 
 ```
 GotFocus, LostFocus, GotKeyboardFocus, LostKeyboardFocus,
-PreviewGotKeyboardFocus, PreviewLostKeyboardFocus,
-KeyDown, PreviewKeyDown, KeyUp, TextInput, PreviewTextInput,
-MouseLeftButtonDown, PreviewMouseLeftButtonDown, MouseLeftButtonUp,
-MouseDown, MouseUp
+PreviewGot/LostKeyboardFocus, KeyDown, PreviewKeyDown, KeyUp,
+TextInput, PreviewTextInput, MouseLeft*, MouseDown, MouseUp
 ```
 
-each handler logging `NYS DIAG: <event> fired  src=... new=... old=...`. The
-single resulting log showed which events actually reach the node - answering in
-one run what would have been a dozen guesses. Gate this verbose output behind a
-`local DEBUG = true` flag and a `dbg(...)` helper so you can silence it (and
-strip it) before shipping.
+- **Prefix every log line with a UTC timestamp at microsecond precision**
+  (`%Y-%m-%d %H:%M:%S.%f %z`, the format used elsewhere in these repos). Ordering
+  and inter-event gaps are what expose races - the fast-typing truncation bug in
+  #9 was only visible from timestamps.
+- Gate verbose output behind `local DEBUG = true` / a `dbg(...)` helper so you
+  can silence and strip it before shipping.
 
-## Controlled-experiment bisection
+## Isolate a failure with a verbatim variant
 
-When a whole subsystem fails to load and you cannot tell if the cause is your
-edits or the mechanism itself, **ship the minimal / verbatim variant to isolate
-it.** In #9 the Examine page override failed to load; instead of tweaking the
-edits blindly, the mod shipped a **byte-for-byte copy of Larian's own page** with
-zero changes. It loaded fine - proving the override mechanism worked and the
-fault was in the added controls, not the packaging. That one experiment redirected
-the whole investigation. Prefer a decisive isolating test over another
-speculative edit.
+When a subsystem fails and you cannot tell if the cause is your edits or the
+mechanism, ship the **minimal / byte-for-byte variant** to bisect. In #9 the
+Examine override would not load; shipping an unmodified copy of Larian's own page
+loaded fine, proving the override mechanism worked and the fault was in the added
+controls. One decisive experiment beats another speculative edit.
 
 ## Confirm engine facts from source, not stale helpers
 
-The BG3SE IDE helpers (`ExtIdeHelpers.lua`) and community wikis drift behind the
-installed build. When a `Subscribe`/field read returns nothing and you suspect a
-rename, **confirm the real name from the extender source** (e.g. GitHub
-code-search the `bg3se` repo for the `ThrowEvent("...")` site). In #9 the real
-client mouse event was `Ext.Events.MouseButtonInput`, while the IDE helper's
-`EclLuaMouseButton` was stale - only the source had the truth. Note also that
-`Ext.Events` is not enumerable, so you cannot discover event names by iterating;
-you must read them from source. (Cross-reference: the toolchain/reference guide
-lists where these sources live.)
+The BG3SE IDE helpers (`ExtIdeHelpers.lua`) and wikis lag the installed build.
+When a `Subscribe`/field read returns nothing and you suspect a rename, confirm
+the real name from the extender source (code-search `bg3se` for the
+`ThrowEvent("...")` site). In #9 the live client event was
+`Ext.Events.MouseButtonInput`, not the helper's stale `EclLuaMouseButton`; since
+`Ext.Events` is not enumerable, only the source had it.
 
-## Watch performance - the user will feel it
+## Watch performance
 
-You cannot feel frame hitches, so treat any per-tick work as suspect. In #9 a
-polling loop that walked the Examine visual tree every 500ms (each walk ~2s)
-**hung and crashed the game**; the fix was event-driven wiring that did the
-expensive lookup once, on click. Keep diagnostics cheap, gate them so they early
--return when the relevant panel is not open, and prefer an event subscription
-over a poll. If the user reports the game getting sluggish or unresponsive,
+You cannot feel frame hitches. In #9 a loop that walked the Examine visual tree
+every 500ms (each walk ~2s) hung the game; the fix did the expensive lookup once,
+on click. Keep diagnostics cheap, early-return when the relevant panel is closed,
+and prefer an event subscription over a poll. If the user reports sluggishness,
 suspect your instrumentation first.
 
 ## Reading the console
 
-The SE console is a **separate window** that stays up while the game runs, so the
-user can keep a panel open and type at the same time. Useful signals:
+The SE console is a separate window that stays up while the game runs. Signals:
 
-- **Startup header** - `BG3Ext v32`, `Game version v4.73.98.727 OK`, `SE v30`.
-  (Version drives asset layout and API surface; see the internals guide.)
-- **`[ModName]` lines** - your own `Util.Log` / `dbg` output.
-- **Engine errors are literal and precise - read them as facts, not noise:**
-  - `Object ls.DCExamine has no property named 'EntityUUID'` -> the property is
-    on a different (child) view-model, not that one. Also a *gift*: it confirmed
-    the real DataContext type name.
+- **Startup header** - `BG3Ext v32`, `Game version v4.73.98.727 OK`, `SE v30`
+  (version drives asset layout and API surface; see the internals guide).
+- **`[ModName]` lines** - your own log output.
+- **Console context** - commands exist only in the state that registered them.
+  The console starts in `server`; `client` switches it (`S >>` -> `C >>`). A
+  client command that "does not exist" usually means the wrong context; register
+  it server-side and bounce it over a net channel to work from either prompt.
+- **Engine errors are literal - read them as facts:**
+  - `Object ls.DCExamine has no property named 'X'` -> `X` is on a child
+    view-model, not that one (and it confirms the real type name).
   - `Failed to find statemachine for UI mod` -> a UI mod must ship state
     machines, not just a page.
-  - `UI State verification failed ... Issue found while verifying state 'X'` ->
-    that page failed to parse/load (often an unresolved `StaticResource` or an
-    unstyled bare control).
-
-## What to ask the user for
-
-Give a script the user can follow without interpretation, and tell them what each
-step should produce so a mismatch is obvious to both of you:
-
-```
-1. `reset` (Lua change) / fully restart BG3 (XAML change).
-2. Summon a creature, right-click -> Examine (leave it open).
-3. In the console type `client`, then run:  !nys_diagwire
-   (expect: "subscribe <Event> ok=true" for each event)
-4. Slowly: (a) click into the field  (expect GotKeyboardFocus)
-           (b) type one letter        (expect KeyDown/TextInput)
-           (c) press Enter            (expect ...?)
-           (d) click elsewhere        (expect a leave event)
-5. Paste EVERY line beginning with [NameYourSummons].
-```
-
-Ask the user to **narrate what they did and saw** alongside the paste ("focus
-and editing work, but leaving the field logs nothing until I reopen the panel").
-That annotation is often what disambiguates the log - it tells you what the run
-was *supposed* to show, so a missing line becomes signal instead of ambiguity.
+  - `UI State verification failed ... state 'X'` -> that page failed to parse
+    (often an unresolved `StaticResource` or an unstyled bare control).
 
 ## Checklist
 
-1. One specific question per iteration.
-2. Instrument to answer it - broadly (whole candidate set) when the live path is
-   unknown; gate verbose logs behind a `DEBUG` flag.
-3. Tell the user `reset` (Lua) or full restart (XAML/assets) - never leave it
-   ambiguous.
-4. Give a numbered, annotated script with expected output per step.
-5. Read engine error lines literally; treat them as precise pointers.
-6. Confirm suspected-renamed APIs from bg3se source, not the IDE helpers.
-7. Never claim in-game success without a pasted log that shows it.
-8. Keep per-tick work cheap; prefer events over polling.
-9. Strip all `TEMPORARY` tooling and `DEBUG` logging before the PR.
+1. One specific question set per iteration; instrument for all of them in one
+   build.
+2. Log broadly when the live path is unknown; timestamp every line (UTC, us);
+   gate behind `DEBUG`.
+3. Tell the user `reset` (Lua) or full restart (XAML/assets), and agree the exact
+   in-game steps first.
+4. Read engine errors literally; confirm suspected-renamed APIs from bg3se
+   source.
+5. Keep per-tick work cheap; prefer events over polling.
+6. Never claim in-game success without a log that shows it.
+7. Strip all `TEMPORARY` tooling and `DEBUG` logging before the PR.
