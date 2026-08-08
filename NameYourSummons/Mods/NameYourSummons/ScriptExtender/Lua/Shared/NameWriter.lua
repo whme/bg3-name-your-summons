@@ -57,6 +57,12 @@ function Writer.SetDisplayName(e, handle, version, replicate)
 		return false, "no Name"
 	end
 
+	-- Skip when unchanged: reapply on re-summon and on load would otherwise
+	-- rewrite and re-replicate a DisplayName that already holds this name.
+	if dn.Name.Handle.Handle == handle and dn.Name.Handle.Version == version then
+		return true
+	end
+
 	local ok, err = pcall(function()
 		dn.Name.Handle.Handle = handle
 		dn.Name.Handle.Version = version
