@@ -204,3 +204,16 @@ function TestStoreUniqueSets:testAppendIgnoredWhenSkipped()
 	lu.assertNil(Store.Get("k"))
 	lu.assertTrue(Store.IsSkipped("k"))
 end
+
+function TestStoreUniqueSets:testSetUniqueStoresDenseArray()
+	Store.SetUnique("k", { "Alpha", "Beta", "Gamma" })
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta", "Gamma" })
+end
+
+function TestStoreUniqueSets:testSetUniqueClearsSkip()
+	Store.Skip("k")
+	Store.SetUnique("k", { "Alpha", "Beta" })
+	-- Unlike AppendUnique/SetSlot, an explicit set clears an always-skip.
+	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta" })
+	lu.assertFalse(Store.IsSkipped("k"))
+end

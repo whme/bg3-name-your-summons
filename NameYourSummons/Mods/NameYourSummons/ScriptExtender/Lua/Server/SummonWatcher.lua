@@ -759,10 +759,13 @@ function Watcher.RegisterNet()
 		local name = Util.Sanitise(data.Name)
 		sessionSkipped[key] = nil
 
-		local existing = Store.Get(key)
-		if Store.Settings().MultiSummonMode == "unique" or type(existing) == "table" then
-			-- Find this creature's slot: its 1-based position among the key's live
-			-- siblings in sorted-uuid order, matching Util.AssignByOrder.
+		-- Follow the CURRENT MultiSummonMode, like resolveGroup: a leftover unique
+		-- set must not force unique behaviour after the player switches to shared or
+		-- skip, and a shared/skip rename collapses any leftover set to one name.
+		if Store.Settings().MultiSummonMode == "unique" then
+			-- Rename just this creature's slot - its 1-based position among the key's
+			-- live siblings in sorted-uuid order (matching Util.AssignByOrder) - so the
+			-- others keep their names.
 			local siblings = {}
 			forLiveSummons(key, function(summon)
 				local sid = summon.Uuid and tostring(summon.Uuid.EntityUuid)
@@ -771,18 +774,35 @@ function Watcher.RegisterNet()
 				end
 			end)
 			table.sort(siblings)
-			local slot
+
+			-- Seed a dense set aligned to the live siblings, then overwrite the target
+			-- slot. SetSlot/AppendUnique cannot: they no-op when the saved set is
+			-- shorter than the target slot (absent on the first Examine rename) and
+			-- silently honour a stale always-skip.
+			local saved = Store.Get(key)
+			local names = {}
+			if type(saved) == "table" then
+				for i, n in ipairs(saved) do
+					names[i] = n
+				end
+			elseif type(saved) == "string" then
+				names[1] = saved
+			end
+			local target
 			for i, sid in ipairs(siblings) do
+				if names[i] == nil then
+					names[i] = Naming.GetCurrentName(sid)
+				end
 				if sid == uuid then
-					slot = i
-					break
+					target = i
 				end
 			end
-			if slot then
-				Store.SetSlot(key, slot, name)
+			if target then
+				names[target] = name
 			else
-				Store.AppendUnique(key, name)
+				names[#names + 1] = name
 			end
+			Store.SetUnique(key, names)
 			distributeUnique(key)
 		else
 			Store.Set(key, name)

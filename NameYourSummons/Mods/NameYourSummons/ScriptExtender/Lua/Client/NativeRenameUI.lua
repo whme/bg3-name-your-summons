@@ -136,7 +136,8 @@ local function examinedSummonUuid()
 	return found
 end
 
---- Send a rename for a specific summon uuid. Returns false on empty input.
+--- Send a rename for a specific summon uuid. Returns false on empty input or a
+--- failed send, so commitField only dedupes a rename that was actually submitted.
 ---@param uuid string
 ---@param rawName string
 ---@return boolean
@@ -145,8 +146,11 @@ local function submitRename(uuid, rawName)
 	if type(uuid) ~= "string" or name == "" then
 		return false
 	end
-	Channels.RenameSummon:SendToServer({ SummonUuid = uuid, Name = name })
-	return true
+	-- A channel/send failure must not escape this global input callback and tear
+	-- down the client Lua state.
+	return pcall(function()
+		Channels.RenameSummon:SendToServer({ SummonUuid = uuid, Name = name })
+	end)
 end
 
 ---------------------------------------------------------------------------
