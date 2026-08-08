@@ -29,10 +29,8 @@ local function safe(fn, ...)
 	return nil
 end
 
--- Shared readers for the hot visual-tree walk. Defined once (not per node) so the
--- traversal does not allocate a fresh closure for every property/child access - that
--- allocation load was the bulk of the walk's cost. VisualChild is 1-based (verified
--- in bg3se: GetVisualChild returns child index-1 for index in 1..count).
+-- Hoisted out of the per-node walk so it does not allocate a closure per access
+-- (the walk runs on every click). VisualChild is 1-based (bg3se GetVisualChild).
 local function readName(node)
 	return node.Name
 end
@@ -172,17 +170,11 @@ end
 -- Native controls: Enter or click-away renames the summon; the gear opens config
 ---------------------------------------------------------------------------
 --
--- The Examine panel's own routed UI events are unreliable: the panel is a separate
--- Noesis popup tree that Ext.UI.GetRoot() never receives events from, and the
--- field's focus events (LostKeyboardFocus etc.) do not fire on the first open after
--- a load. What IS reliable are the global SDL-level input events, which fire on
--- every click and key regardless of what the UI consumes. So the rename is driven
--- by those:
---   - Enter (KeyInput) commits the field's current text,
---   - clicking away after editing commits it too (MouseButtonInput), deduped,
---   - the examined summon's uuid (a DataContext walk) is resolved only at commit.
--- The gear is a plain Grid whose own tunneling click IS reliable, so it keeps a
--- per-open element subscription.
+-- The Examine panel's routed UI events are unreliable: it is a separate Noesis popup
+-- tree Ext.UI.GetRoot() never receives events from, and the field's focus events do
+-- not fire on the first open after a load. The global SDL-level input events fire on
+-- every click and key regardless, so commit is driven by those; the gear is a plain
+-- Grid whose own tunneling click is reliable and keeps a per-open subscription.
 local DEBUG = false -- flip to true for verbose client-side lifecycle logging
 local gearWired = false -- gear click subscribed for the current panel open
 local editing = false -- an edit session is active (baseline captured on first click)
@@ -352,10 +344,9 @@ local function onMouseButton(e)
 	end
 end
 
--- Global input event names, confirmed against bg3se source (LuaClient.cpp:
--- ThrowEvent("MouseButtonInput"/"KeyInput", ...)); the IDE helper's "EclLua*" names
--- are stale for this build, and Ext.Events is not enumerable. Only the mouse hook
--- is always live; the key hook is subscribed on demand (see setPanelOpen).
+-- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent
+-- "MouseButtonInput"/"KeyInput"); the IDE helper's "EclLua*" names are stale for this
+-- build, and Ext.Events is not enumerable. The key hook is wired on demand elsewhere.
 function NativeRenameUI.Register()
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
