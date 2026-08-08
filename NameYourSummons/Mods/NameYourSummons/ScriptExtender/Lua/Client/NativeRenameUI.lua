@@ -72,23 +72,17 @@ local function findNode(node, depth, predicate)
 	return nil
 end
 
---- Depth-first collect of EVERY node (incl. `node`) satisfying `predicate` into
---- `out`. Used because the tree can hold more than one node with a given Name (a
---- stale panel plus the live one); we must act on all of them, not just the first.
----@param node any
----@param depth integer
----@param predicate fun(node:any):boolean
----@param out any[]
-local function findAllNodes(node, depth, predicate, out)
-	if node == nil or depth > MAX_DEPTH then
-		return
+--- The first visual node named `name` from the composition root, or nil.
+---@param name string
+---@return any|nil
+local function findNamed(name)
+	local root = safe(Ext.UI.GetRoot)
+	if root == nil then
+		return nil
 	end
-	if predicate(node) then
-		out[#out + 1] = node
-	end
-	for i = 1, visualChildCount(node) do
-		findAllNodes(safe(readChild, node, i), depth + 1, predicate, out)
-	end
+	return findNode(root, 0, function(node)
+		return widgetName(node) == name
+	end)
 end
 
 --- Read a Noesis property, preferring the direct getter and falling back to the
@@ -116,13 +110,7 @@ end
 --- inherited down the subtree).
 ---@return string|nil
 local function examinedSummonUuid()
-	local root = safe(Ext.UI.GetRoot)
-	if root == nil then
-		return nil
-	end
-	local examine = findNode(root, 0, function(node)
-		return widgetName(node) == "Examine"
-	end)
+	local examine = findNamed("Examine")
 	if examine == nil then
 		return nil
 	end
@@ -176,31 +164,10 @@ local panelOpen = false -- last-seen panel presence (field exists)
 local keySub = nil -- KeyInput subscription handle; only held while the panel is open
 local lastSent = nil -- last committed sanitised text, to dedup Enter + click-away
 
---- Every visual node whose Name matches, found from the composition root.
----@param name string
----@return any[]
-local function collectNamed(name)
-	local out = {}
-	local root = safe(Ext.UI.GetRoot)
-	if root ~= nil then
-		findAllNodes(root, 0, function(node)
-			return widgetName(node) == name
-		end, out)
-	end
-	return out
-end
-
---- The live rename field (first NYS_NameInput in the tree), or nil when no Examine
---- panel is open. Early-exit search, so a click with no panel open stays cheap.
+--- The live rename field, or nil when no Examine panel is open.
 ---@return any|nil
 local function liveField()
-	local root = safe(Ext.UI.GetRoot)
-	if root == nil then
-		return nil
-	end
-	return findNode(root, 0, function(node)
-		return widgetName(node) == "NYS_NameInput"
-	end)
+	return findNamed("NYS_NameInput")
 end
 
 --- The Text of a node, or "" when unreadable.
@@ -238,7 +205,8 @@ end
 --- Subscribe the gear's click once per panel open. The gear is a plain Grid, so its
 --- own PreviewMouseLeftButtonDown fires reliably, unlike the field's focus events.
 local function wireGear()
-	for _, gear in ipairs(collectNamed("NYS_SettingsButton")) do
+	local gear = findNamed("NYS_SettingsButton")
+	if gear ~= nil then
 		pcall(function()
 			gear:Subscribe("PreviewMouseLeftButtonDown", onGearClick)
 		end)
