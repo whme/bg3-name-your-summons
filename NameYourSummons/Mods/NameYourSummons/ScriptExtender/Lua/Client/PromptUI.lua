@@ -100,25 +100,6 @@ local function buildPrompt()
 	end
 end
 
---- Drop any queued or on-screen prompt for a key the server has retracted (it
---- turned out to be a multi-summon we should not have asked about). No submit is
---- sent - the server already resolved this key.
----@param key string
-local function cancel(key)
-	for i = #queue, 1, -1 do
-		if queue[i].Key == key then
-			table.remove(queue, i)
-		end
-	end
-	if current and current.Key == key then
-		current = nil
-		if promptWindow then
-			promptWindow.Open = false
-		end
-		UI.ShowNext()
-	end
-end
-
 function UI.ShowNext()
 	if current ~= nil then
 		return
@@ -152,22 +133,11 @@ end
 -- Wiring
 ---------------------------------------------------------------------------
 
+-- The on-summon prompt now opens the native Examine panel (see Client/NativeRenameUI.lua,
+-- GH #19); the ImGui window above is no longer wired to AskName. It is kept intact
+-- pending its removal in a follow-up. This module still owns the loca handlers below,
+-- which are unrelated to the prompt UI.
 function UI.Register()
-	Channels.AskName:SetHandler(function(data, _user)
-		if type(data) ~= "table" or type(data.Key) ~= "string" then
-			return
-		end
-		table.insert(queue, data)
-		UI.ShowNext()
-	end)
-
-	Channels.RetractPrompt:SetHandler(function(data, _user)
-		if type(data) ~= "table" or type(data.Key) ~= "string" then
-			return
-		end
-		cancel(data.Key)
-	end)
-
 	Channels.ApplyName:SetHandler(function(data, _user)
 		if type(data) ~= "table" then
 			return
