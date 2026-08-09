@@ -16,10 +16,12 @@
        (liveVm) at each point of use, and inside a WriteCallback we use the live
        `context`/`value` it is handed.
     2. An SE Collection is append-only from Lua: Clear/RemoveAt/table.remove and
-       whole-array assignment all fail. The only way to get a clean list is a fresh
-       viewmodel (its collections start empty). So the panel is fully rebuilt on
-       every open/refresh/save/forget via `populate`, guarded by a generation
-       counter so a slow in-flight reply cannot append to a newer viewmodel.
+       whole-array assignment all fail (the ONE in-place exception is `coll[i] = nil`,
+       which removes a single element - we do not rely on it here). The only way to
+       get a wholly clean list is a fresh viewmodel (its collections start empty), so
+       the panel is fully rebuilt on every open/refresh/save/forget via `populate`,
+       guarded by a generation counter so a slow in-flight reply cannot append to a
+       newer viewmodel.
 
     There is no SE API to create a standalone native window, so the panel lives
     inside a page we already override (Examine); NativeRenameUI owns panel
@@ -65,8 +67,11 @@ local settingsLoadedGen = 0
 -- the wrong name. Cleared implicitly: populate bumps `generation` past it.
 local savedGen = 0
 
--- Guards WriteCallbacks against the programmatic writes we do while loading or
--- enforcing radio exclusivity (those must not recurse or be treated as edits).
+-- Guards the `onSettingWrite` recompute against the bulk programmatic writes we do
+-- while loading a viewmodel (those must not be treated as user edits). It does NOT
+-- guard radio exclusivity: WriteCallbacks dispatch async, so a sync flag cannot fence
+-- re-entry - `selectMode` is instead idempotent (writes only real changes) so the
+-- deferred re-entrant callbacks converge. See the module header and `selectMode`.
 local suppressWrite = false
 
 local populate
