@@ -178,16 +178,17 @@ the game.
   KeyDown is NOT delivered to our Subscribe on the rename `LSTextBox` (verified in game -
   not even for character keys), so Enter arrives as a focus loss: a field blur with no left
   click in the last `CLICK_BLUR_WINDOW_MS` is an Enter commit (save + swap via
-  `onFieldEnter`), while a blur just after a click is click-driven (save only; the clicked
-  control - Skip / gear / close - acts itself). `skipCurrent` therefore only aborts when the
-  creature was not already saved by that preceding blur. Closing the panel mid-queue skips
-  ALL that
-  is left (`abortRemaining` aborts `current` if unnamed and every still-queued request), so
-  the pending count still clears and the pause lifts; a retract of the on-screen summon
-  swaps to the next or, if the queue is empty, closes the panel via `closeExaminePanel`
-  (GH #54). After each open/swap, input is ignored for `EXAMINE_SETTLE_MS` (`awaitingOpen`
-  gates it) while the swapped-in field settles, then the fresh field is wired and its text
-  set - one-shot `Ext.Timer.WaitForRealtime`, not polling. A failure to open Examine
+  `onFieldEnter`), while a blur just after a click is click-driven and does NOT save during a
+  session - the clicked control (Skip / gear / close) acts, so Skip and close are free to
+  abort (a plain Examine rename with no session still saves on blur). Closing the panel
+  mid-queue skips ALL that is left (`abortRemaining` aborts `current` if unnamed and every
+  still-queued request), so the pending count still clears and the pause lifts; a retract of
+  the on-screen summon swaps to the next or, if the queue is empty, closes the panel via
+  `closeExaminePanel` (GH #54). After each open/swap, input is ignored for
+  `EXAMINE_SETTLE_MS` (`awaitingOpen` gates it) while the swapped-in field settles, then the
+  fresh field is wired and its text set - one-shot `Ext.Timer.WaitForRealtime`, not polling;
+  an `openGeneration` token makes a superseded settle callback bail (and drain any summon
+  queued while it waited) when a retract swaps `current` mid-settle. A failure to open Examine
   (command/handle missing or `Execute` throwing) skips to the next, so the pause never
   deadlocks. Noesis objects are fetched fresh and tested with truthiness (never `== nil`,
   never cached - a stale handle crashes on use). A `!nys_uidebug` client console command

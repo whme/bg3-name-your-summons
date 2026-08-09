@@ -235,6 +235,7 @@ local examineQueue = {} -- AskName requests not yet shown, FIFO
 local current = nil -- the request whose summon is being examined now, or nil
 local answered = false -- the current summon got a name (SubmitName sent; later edits rename)
 local awaitingOpen = false -- panel opening/swapping; ignore input until it settles
+local openGeneration = 0 -- bumped per open/swap so a superseded settle callback bails
 local showNext -- forward decl: swap to the next queued request (or open the first)
 local answerSession -- forward decl: answer a session over SubmitName
 local openExamine -- forward decl: Execute Examine on a request
@@ -246,7 +247,7 @@ local panelOpen = false
 local wired = false
 local fieldSubs = {} -- { { field = node, handle = h }, ... } to unsubscribe on teardown
 local lastSent = nil -- last committed sanitised text, to dedupe Enter + blur
-local recentClick = false -- a left click just happened, so a blur now is click-driven not Enter
+local recentClick = false -- a left click just happened, so a blur now is click-driven not Enter (no save)
 
 --- Reset per-summon state for the new `current` request.
 local function beginCurrent()
@@ -375,41 +376,17 @@ end
 
 --- Skip the current summon (abort so the server re-asks it next cast) and swap to the
 --- next. Bound to the Skip button's NysSkipCommand; only shown for a multi-summon group.
+--- The click's preceding blur never saves during a session (onFieldBlur), so any typed
+--- name is discarded and the abort always fires.
 local function skipCurrent()
 	if not current or awaitingOpen then
 		return
 	end
-	log("skipCurrent:", current.SummonUuid, "answered =", answered)
-	-- A preceding blur may have already saved a typed name; then just advance, do not abort.
-	if answered then
-		showNext()
-		return
-	end
+	log("skipCurrent:", current.SummonUuid)
 	if answerSession(current, "", true) then
-		answered = true
 		showNext()
 	end
 end
-
---- element:Subscribe hands the handler either (args) or (sender, args); return the
---- one that looks like the event args (has a readable field), else the first.
-local function eventArgs(a, b)
-	if b ~= nil then
-		return b
-	end
-	return a
-end
-
--- Enter-key names, covering the shapes the Noesis KeyEventArgs.Key may report.
-local ENTER_KEYS = {
-	Return = true,
-	Enter = true,
-	Key_Return = true,
-	Key_Enter = true,
-	KP_Enter = true,
-	Key_NumPadEnter = true,
-	NumPadEnter = true,
-}
 
 --- Commit the field now (from a key/focus event). Re-fetches the live field.
 local function commitLiveField()
@@ -447,7 +424,7 @@ local function onFieldEnter()
 		lastSent = name
 		answered = true
 	elseif name ~= "" and name ~= lastSent then
-		-- Already answered (e.g. a prior blur): a further edit renames idempotently.
+		-- Already answered this creature: a further edit renames idempotently.
 		local uuid = examinedSummonUuid()
 		if uuid and submitRename(uuid, raw) then
 			lastSent = name
@@ -457,31 +434,20 @@ local function onFieldEnter()
 	showNext()
 end
 
---- Per-element KeyDown on the name field: act on Enter only. KeyDown is NOT delivered for
---- this LSTextBox in the current build (Enter is handled via focus loss in onFieldBlur); this
---- stays as a dormant fallback, guarded against double-advance by awaitingOpen.
-local function onFieldKeyDown(a, b)
-	local e = eventArgs(a, b)
-	local key = safe(function()
-		return e.Key
-	end)
-	log("field KeyDown key =", tostring(key), uiState())
-	if key ~= nil and ENTER_KEYS[tostring(key)] then
-		onFieldEnter()
-	end
-end
-
 --- Per-element focus-loss on the name field. Enter is not delivered as KeyDown here, it
 --- arrives as a focus loss, so a blur with no preceding click is an Enter commit (save +
---- advance via onFieldEnter). A blur right after a click is click-driven (save only; the
---- clicked control - Skip / gear / close - does its own thing). Both LostFocus and
---- LostKeyboardFocus fire per blur; the second is deduped (commitField) or gated
---- (awaitingOpen after an advance).
+--- advance via onFieldEnter). A blur right after a click is click-driven: during an active
+--- session it does NOT save (the clicked control - Skip / gear / close - acts, and Skip and
+--- close must be free to abort), while a plain Examine rename (no session) still saves on
+--- blur. Both LostFocus and LostKeyboardFocus fire per blur; the second is deduped
+--- (commitField) or gated (awaitingOpen after an advance).
 ---@param evName string
 local function onFieldBlur(evName)
 	log("field blur event:", evName, "recentClick =", tostring(recentClick), uiState())
 	if recentClick then
-		commitLiveField()
+		if current == nil then
+			commitLiveField()
+		end
 	else
 		onFieldEnter()
 	end
@@ -527,7 +493,6 @@ local function wirePanel()
 			fieldSubs[#fieldSubs + 1] = { field = field, handle = handle }
 		end
 	end
-	sub("KeyDown", onFieldKeyDown)
 	sub("LostFocus", function()
 		onFieldBlur("LostFocus")
 	end)
@@ -771,6 +736,10 @@ function showNext()
 	-- Execute on an already-open panel swaps in a fresh field element (C4), so drop the
 	-- prior panel's wiring; the settle below re-wires the new field.
 	unwirePanel()
+	-- Bump the token so any prior open's settle callback (e.g. a retract swapped current
+	-- mid-settle) bails instead of acting on this newer swap.
+	openGeneration = openGeneration + 1
+	local generation = openGeneration
 	awaitingOpen = true
 	if not openExamine(current) then
 		awaitingOpen = false
@@ -782,8 +751,16 @@ function showNext()
 	-- Ignore input while the open/swap settles, then wire the fresh field and set its text
 	-- (the OneWay binding does not follow a swap). One-shot, not a poll loop.
 	Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, function()
+		if generation ~= openGeneration then
+			return
+		end
 		awaitingOpen = false
 		if not current then
+			-- A retract cleared current while this settle was pending; show any AskName that
+			-- queued meanwhile, else nothing is left and the panel is already closing.
+			if #examineQueue > 0 then
+				showNext()
+			end
 			return
 		end
 		-- pollLifecycle may notice the panel closed and clear the batch, so re-check current.
