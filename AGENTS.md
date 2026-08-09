@@ -118,8 +118,15 @@ the game.
   gear hook (`SetGearHandler`), avoiding a circular require. Markup uses Larian
   `ls:` controls only (`ls:LSToggleButton` + `TickBox`, `ls:LSButton` +
   `SmallBrownButtonStyle`, `ls:LSTextBox`) extracted from the game's own
-  `OptionTemplates.xaml` / `Buttons.xaml`. Four traps, learned the hard way and
-  encoded in the module header:
+  `OptionTemplates.xaml` / `Buttons.xaml`. The multi-summon mode is a single-value
+  dropdown (not a radio group): an `ls:LSToggleButton` "pill" (whose `IsChecked`
+  binds a `NysModeOpen` Bool) over a `Popup` flyout of one `Button` per value,
+  built from the vanilla options-menu dropdown art (self-contained
+  `pack://.../Core;component/Assets/Options/...` URIs, declared `NYS_`-prefixed in
+  `Examine.xaml`). The stored value is a single `NysModeValue` String; each flyout
+  Button's `Command` sets it and closes the flyout, so radio exclusivity is
+  inherent (one value) with no WriteCallback re-entry to guard. Four traps,
+  learned the hard way and encoded in the module header:
   - **No standalone-window API** (and `Ext.UI.GetStateMachine()` is stubbed), so
     the panel must live inside a page we already override (Examine).
   - **A viewmodel/node handle does not survive across ticks** - the object lives
