@@ -89,7 +89,7 @@ function TestStoreSettings:testDefaultsWhenUnset()
 	lu.assertEquals(s.PromptOnSummon, true)
 	lu.assertEquals(s.PromptForNamed, false)
 	lu.assertEquals(s.ApplyToExisting, true)
-	lu.assertEquals(s.PauseOnPrompt, true)
+	lu.assertEquals(s.PauseOnPrompt, false)
 	lu.assertEquals(s.MultiSummonMode, "skip")
 end
 
@@ -105,6 +105,12 @@ function TestStoreSettings:testSetSettingPersistsWhitelistedKey()
 	lu.assertTrue(Store.SetSetting("PromptForNamed", true))
 	lu.assertEquals(backing["Settings"]["PromptForNamed"], true)
 	lu.assertEquals(Store.Settings().PromptForNamed, true)
+end
+
+function TestStoreSettings:testSetPauseOnPromptPersists()
+	lu.assertTrue(Store.SetSetting("PauseOnPrompt", false))
+	lu.assertEquals(backing["Settings"]["PauseOnPrompt"], false)
+	lu.assertEquals(Store.Settings().PauseOnPrompt, false)
 end
 
 function TestStoreSettings:testSetSettingRejectsUnknownKey()

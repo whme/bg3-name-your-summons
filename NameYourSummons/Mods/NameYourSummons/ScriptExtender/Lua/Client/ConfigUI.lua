@@ -11,7 +11,7 @@ local ConfigUI = {}
 local WINDOW_KEY = "config"
 
 local configWindow, namesGroup, skippedGroup, sessionGroup, saveButton
-local promptOnSummon, promptForNamed, allowStorySummons, everySummonCheck, multiSummonMode
+local promptOnSummon, promptForNamed, pauseOnPrompt, allowStorySummons, everySummonCheck, multiSummonMode
 -- settings key ("NameUndead", ...) -> its checkbox widget.
 local typeChecks = {}
 
@@ -27,8 +27,13 @@ end
 -- Edits stay local until Save; reopening reloads from the server, which is
 -- what discards unsaved edits. baseSettings is the checkbox baseline;
 -- originalNames the per-row name baseline that keystrokes diff against.
-local baseSettings =
-	{ PromptOnSummon = true, PromptForNamed = false, AllowStorySummons = false, MultiSummonMode = "skip" }
+local baseSettings = {
+	PromptOnSummon = true,
+	PromptForNamed = false,
+	PauseOnPrompt = false,
+	AllowStorySummons = false,
+	MultiSummonMode = "skip",
+}
 local originalNames = {}
 local pendingRenames = {}
 local pendingForgets = {}
@@ -53,6 +58,9 @@ local function settingsDirty()
 		return true
 	end
 	if promptForNamed.Checked ~= baseSettings.PromptForNamed then
+		return true
+	end
+	if pauseOnPrompt.Checked ~= baseSettings.PauseOnPrompt then
 		return true
 	end
 	if selectedMultiMode() ~= baseSettings.MultiSummonMode then
@@ -122,17 +130,20 @@ local function loadSettings()
 		local s = response or {}
 		local onSummon = s.PromptOnSummon ~= false
 		local forNamed = s.PromptForNamed == true
+		local pausePrompt = s.PauseOnPrompt == true
 		local allowStory = s.AllowStorySummons == true
 		local modeIdx = MultiMode.IndexOf(s.MultiSummonMode)
 		baseSettings = {
 			PromptOnSummon = onSummon,
 			PromptForNamed = forNamed,
+			PauseOnPrompt = pausePrompt,
 			AllowStorySummons = allowStory,
 			MultiSummonMode = MultiMode.ValueAt(modeIdx),
 		}
 		promptOnSummon.Checked = onSummon
 		promptForNamed.Checked = forNamed
 		promptForNamed.Disabled = not onSummon
+		pauseOnPrompt.Checked = pausePrompt
 		allowStorySummons.Checked = allowStory
 		multiSummonMode.SelectedIndex = modeIdx
 
@@ -158,6 +169,7 @@ local function onSave()
 	local settings = {
 		PromptOnSummon = promptOnSummon.Checked,
 		PromptForNamed = promptForNamed.Checked,
+		PauseOnPrompt = pauseOnPrompt.Checked,
 		AllowStorySummons = allowStorySummons.Checked,
 		MultiSummonMode = selectedMultiMode(),
 		[Classifier.MASTER_KEY] = everySummonCheck.Checked,
@@ -559,6 +571,8 @@ function ConfigUI.Open()
 		promptOnSummon.OnChange = onSettingChange
 		promptForNamed = configWindow:AddCheckbox("Also re-ask for summons I have already named", false)
 		promptForNamed.OnChange = onSettingChange
+		pauseOnPrompt = configWindow:AddCheckbox("Pause the game (turn-based mode) while I name a summon", false)
+		pauseOnPrompt.OnChange = onSettingChange
 		allowStorySummons = configWindow:AddCheckbox("Allow renaming story-bound summons (e.g. 'Us')", false)
 		allowStorySummons.OnChange = onSettingChange
 

@@ -24,17 +24,19 @@ Want to build from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Using it
 
-Summon something. The world freezes and the creature's Examine panel opens with
-its name field ready to edit, pre-filled with its current name, so you can name
-it in peace. Type a name and press Enter - or click away - to keep it, then close
-the panel (its close button or Escape) to carry on. Closing without typing a name
-declines for now; you'll be asked again the next time that creature is summoned.
-The name comes back automatically every time you re-summon that creature. A spell
-that summons several creatures at once shows them one at a time: name (or skip)
-each creature and close its panel, and the next one's opens.
+Summon something. The creature's Examine panel opens with its name field ready
+to edit, pre-filled with its current name, so you can name it in peace. Type a
+name and press Enter - or click away - to keep it, then close the panel (its
+close button or Escape) to carry on. Closing without typing a name declines for
+now; you'll be asked again the next time that creature is summoned. The name
+comes back automatically every time you re-summon that creature. A spell that
+summons several creatures at once shows them one at a time: name (or skip) each
+creature and close its panel, and the next one's opens.
 
-Out of combat the freeze is solo turn-based mode (the same pause the tactical
-camera uses); in combat your turn is already paused, so nothing extra happens.
+If you would rather not be rushed, the settings offer a toggle to freeze the
+world while you name a summon. It is off by default; turn it on and, out of
+combat, the freeze is solo turn-based mode (the same pause the tactical camera
+uses), while in combat your turn is already paused so nothing extra happens.
 Play resumes as soon as you have dealt with every summon.
 
 Each summoner keeps its own names, and different familiar shapes (cat, raven,
