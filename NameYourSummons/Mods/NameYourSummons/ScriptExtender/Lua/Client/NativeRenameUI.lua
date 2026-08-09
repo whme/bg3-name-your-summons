@@ -107,23 +107,20 @@ local function findNamed(name)
 	end)
 end
 
---- Read a Noesis property, preferring the direct getter and falling back to the
---- dynamic property bag (these view models expose runtime props via either).
+--- Read a runtime property from a view model's dynamic property bag.
 ---@param dc any
 ---@param key string
 ---@return any
 local function dcProp(dc, key)
-	-- Prefer the property bag: these runtime props live there, and asking the typed
-	-- getter for one it lacks (e.g. EntityUUID on DCExamine) logs a Noesis warning.
+	-- Bag only: dc:GetProperty warns per missing key, so falling back to it while
+	-- scanning the tree cost 200-500ms to open Examine (verified in game).
 	local all = safe(function()
 		return dc:GetAllProperties()
 	end)
-	if type(all) == "table" and all[key] ~= nil then
+	if type(all) == "table" then
 		return all[key]
 	end
-	return safe(function()
-		return dc:GetProperty(key)
-	end)
+	return nil
 end
 
 --- The uuid of the summon shown on the currently-open Examine screen, or nil.
