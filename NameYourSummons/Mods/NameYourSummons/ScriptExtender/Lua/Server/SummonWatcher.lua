@@ -289,6 +289,16 @@ local function scheduleResolve(key, summonUuid, ownerUuid, ownerRaw, rootTemplat
 	end)
 end
 
+--- Clear a detected skip-mode group's asked mark once its siblings have all been
+--- suppressed (500ms), so a later cast re-prompts under the mode set by then (GH #57).
+--- Clearing on the spot would let the very next sibling re-prompt, hence the delay.
+---@param key string
+local function scheduleMultiSkipReset(key)
+	Ext.Timer.WaitFor(500, function()
+		askedThisSession[key] = nil
+	end)
+end
+
 --- The current party's player characters (host plus companions).
 ---@return string[]
 local function partyMembers()
@@ -466,14 +476,16 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	-- Single, shared, and skip all ask once per key.
 	if askedThisSession[key] then
-		-- In skip mode a sibling arriving while the first prompt is still open
-		-- reveals this to be a multi-summon: retract the prompt (or abort it, if
-		-- still in its send delay) and leave the group unnamed this session.
+		-- A sibling arriving while the first prompt is still pending (pending > 0)
+		-- reveals a multi-summon; a plain re-cast finds pending == 0 and is left alone,
+		-- so an explicit single-summon skip still persists. Retract/abort the prompt and
+		-- leave the group unnamed WITHOUT storing a skip, so a mode change re-prompts it
+		-- next cast (GH #57).
 		if mode == "skip" and (pending[key] or 0) > 0 then
 			pending[key] = nil
-			sessionSkipped[key] = true
 			retract(key, ownerRaw)
 			unpauseIfIdle()
+			scheduleMultiSkipReset(key)
 		end
 		return
 	end
