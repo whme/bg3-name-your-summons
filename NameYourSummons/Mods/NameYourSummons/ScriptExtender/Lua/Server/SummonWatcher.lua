@@ -96,6 +96,15 @@ local function forLiveSummons(key, action)
 	end
 end
 
+--- Record a key's creature-type category from a live summon's tags, for the
+--- saved-name list (GH #47). Tags are only readable off a live instance, so we
+--- capture the type opportunistically whenever a summon is seen.
+---@param key string
+---@param summonRef string|EntityHandle
+local function rememberType(key, summonRef)
+	Store.SetType(key, Classifier.Classify(Naming.TagNamesOf(summonRef)))
+end
+
 ---@param key string
 local function addPending(key)
 	pending[key] = (pending[key] or 0) + 1
@@ -377,12 +386,17 @@ end
 ---@return table
 local function describeKey(key)
 	local owner, template = key:match("^(.-)|(.+)$")
+	-- The saved name is governed by the summon's creature type (GH #47), recorded
+	-- from a live instance's tags when one was last seen (rememberType). Absent for
+	-- names saved before this existed, until the summon appears again.
+	local category = Store.GetType(key)
 	return {
 		Key = key,
 		Owner = owner or key,
 		-- Empty when the summoner is not loaded; the client shows the uuid.
 		OwnerName = owner and Naming.GetCurrentName(owner) or "",
 		TemplateName = templateLabel(template or key),
+		Type = category and Classifier.TypeLabel(category) or nil,
 	}
 end
 
@@ -433,6 +447,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	-- on, re-ask - resolveGroup honours the current mode, so a mode change takes
 	-- effect on the next summon rather than being locked to how it was named.
 	if saved ~= nil then
+		rememberType(key, summonGuid)
 		scheduleResolve(key, Util.ToUuid(summonGuid), ownerUuid, ownerRaw, rootTemplate)
 		return
 	end
@@ -447,6 +462,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	if not ownerIsPlayer(ownerUuid) then
 		return
 	end
+	rememberType(key, summonGuid)
 
 	-- Story summons (e.g. "Us") are not prompted unless opted in; a saved name still reapplies above.
 	if Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons then
@@ -537,6 +553,10 @@ function Watcher.ReapplyExisting()
 		if owner and template then
 			local key = Util.MakeKey(owner, template)
 			local saved = Store.Get(key)
+			if saved ~= nil then
+				-- Refresh the recorded creature type for the saved-name list (GH #47).
+				rememberType(key, summon)
+			end
 			if type(saved) == "string" then
 				if Naming.Apply(summon, saved) then
 					applied = applied + 1

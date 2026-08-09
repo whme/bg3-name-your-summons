@@ -78,6 +78,29 @@ function TestStoreSkipped:testNamingClearsSkip()
 	lu.assertEquals(Store.Get("k"), "Rex")
 end
 
+TestStoreTypes = {}
+
+function TestStoreTypes:setUp()
+	freshBacking()
+end
+
+function TestStoreTypes:testEmptyBeforeAnythingStored()
+	lu.assertEquals(Store.AllTypes(), {})
+	lu.assertNil(Store.GetType("k"))
+end
+
+function TestStoreTypes:testStoreAndRetrieve()
+	Store.SetType("owner|tmpl", "Familiar")
+	lu.assertEquals(Store.GetType("owner|tmpl"), "Familiar")
+	lu.assertEquals(backing["SummonTypes"]["owner|tmpl"], "Familiar")
+end
+
+function TestStoreTypes:testOverwriteUpdates()
+	Store.SetType("k", "Beast")
+	Store.SetType("k", "Undead")
+	lu.assertEquals(Store.GetType("k"), "Undead")
+end
+
 TestStoreSettings = {}
 
 function TestStoreSettings:setUp()

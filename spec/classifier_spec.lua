@@ -67,3 +67,15 @@ function TestClassifierMetadata:testEveryCategoryHasADefault()
 		lu.assertNotNil(d[Classifier.SettingKey(cat.key)], "missing default for " .. cat.key)
 	end
 end
+
+TestClassifierTypeLabel = {}
+
+function TestClassifierTypeLabel:testUntaggedIsOther()
+	lu.assertEquals(Classifier.TypeLabel("Untagged"), "Other")
+end
+
+function TestClassifierTypeLabel:testKnownTypesPassThrough()
+	lu.assertEquals(Classifier.TypeLabel("Familiar"), "Familiar")
+	lu.assertEquals(Classifier.TypeLabel("Beast"), "Beast")
+	lu.assertEquals(Classifier.TypeLabel("Undead"), "Undead")
+end

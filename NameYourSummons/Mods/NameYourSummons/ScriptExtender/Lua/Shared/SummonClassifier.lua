@@ -67,6 +67,17 @@ function Classifier.SettingKey(category)
 	return "Name" .. category
 end
 
+--- A short, human-readable label for a category, for the saved-name list. The
+--- category key is already a single word; only the catch-all is reworded.
+---@param category string
+---@return string
+function Classifier.TypeLabel(category)
+	if category == "Untagged" then
+		return "Other"
+	end
+	return category
+end
+
 --- Classify a summon from the tag names on its entity.
 ---@param tagNames string[]
 ---@return string category  one of the Classifier.CATEGORIES keys
