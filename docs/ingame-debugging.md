@@ -38,7 +38,7 @@ You cannot see the run, so a shared, explicit script is what makes a missing log
 line *signal* instead of ambiguity. Have the user confirm the exact sequence and
 what each step should produce. A real example the user settled on:
 
-> Summon the cat familiar; name it on the prompt; wait out turn-based mode.
+> Summon the cat familiar; name it on the prompt.
 > Right-click the cat -> Examine. Click the name field, type "Findus", press
 > Enter, hover the portrait to check the rename took, click the gear. Close
 > Examine, reopen it, and repeat the rename. Then paste the full log.
