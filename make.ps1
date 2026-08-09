@@ -9,6 +9,7 @@
 #   ./make.ps1 typecheck     run lua-language-server --check
 #   ./make.ps1 test          run the LuaUnit suite
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
+#   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
 #   ./make.ps1 all           format + lint + typecheck + test (verify locally)
 #   ./make.ps1 check         format-check + lint + typecheck + test (what CI runs)
 #   ./make.ps1 changelog     assemble news/ fragments into CHANGELOG.md (changelogging)
@@ -444,6 +445,42 @@ function Cmd-Build {
     return 0
 }
 
+# The folder BG3 loads .pak mods from. It lives under %LOCALAPPDATA% (AppData\
+# Local), NOT %APPDATA% (Roaming) - the Script Extender and the game both read
+# mods from here.
+function Get-Bg3ModsDir {
+    return (Join-Path $env:LOCALAPPDATA "Larian Studios/Baldur's Gate 3/Mods")
+}
+
+# Build the mod, then drop the packed .pak into the game's Mods folder so BG3
+# loads it on next launch. Passes through -Clean to the build step.
+function Cmd-Deploy {
+    $buildCode = Cmd-Build
+    if ($buildCode -ne 0) { return $buildCode }
+
+    $modName = "NameYourSummons"
+    $meta = Get-MetaPath
+    $version = Get-ModVersion $meta
+    $pak = Join-Path $Root "build/$modName-$version.pak"
+    if (-not (Test-Path $pak)) {
+        Write-Host "Expected packed mod '$pak' but it is missing - build did not produce it."
+        return 1
+    }
+
+    $modsDir = Get-Bg3ModsDir
+    if (-not (Test-Path $modsDir)) {
+        Write-Host "BG3 Mods folder not found at '$modsDir'. Is Baldur's Gate 3 installed for this user?"
+        return 1
+    }
+
+    $dest = Join-Path $modsDir "$modName-$version.pak"
+    Copy-Item -Path $pak -Destination $dest -Force
+    Write-Host ""
+    Write-Host "Deployed:"
+    Write-Host "  $dest"
+    return 0
+}
+
 # Assemble the pending news/ fragments into CHANGELOG.md via changelogging.
 # The version (source of truth: meta.lsx) is synced into changelogging.toml
 # first so the new section is headed with the version being released.
@@ -649,7 +686,7 @@ function Cmd-CreateReleaseTag {
 function Show-Help {
     Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
         if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 19 | Out-Host
+    } | Select-Object -First 20 | Out-Host
 }
 
 # ---------------------------------------------------------------------------
@@ -671,6 +708,7 @@ try {
         "typecheck" { $code = Cmd-Typecheck }
         "test" { $code = Cmd-Test }
         "build" { $code = Cmd-Build }
+        "deploy" { $code = Cmd-Deploy }
         "all" { $code = Cmd-All }
         { $_ -in "check", "ci" } { $code = Cmd-Check }
         "changelog" { $code = Cmd-Changelog }
