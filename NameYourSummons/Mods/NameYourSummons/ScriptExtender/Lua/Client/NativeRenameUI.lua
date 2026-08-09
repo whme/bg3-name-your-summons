@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     Client side of the native "rename this summon" control (GH #9, #19, #50).
 

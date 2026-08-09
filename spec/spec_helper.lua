@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 -- Loaded once by spec/run.lua before any spec.
 --
 -- BG3SE injects `Ext`, `Osi`, and `ModuleUUID` as globals and loads modules via

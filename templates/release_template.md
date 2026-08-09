@@ -33,3 +33,11 @@ gh attestation verify NameYourSummons-{{VERSION}}.zip --repo whme/bg3-name-your-
 ```
 
 # <a href="https://github.com/whme/bg3-name-your-summons/releases/download/{{VERSION}}/NameYourSummons-{{VERSION}}.zip">NameYourSummons-{{VERSION}}.zip</a> [![Downloads](https://img.shields.io/github/downloads/whme/bg3-name-your-summons/{{VERSION}}/total?label=downloads)](https://github.com/whme/bg3-name-your-summons/releases/download/{{VERSION}}/NameYourSummons-{{VERSION}}.zip)
+
+---
+
+Name Your Summons is an unofficial, free, fan-made mod, not affiliated with or
+endorsed by Larian Studios or Wizards of the Coast. The mod's code is under the
+[MIT License](https://github.com/whme/bg3-name-your-summons/blob/main/LICENSE);
+see [NOTICE.md](https://github.com/whme/bg3-name-your-summons/blob/main/NOTICE.md)
+for game-content, trademark, and attribution details.

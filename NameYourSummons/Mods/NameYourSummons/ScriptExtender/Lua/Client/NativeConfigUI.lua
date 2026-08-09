@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     Native (NoesisGUI) settings panel, opened by the Examine gear (GH #20).
 

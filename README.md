@@ -81,3 +81,11 @@ Settings and names live in the host's save.
 
 Names are stored in the host's save and only the summoner is prompted. This
 should work in co-op, but is untested.
+
+## License
+
+The mod's original code is released under the [MIT License](LICENSE). Game
+content bundled for the UI override and the screenshots belongs to Larian
+Studios and is used under Larian's mod policy; see [NOTICE.md](NOTICE.md) for the
+full carve-out, trademarks, and disclaimer. Unofficial mod - not affiliated with
+Larian Studios or Wizards of the Coast.

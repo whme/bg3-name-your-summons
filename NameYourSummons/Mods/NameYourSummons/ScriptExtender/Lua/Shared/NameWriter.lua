@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     The renaming primitive, shared by the server and client Lua states. A
     creature's name comes from DisplayName.Name, a localisation handle rather
