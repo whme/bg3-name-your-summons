@@ -449,6 +449,7 @@ function Cmd-Build {
 # Local), NOT %APPDATA% (Roaming) - the Script Extender and the game both read
 # mods from here.
 function Get-Bg3ModsDir {
+    if (-not $env:LOCALAPPDATA) { return $null }
     return (Join-Path $env:LOCALAPPDATA "Larian Studios/Baldur's Gate 3/Mods")
 }
 
@@ -468,6 +469,10 @@ function Cmd-Deploy {
     }
 
     $modsDir = Get-Bg3ModsDir
+    if (-not $modsDir) {
+        Write-Host "%LOCALAPPDATA% is not set - deploy targets a Windows BG3 install."
+        return 1
+    }
     if (-not (Test-Path $modsDir)) {
         Write-Host "BG3 Mods folder not found at '$modsDir'. Is Baldur's Gate 3 installed for this user?"
         return 1
