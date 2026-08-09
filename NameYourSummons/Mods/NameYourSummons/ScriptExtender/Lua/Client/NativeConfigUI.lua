@@ -202,17 +202,28 @@ local function onSettingWrite(context)
 	recomputeEnabled(context)
 end
 
---- Enforce radio exclusivity across the three mode toggles: selecting one clears
---- the others, and the active one cannot be turned off.
+local MODE_PROP = { skip = "NysModeSkip", shared = "NysModeShared", unique = "NysModeUnique" }
+
+--- Enforce radio exclusivity across the three mode toggles. Noesis dispatches
+--- WriteCallbacks DEFERRED, so a suppress flag cannot guard re-entry and
+--- rewriting all three bools each call cascades into a game-crashing callback
+--- storm. Write only real changes, so the re-entrant callbacks converge.
 local function selectMode(context, active)
-	if suppressWrite then
+	if get(context, MODE_PROP[active]) == true then
+		for mode, prop in pairs(MODE_PROP) do
+			if mode ~= active and get(context, prop) == true then
+				set(context, prop, false)
+			end
+		end
 		return
 	end
-	suppressWrite = true
-	set(context, "NysModeSkip", active == "skip")
-	set(context, "NysModeShared", active == "shared")
-	set(context, "NysModeUnique", active == "unique")
-	suppressWrite = false
+	-- Active turned off: a sibling being on means we are mid-switch; else re-assert to keep one selected.
+	for mode, prop in pairs(MODE_PROP) do
+		if mode ~= active and get(context, prop) == true then
+			return
+		end
+	end
+	set(context, MODE_PROP[active], true)
 end
 
 ---------------------------------------------------------------------------
