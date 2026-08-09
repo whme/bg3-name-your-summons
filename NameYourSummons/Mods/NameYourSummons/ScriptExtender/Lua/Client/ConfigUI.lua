@@ -257,13 +257,17 @@ local function stageId(entry)
 end
 
 --- The template label for a row, suffixed with its slot for a unique set so the
---- several rows of one creature type are told apart (e.g. "Wolf #2").
+--- several rows of one creature type are told apart (e.g. "Wolf #2"), and tagged
+--- with its type (GH #47, e.g. "Wolf #2 (Beast)").
 ---@param entry table
 ---@return string
 local function rowLabel(entry)
 	local name = entry.TemplateName or "Summon"
 	if entry.Slot then
-		return name .. " #" .. tostring(entry.Slot)
+		name = name .. " #" .. tostring(entry.Slot)
+	end
+	if type(entry.Type) == "string" and entry.Type ~= "" then
+		name = name .. " (" .. entry.Type .. ")"
 	end
 	return name
 end

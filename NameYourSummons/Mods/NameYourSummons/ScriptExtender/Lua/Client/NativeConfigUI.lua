@@ -163,7 +163,11 @@ end
 local function rowLabel(entry)
 	local name = entry.TemplateName or "Summon"
 	if entry.Slot then
-		return name .. " #" .. tostring(entry.Slot)
+		name = name .. " #" .. tostring(entry.Slot)
+	end
+	-- Tag the row with its type (GH #47).
+	if type(entry.Type) == "string" and entry.Type ~= "" then
+		name = name .. " (" .. entry.Type .. ")"
 	end
 	return name
 end

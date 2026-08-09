@@ -5,6 +5,7 @@ local Store = {}
 local VAR_NAMES = "SummonNames"
 local VAR_SETTINGS = "Settings"
 local VAR_SKIPPED = "SkippedSummons"
+local VAR_TYPES = "SummonTypes"
 
 --- How a spell that summons several creatures of the same type at once is
 --- handled. All such creatures share one storage key, so the mode decides
@@ -65,6 +66,13 @@ function Store.Register()
 		SyncToClient = false,
 	})
 	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_SKIPPED, {
+		Server = true,
+		Client = false,
+		WriteableOnServer = true,
+		Persistent = true,
+		SyncToClient = false,
+	})
+	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_TYPES, {
 		Server = true,
 		Client = false,
 		WriteableOnServer = true,
@@ -237,6 +245,38 @@ function Store.Unskip(key)
 	local t = v[VAR_SKIPPED] or {}
 	t[key] = nil
 	v[VAR_SKIPPED] = t
+end
+
+---------------------------------------------------------------------------
+-- Creature types
+--
+-- The type label (e.g. "Fiend, Familiar", "Beast") last seen for a key, so the
+-- saved-name list can show a summon's type even when no instance is alive to
+-- read tags from. Populated from a live summon's tags whenever one is seen.
+---------------------------------------------------------------------------
+
+---@return table<string,string>
+function Store.AllTypes()
+	return vars()[VAR_TYPES] or {}
+end
+
+---@param key string
+---@return string|nil
+function Store.GetType(key)
+	return Store.AllTypes()[key]
+end
+
+---@param key string
+---@param label string
+function Store.SetType(key, label)
+	local v = vars()
+	local t = v[VAR_TYPES] or {}
+	if t[key] == label then
+		return
+	end
+	t[key] = label
+	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
+	v[VAR_TYPES] = t
 end
 
 ---------------------------------------------------------------------------

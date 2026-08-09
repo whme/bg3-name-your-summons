@@ -67,3 +67,23 @@ function TestClassifierMetadata:testEveryCategoryHasADefault()
 		lu.assertNotNil(d[Classifier.SettingKey(cat.key)], "missing default for " .. cat.key)
 	end
 end
+
+TestClassifierDescribe = {}
+
+function TestClassifierDescribe:testCreatureTypeAndFamiliar()
+	-- A Find Familiar imp is FIEND+FIND_FAMILIAR; both are shown.
+	lu.assertEquals(Classifier.Describe({ "FIEND", "FIND_FAMILIAR" }), "Fiend, Familiar")
+end
+
+function TestClassifierDescribe:testFamiliarWithoutCreatureType()
+	lu.assertEquals(Classifier.Describe({ "FIND_FAMILIAR" }), "Familiar")
+end
+
+function TestClassifierDescribe:testCreatureTypeOnly()
+	lu.assertEquals(Classifier.Describe({ "BEAST" }), "Beast")
+end
+
+function TestClassifierDescribe:testOtherWhenUntagged()
+	lu.assertEquals(Classifier.Describe({ "SUMMON" }), "Other")
+	lu.assertEquals(Classifier.Describe({}), "Other")
+end
