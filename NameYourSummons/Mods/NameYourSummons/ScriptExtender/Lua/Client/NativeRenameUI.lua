@@ -285,9 +285,11 @@ local function commitField(field)
 	if uuid == nil then
 		return
 	end
-	if current ~= nil and uuid == current.SummonUuid then
-		-- On-summon session: answer over SubmitName and keep the panel up. Advancing to
-		-- the next summon waits for the player to close it (Examine has no Lua close).
+	if current ~= nil and not answered and uuid == current.SummonUuid then
+		-- First answer of an on-summon session: over SubmitName, which decrements the
+		-- server's pending count once. A later edit before the panel closes must NOT
+		-- re-answer (it would double-decrement pending and append a duplicate unique
+		-- slot); it falls through to the idempotent RenameSummon path below.
 		if answerSession(current, name) then
 			lastSent = name
 			answered = true
