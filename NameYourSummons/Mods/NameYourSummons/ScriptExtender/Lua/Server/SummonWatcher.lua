@@ -34,6 +34,12 @@ local resolveGen = {}
 -- summons of the same type that are still out keep their own names.
 local resolveBatch = {}
 
+-- Debounce generation for clearing a skip-mode multi-summon's asked mark. The
+-- auto-skip of a detected group is never stored; instead the per-session asked
+-- mark is cleared once the cast settles, so the group is skipped for this cast
+-- yet re-evaluated - under whatever the mode is by then - on the next one.
+local multiSkipGen = {}
+
 -- True while a naming prompt holds the world in forced turn-based mode.
 local paused = false
 
@@ -289,6 +295,22 @@ local function scheduleResolve(key, summonUuid, ownerUuid, ownerRaw, rootTemplat
 	end)
 end
 
+--- After a skip-mode multi-summon settles, clear its per-session asked mark so a
+--- later cast prompts again (GH #57). Debounced: siblings arrive over several
+--- ticks and each pushes the timer out, so it fires once, after the last one.
+---@param key string
+local function scheduleMultiSkipReset(key)
+	local generation = (multiSkipGen[key] or 0) + 1
+	multiSkipGen[key] = generation
+	Ext.Timer.WaitFor(500, function()
+		if multiSkipGen[key] ~= generation then
+			return
+		end
+		multiSkipGen[key] = nil
+		askedThisSession[key] = nil
+	end)
+end
+
 --- The current party's player characters (host plus companions).
 ---@return string[]
 local function partyMembers()
@@ -466,14 +488,20 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	-- Single, shared, and skip all ask once per key.
 	if askedThisSession[key] then
-		-- In skip mode a sibling arriving while the first prompt is still open
-		-- reveals this to be a multi-summon: retract the prompt (or abort it, if
-		-- still in its send delay) and leave the group unnamed this session.
+		-- A sibling arriving WHILE the first prompt is still pending reveals this cast
+		-- to be a multi-summon (a plain re-cast finds pending == 0 and is left alone,
+		-- so an explicit single-summon skip stays suppressed). In skip mode, abort the
+		-- prompt still in its send delay (or retract one on screen) and leave the whole
+		-- group unnamed. The skip is deliberately NOT stored (not in sessionSkipped,
+		-- not persisted): a debounced reset clears the asked mark once the cast settles,
+		-- so the group is re-evaluated on its next cast under the mode in effect then,
+		-- rather than an old "skip" decision suppressing a later "shared"/"unique" one
+		-- (GH #57).
 		if mode == "skip" and (pending[key] or 0) > 0 then
 			pending[key] = nil
-			sessionSkipped[key] = true
 			retract(key, ownerRaw)
 			unpauseIfIdle()
+			scheduleMultiSkipReset(key)
 		end
 		return
 	end
@@ -907,6 +935,7 @@ function Watcher.RegisterConsole()
 		askedThisSession = {}
 		sessionSkipped = {}
 		askedUnique = {}
+		multiSkipGen = {}
 		Util.Log("Cleared all saved summon names and always-skip choices.")
 	end)
 end
