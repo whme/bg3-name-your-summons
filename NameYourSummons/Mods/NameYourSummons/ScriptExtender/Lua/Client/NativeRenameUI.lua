@@ -15,7 +15,6 @@ local NativeRenameUI = {}
 -- Set by BootstrapClient so this module (which owns Examine-panel detection) can
 -- drive the native settings overlay without a circular require.
 local onGearClickHandler -- fun() - called when the gear is clicked
-local onPanelCloseHandler -- fun() - called once when the panel closes
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 local MAX_DEPTH = 60
@@ -267,9 +266,6 @@ local function setPanelOpen(open)
 			end)
 			keySub = nil
 		end
-		if onPanelCloseHandler then
-			onPanelCloseHandler()
-		end
 	end
 end
 
@@ -316,12 +312,6 @@ end
 ---@param fn fun()
 function NativeRenameUI.SetGearHandler(fn)
 	onGearClickHandler = fn
-end
-
---- Wire the panel-close hook (resets the settings overlay's open flag).
----@param fn fun()
-function NativeRenameUI.SetPanelCloseHandler(fn)
-	onPanelCloseHandler = fn
 end
 
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent

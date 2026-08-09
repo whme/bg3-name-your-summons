@@ -81,24 +81,38 @@ the game.
   panel is open. See GH issue for the state-machine follow-up.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
-  `Examine.xaml` override - that reproduces the ImGui `ConfigUI` (prompt options,
+  `Examine.xaml` override - reproducing the ImGui `ConfigUI` (prompt options,
   per-creature-type filter, multi-summon mode, and the saved-name /
-  always-skipped / session-skipped managers). There is NO SE API to create a
-  standalone native window or push a UI state on demand, so the panel must live
-  inside a page we already override (Examine). It is real MVVM: a viewmodel built
-  via `Ext.UI.RegisterType` / `Ext.UI.Instantiate` (`Bool` props for the
-  checkboxes with `Notify` + `WriteCallback` two-way binding, `Collection` props
-  bound to `ItemsControl`s for the dynamic lists, `Command` props for the
-  buttons) is set as the panel's `DataContext` from Lua. `NativeRenameUI` owns
-  Examine-panel detection and feeds this module via `SetGearHandler` /
-  `SetPanelHandlers` (avoids a circular require). Markup uses Larian `ls:`
-  controls only (`ls:LSToggleButton` + `TickBox`, `ls:LSButton` +
-  `BrownButtonStyle`, `ls:LSTextBox`) extracted from the game's own
-  `OptionTemplates.xaml` / `Buttons.xaml` - bare WPF controls fail UI
-  verification. The ImGui `ConfigUI` is kept for now (reached via the prompt's
-  Settings button and `!nys_ui`); both it and the prompt button are slated for
-  removal once the native panel is proven in game. Edits are staged and flushed
-  on Save through the same net channels as `ConfigUI`; no server changes.
+  always-skipped / session-skipped managers). It is real MVVM: a viewmodel built
+  via `Ext.UI.RegisterType` / `Ext.UI.Instantiate` (`Bool` props for checkboxes,
+  a `Collection` per `ItemsControl`, `Command` props for buttons) is set as the
+  panel's `DataContext`. `NativeRenameUI` owns Examine-panel detection and feeds
+  this module the node finder (`SetPanelFinder(NativeRenameUI.FindNamed)`) and the
+  gear hook (`SetGearHandler`), avoiding a circular require. Markup uses Larian
+  `ls:` controls only (`ls:LSToggleButton` + `TickBox`, `ls:LSButton` +
+  `SmallBrownButtonStyle`, `ls:LSTextBox`) extracted from the game's own
+  `OptionTemplates.xaml` / `Buttons.xaml`. Four traps, learned the hard way and
+  encoded in the module header:
+  - **No standalone-window API** (and `Ext.UI.GetStateMachine()` is stubbed), so
+    the panel must live inside a page we already override (Examine).
+  - **A viewmodel/node handle does not survive across ticks** - the object lives
+    on as the DataContext but any Lua reference expires (`Attempted to fetch
+    Noesis::BaseObject whose lifetime has expired`). Never cache it; re-fetch live
+    from the panel (`liveVm`) at each use, and use the live `context`/`value`
+    inside a `WriteCallback`. Never compare a Noesis object with `== nil` (routes
+    through `__eq`, which throws on an expired object) - use truthiness.
+  - **An SE `Collection` is append-only from Lua** (`Clear`/`RemoveAt`/
+    `table.remove`/whole-array assign all fail). The only clean list is a fresh
+    viewmodel, so the whole panel is rebuilt on every open/refresh/save/forget
+    (`populate`), guarded by a `generation` counter so a slow reply cannot append
+    to a newer viewmodel.
+  - **Prefix every viewmodel field `Nys`** so it cannot alias a built-in (an
+    unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
+    literal "Name").
+  Forgets and un-skips are staged (toggle to Undo) and flushed on Save; edited
+  names are read off the live rows at Save. Same net channels as `ConfigUI`; no
+  server changes. The ImGui `ConfigUI` stays for now (prompt Settings button +
+  `!nys_ui`); both it and the prompt button are slated for later removal.
 
 ## Project Structure
 

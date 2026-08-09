@@ -1,19 +1,29 @@
 --[[
     Native (NoesisGUI) settings panel, opened by the Examine gear (GH #20).
 
-    Unlike the ImGui ConfigUI, the markup is real Noesis: an NYS_SettingsPanel
-    overlay in the Examine.xaml override whose DataContext is a viewmodel built
-    here via the SE viewmodel API (Ext.UI.RegisterType / Instantiate). Bool props
-    drive the checkboxes (two-way via Notify + WriteCallback), Collections feed
-    the ItemsControls, and Command props back the buttons.
+    The markup is an NYS_SettingsPanel overlay in the Examine.xaml override; its
+    DataContext is an SE viewmodel (Ext.UI.RegisterType / Instantiate). Bool props
+    drive the checkboxes, Collections feed the ItemsControls, Command props back
+    the buttons. Every viewmodel field is prefixed `Nys` so it cannot collide with
+    a built-in Noesis/WPF property (an unprefixed `Name` did - it aliased
+    FrameworkElement.Name and the edit box round-tripped the literal "Name").
 
-    There is no SE API to create a standalone native window or push a UI state on
-    demand, so the panel lives inside a page we already override (Examine); the
-    lifecycle glue (find the panel, set its DataContext, detect the gear click)
-    lives in NativeRenameUI, which feeds this module via OnPanelOpen / Open.
+    Two hard-won engine constraints shape this module:
 
-    The staged-edit + Save model mirrors ConfigUI so the exact same net channels
-    and payloads are reused; nothing is sent to the server until Save.
+    1. A viewmodel/node reference obtained from Lua does NOT survive across ticks -
+       the object lives on as the panel's DataContext, but any Lua handle to it
+       expires. So we never cache the viewmodel; we re-fetch it live from the panel
+       (liveVm) at each point of use, and inside a WriteCallback we use the live
+       `context`/`value` it is handed.
+    2. An SE Collection is append-only from Lua: Clear/RemoveAt/table.remove and
+       whole-array assignment all fail. The only way to get a clean list is a fresh
+       viewmodel (its collections start empty). So the panel is fully rebuilt on
+       every open/refresh/save/forget via `populate`, guarded by a generation
+       counter so a slow in-flight reply cannot append to a newer viewmodel.
+
+    There is no SE API to create a standalone native window, so the panel lives
+    inside a page we already override (Examine); NativeRenameUI owns panel
+    detection and feeds this module the node finder and the gear hook.
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
@@ -29,28 +39,29 @@ local TOGGLE_VM = "NYS_TypeToggleVM"
 local NAME_ROW_VM = "NYS_NameRowVM"
 local SKIP_ROW_VM = "NYS_SkipRowVM"
 
-local vm -- the single settings viewmodel instance
 local panelFinder -- fun(name):node|nil - finds a live Noesis node by x:Name
-local typeToggleVms = {} -- array of { key = "NameBeast", vm = <toggle vm> }
-local rowMeta = {} -- saved-name rowId -> { Key = .., Slot = .. }
-local originalNames = {} -- saved-name rowId -> baseline name text (dirty diff)
 
--- Server baseline for dirty tracking; edits stay local until Save.
-local baseSettings = {}
-local pendingRenames = {}
-local pendingForgets = {}
-local pendingUnskips = {}
-local pendingSessionUnskips = {}
+-- Saved-name row identity/baseline, keyed by rowId (plain strings, safe to cache
+-- unlike viewmodel handles). Edited names are read from the live rows at Save;
+-- forgets and un-skips are staged here and flushed on Save (so they can be undone).
+local rowMeta = {} -- rowId -> { Key = .., Slot = .. }
+local originalNames = {} -- rowId -> baseline name text
+local pendingForgets = {} -- saved-name rowId -> true
+local pendingUnskips = {} -- always-skipped key -> true
+local pendingSessionUnskips = {} -- session-skipped key -> true
 
--- Guards WriteCallbacks against the programmatic prop writes we do while loading
--- or enforcing radio exclusivity (those writes must not be treated as edits).
+-- Bumped on every (re)populate; async replies from an older generation are stale
+-- and must not touch the current viewmodel (see the module header, constraint 2).
+local generation = 0
+
+-- Guards WriteCallbacks against the programmatic writes we do while loading or
+-- enforcing radio exclusivity (those must not recurse or be treated as edits).
 local suppressWrite = false
 
-local refreshAll, updateSaveEnabled
+local populate
 
 ---------------------------------------------------------------------------
--- Small guarded property/collection accessors (a dead node or missing prop
--- must never tear down the client Lua state).
+-- Guarded accessors (a dead node/prop must never tear down the Lua state)
 ---------------------------------------------------------------------------
 
 local function get(obj, key)
@@ -69,17 +80,17 @@ local function set(obj, key, value)
 	end)
 end
 
+local function count(coll)
+	local n = 0
+	pcall(function()
+		n = #coll
+	end)
+	return n
+end
+
 local function appendItem(coll, item)
 	pcall(function()
 		coll[#coll + 1] = item
-	end)
-end
-
-local function clearCollection(coll)
-	pcall(function()
-		while #coll > 0 do
-			table.remove(coll)
-		end
 	end)
 end
 
@@ -89,6 +100,26 @@ local function instantiate(typeName)
 	end)
 	if ok then
 		return obj
+	end
+	return nil
+end
+
+--- The live settings viewmodel (the panel's DataContext). Valid only in the
+--- immediate scope - re-fetch every time; never cache across calls/ticks.
+---@return any|nil
+local function liveVm()
+	if not panelFinder then
+		return nil
+	end
+	local panel = panelFinder("NYS_SettingsPanel")
+	if not panel then
+		return nil
+	end
+	local ok, dc = pcall(function()
+		return panel.DataContext
+	end)
+	if ok then
+		return dc
 	end
 	return nil
 end
@@ -122,202 +153,151 @@ local function rowLabel(entry)
 end
 
 ---------------------------------------------------------------------------
--- Settings state (dirty tracking + dependent enable/disable)
+-- Dependent enable/disable and multi-summon mode
 ---------------------------------------------------------------------------
 
 --- The selected multi-summon mode value from the three radio-style toggles.
-local function selectedMode()
-	if get(vm, "ModeShared") then
+local function selectedMode(v)
+	if get(v, "NysModeShared") then
 		return "shared"
-	elseif get(vm, "ModeUnique") then
+	elseif get(v, "NysModeUnique") then
 		return "unique"
 	end
 	return "skip"
 end
 
---- Whether any settings control differs from the saved baseline.
-local function settingsDirty()
-	if get(vm, "PromptOnSummon") ~= baseSettings.PromptOnSummon then
-		return true
-	end
-	if get(vm, "PromptForNamed") ~= baseSettings.PromptForNamed then
-		return true
-	end
-	if get(vm, "AllowStorySummons") ~= baseSettings.AllowStorySummons then
-		return true
-	end
-	if selectedMode() ~= baseSettings.MultiSummonMode then
-		return true
-	end
-	if get(vm, "NameEverySummon") ~= baseSettings[Classifier.MASTER_KEY] then
-		return true
-	end
-	for _, toggle in ipairs(typeToggleVms) do
-		if get(toggle.vm, "Checked") ~= baseSettings[toggle.key] then
-			return true
-		end
-	end
-	return false
-end
-
-function updateSaveEnabled()
-	local dirty = settingsDirty()
-		or next(pendingRenames) ~= nil
-		or next(pendingForgets) ~= nil
-		or next(pendingUnskips) ~= nil
-		or next(pendingSessionUnskips) ~= nil
-	set(vm, "SaveEnabled", dirty)
-end
-
 --- Grey the toggles that cannot take effect: the "every summon" master overrides
---- the per-type list, and nothing is filtered when prompting is off.
-local function recomputeEnabled()
-	local promptOn = get(vm, "PromptOnSummon") == true
-	set(vm, "PromptForNamedEnabled", promptOn)
-	set(vm, "NameEverySummonEnabled", promptOn)
-	local typesLocked = (not promptOn) or (get(vm, "NameEverySummon") == true)
-	for _, toggle in ipairs(typeToggleVms) do
-		set(toggle.vm, "Enabled", not typesLocked)
+--- the per-type list, and nothing is filtered when prompting is off. `v` is the
+--- live viewmodel (usually the WriteCallback's context).
+local function recomputeEnabled(v)
+	local promptOn = get(v, "NysPromptOnSummon") == true
+	set(v, "NysPromptForNamedEnabled", promptOn)
+	set(v, "NysNameEverySummonEnabled", promptOn)
+	local locked = (not promptOn) or (get(v, "NysNameEverySummon") == true)
+	local toggles = get(v, "NysTypeToggles")
+	for index = 1, count(toggles) do
+		set(toggles[index], "NysEnabled", not locked)
 	end
 end
 
 ---------------------------------------------------------------------------
--- WriteCallbacks (fired by both script and Noesis writes; guarded)
+-- WriteCallbacks (Noesis hands them the LIVE context and new value)
 ---------------------------------------------------------------------------
 
-local function onSettingWrite()
+local function onSettingWrite(context)
 	if suppressWrite then
 		return
 	end
-	recomputeEnabled()
-	updateSaveEnabled()
+	recomputeEnabled(context)
 end
 
---- Enforce radio-button exclusivity across the three multi-summon-mode toggles:
---- selecting one clears the others, and the active one cannot be turned off.
-local function selectMode(active)
+--- Enforce radio exclusivity across the three mode toggles: selecting one clears
+--- the others, and the active one cannot be turned off.
+local function selectMode(context, active)
 	if suppressWrite then
 		return
 	end
 	suppressWrite = true
-	set(vm, "ModeSkip", active == "skip")
-	set(vm, "ModeShared", active == "shared")
-	set(vm, "ModeUnique", active == "unique")
+	set(context, "NysModeSkip", active == "skip")
+	set(context, "NysModeShared", active == "shared")
+	set(context, "NysModeUnique", active == "unique")
 	suppressWrite = false
-	updateSaveEnabled()
-end
-
-local function onTypeToggleWrite()
-	if suppressWrite then
-		return
-	end
-	updateSaveEnabled()
-end
-
-local function onNameRowWrite(context)
-	if suppressWrite then
-		return
-	end
-	local id = get(context, "RowId")
-	local meta = id and rowMeta[id]
-	if not meta then
-		return
-	end
-	local name = Util.Sanitise(get(context, "Name") or "")
-	if name ~= "" and name ~= originalNames[id] then
-		pendingRenames[id] = { Key = meta.Key, Slot = meta.Slot, Name = name }
-	else
-		pendingRenames[id] = nil
-	end
-	updateSaveEnabled()
 end
 
 ---------------------------------------------------------------------------
--- Row commands (per-instance handlers via command:SetHandler)
+-- Staged row actions (toggle a forget / un-skip; flushed on Save)
 ---------------------------------------------------------------------------
 
-local function toggleForget(id, row)
-	local meta = rowMeta[id]
-	if not meta then
+--- The live row in `collKey` whose NysRowId matches `id`, or nil. Used to update
+--- a single row's label/enabled state in place (re-fetched, never cached).
+local function findLiveRow(collKey, id)
+	local v = liveVm()
+	local coll = v and get(v, collKey)
+	for index = 1, count(coll) do
+		local row = coll[index]
+		if get(row, "NysRowId") == id then
+			return row
+		end
+	end
+	return nil
+end
+
+local function toggleForget(id)
+	if not rowMeta[id] then
 		return
 	end
+	local row = findLiveRow("NysSavedNames", id)
 	if pendingForgets[id] then
 		pendingForgets[id] = nil
-		set(row, "ForgetLabel", "Forget")
-		set(row, "NameEnabled", true)
+		set(row, "NysForgetLabel", "Forget")
+		set(row, "NysNameEnabled", true)
 	else
-		pendingForgets[id] = { Key = meta.Key, Slot = meta.Slot }
-		pendingRenames[id] = nil
-		set(row, "ForgetLabel", "Undo")
-		set(row, "NameEnabled", false)
+		pendingForgets[id] = true
+		set(row, "NysForgetLabel", "Undo")
+		set(row, "NysNameEnabled", false)
 	end
-	updateSaveEnabled()
 end
 
-local function toggleUnskip(key, row, pendingSet)
+local function toggleUnskip(collKey, key, pendingSet)
+	local row = findLiveRow(collKey, key)
 	if pendingSet[key] then
 		pendingSet[key] = nil
-		set(row, "UndoLabel", "Prompt again")
+		set(row, "NysUndoLabel", "Prompt again")
 	else
 		pendingSet[key] = true
-		set(row, "UndoLabel", "Undo")
+		set(row, "NysUndoLabel", "Undo")
 	end
-	updateSaveEnabled()
 end
 
 ---------------------------------------------------------------------------
--- Load / refresh from the server
+-- Load from the server into the just-built viewmodel (guarded by generation)
 ---------------------------------------------------------------------------
 
-local function loadSettings()
+local function loadSettings(gen)
 	Channels.GetSettings:RequestToServer({}, function(response)
+		if gen ~= generation then
+			return
+		end
+		local v = liveVm()
+		if not v then
+			return
+		end
 		local s = response or {}
-		local onSummon = s.PromptOnSummon ~= false
-		local forNamed = s.PromptForNamed == true
-		local allowStory = s.AllowStorySummons == true
 		local modeVal = MultiMode.ValueAt(MultiMode.IndexOf(s.MultiSummonMode))
-		local every = s[Classifier.MASTER_KEY] == true
 
 		suppressWrite = true
-		set(vm, "PromptOnSummon", onSummon)
-		set(vm, "PromptForNamed", forNamed)
-		set(vm, "AllowStorySummons", allowStory)
-		set(vm, "NameEverySummon", every)
-		set(vm, "ModeSkip", modeVal == "skip")
-		set(vm, "ModeShared", modeVal == "shared")
-		set(vm, "ModeUnique", modeVal == "unique")
-
-		baseSettings = {
-			PromptOnSummon = onSummon,
-			PromptForNamed = forNamed,
-			AllowStorySummons = allowStory,
-			MultiSummonMode = modeVal,
-			[Classifier.MASTER_KEY] = every,
-		}
-		for _, toggle in ipairs(typeToggleVms) do
-			local on = s[toggle.key] == true
-			baseSettings[toggle.key] = on
-			set(toggle.vm, "Checked", on)
+		set(v, "NysPromptOnSummon", s.PromptOnSummon ~= false)
+		set(v, "NysPromptForNamed", s.PromptForNamed == true)
+		set(v, "NysAllowStorySummons", s.AllowStorySummons == true)
+		set(v, "NysNameEverySummon", s[Classifier.MASTER_KEY] == true)
+		set(v, "NysModeSkip", modeVal == "skip")
+		set(v, "NysModeShared", modeVal == "shared")
+		set(v, "NysModeUnique", modeVal == "unique")
+		local toggles = get(v, "NysTypeToggles")
+		for index, cat in ipairs(Classifier.CATEGORIES) do
+			local toggle = toggles and toggles[index]
+			if toggle then
+				set(toggle, "NysChecked", s[Classifier.SettingKey(cat.key)] == true)
+			end
 		end
 		suppressWrite = false
 
-		recomputeEnabled()
-		updateSaveEnabled()
+		recomputeEnabled(v)
 	end)
 end
 
-local function refreshNames()
-	clearCollection(get(vm, "SavedNames"))
-	rowMeta = {}
-	originalNames = {}
-	pendingRenames = {}
-	pendingForgets = {}
-	updateSaveEnabled()
-
+local function refreshNames(gen)
 	Channels.ListNames:RequestToServer({}, function(response)
+		if gen ~= generation then
+			return
+		end
+		local v = liveVm()
+		if not v then
+			return
+		end
+		local coll = get(v, "NysSavedNames")
 		local entries = (response and response.Entries) or {}
-		set(vm, "HasSavedNames", #entries > 0)
-		local coll = get(vm, "SavedNames")
+		set(v, "NysHasSavedNames", #entries > 0)
 		for _, entry in ipairs(entries) do
 			local id = stageId(entry)
 			rowMeta[id] = { Key = entry.Key, Slot = entry.Slot }
@@ -325,17 +305,15 @@ local function refreshNames()
 
 			local row = instantiate(NAME_ROW_VM)
 			if row then
-				suppressWrite = true
-				set(row, "RowId", id)
-				set(row, "OwnerLabel", ownerLabel(entry))
-				set(row, "RowLabel", rowLabel(entry))
-				set(row, "Name", entry.Name)
-				set(row, "NameEnabled", true)
-				set(row, "ForgetLabel", "Forget")
-				suppressWrite = false
+				set(row, "NysRowId", id)
+				set(row, "NysOwnerLabel", ownerLabel(entry))
+				set(row, "NysRowLabel", rowLabel(entry))
+				set(row, "NysNameText", entry.Name)
+				set(row, "NysForgetLabel", "Forget")
+				set(row, "NysNameEnabled", true)
 				pcall(function()
-					row.ForgetCommand:SetHandler(function()
-						toggleForget(id, row)
+					row.NysForgetCommand:SetHandler(function()
+						toggleForget(id)
 					end)
 				end)
 				appendItem(coll, row)
@@ -344,26 +322,31 @@ local function refreshNames()
 	end)
 end
 
---- Rebuild a skip list; each row's command stages an undo into `pendingSet`.
---- Shared by the always-skipped and session-skipped lists.
-local function refreshSkipList(channel, collKey, hasKey, pendingSet)
-	clearCollection(get(vm, collKey))
-	updateSaveEnabled()
-
+--- Fill one skip list. `pendingSet` is the stage table for its "prompt again"
+--- toggles (always-skipped and this-session share a layout and row viewmodel).
+local function refreshSkipList(channel, collKey, hasKey, pendingSet, gen)
 	channel:RequestToServer({}, function(response)
+		if gen ~= generation then
+			return
+		end
+		local v = liveVm()
+		if not v then
+			return
+		end
+		local coll = get(v, collKey)
 		local entries = (response and response.Entries) or {}
-		set(vm, hasKey, #entries > 0)
-		local coll = get(vm, collKey)
+		set(v, hasKey, #entries > 0)
 		for _, entry in ipairs(entries) do
 			local row = instantiate(SKIP_ROW_VM)
 			if row then
-				set(row, "OwnerLabel", ownerLabel(entry))
-				set(row, "TemplateLabel", entry.TemplateName or "Summon")
-				set(row, "UndoLabel", "Prompt again")
 				local key = entry.Key
+				set(row, "NysRowId", key)
+				set(row, "NysOwnerLabel", ownerLabel(entry))
+				set(row, "NysTemplateLabel", entry.TemplateName or "Summon")
+				set(row, "NysUndoLabel", "Prompt again")
 				pcall(function()
-					row.UndoCommand:SetHandler(function()
-						toggleUnskip(key, row, pendingSet)
+					row.NysUndoCommand:SetHandler(function()
+						toggleUnskip(collKey, key, pendingSet)
 					end)
 				end)
 				appendItem(coll, row)
@@ -372,199 +355,215 @@ local function refreshSkipList(channel, collKey, hasKey, pendingSet)
 	end)
 end
 
-local function refreshSkipped()
-	pendingUnskips = {}
-	refreshSkipList(Channels.ListSkipped, "AlwaysSkipped", "HasAlwaysSkipped", pendingUnskips)
-end
-
-local function refreshSessionSkipped()
-	pendingSessionUnskips = {}
-	refreshSkipList(Channels.ListSessionSkipped, "SessionSkipped", "HasSessionSkipped", pendingSessionUnskips)
-end
-
-function refreshAll()
-	loadSettings()
-	refreshNames()
-	refreshSkipped()
-	refreshSessionSkipped()
-end
-
 ---------------------------------------------------------------------------
--- Save
+-- Save (read settings and edited names off the live viewmodel, send, rebuild)
 ---------------------------------------------------------------------------
 
 local function onSave()
+	local v = liveVm()
+	if not v then
+		return
+	end
 	local settings = {
-		PromptOnSummon = get(vm, "PromptOnSummon"),
-		PromptForNamed = get(vm, "PromptForNamed"),
-		AllowStorySummons = get(vm, "AllowStorySummons"),
-		MultiSummonMode = selectedMode(),
-		[Classifier.MASTER_KEY] = get(vm, "NameEverySummon"),
+		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
+		PromptForNamed = get(v, "NysPromptForNamed") == true,
+		AllowStorySummons = get(v, "NysAllowStorySummons") == true,
+		MultiSummonMode = selectedMode(v),
+		[Classifier.MASTER_KEY] = get(v, "NysNameEverySummon") == true,
 	}
-	for _, toggle in ipairs(typeToggleVms) do
-		settings[toggle.key] = get(toggle.vm, "Checked")
+	local toggles = get(v, "NysTypeToggles")
+	for index, cat in ipairs(Classifier.CATEGORIES) do
+		local toggle = toggles and toggles[index]
+		settings[Classifier.SettingKey(cat.key)] = toggle ~= nil and get(toggle, "NysChecked") == true
 	end
 	Channels.SetSettings:SendToServer(settings)
-	baseSettings = settings
 
-	for _, payload in pairs(pendingForgets) do
-		Channels.ForgetName:SendToServer(payload)
+	-- Read edited names straight from the live rows (no per-keystroke staging);
+	-- a row staged for forget is dropped, not renamed.
+	local names = get(v, "NysSavedNames")
+	for index = 1, count(names) do
+		local row = names[index]
+		local id = get(row, "NysRowId")
+		local meta = id and rowMeta[id]
+		if meta and not pendingForgets[id] then
+			local text = Util.Sanitise(get(row, "NysNameText") or "")
+			if text ~= "" and text ~= originalNames[id] then
+				Channels.RenameName:SendToServer({ Key = meta.Key, Slot = meta.Slot, Name = text })
+			end
+		end
 	end
-	pendingForgets = {}
 
-	for _, payload in pairs(pendingRenames) do
-		Channels.RenameName:SendToServer(payload)
+	for id in pairs(pendingForgets) do
+		Channels.ForgetName:SendToServer({ Key = rowMeta[id].Key, Slot = rowMeta[id].Slot })
 	end
-	pendingRenames = {}
-
 	for key in pairs(pendingUnskips) do
 		Channels.Unskip:SendToServer({ Key = key })
 	end
-	pendingUnskips = {}
-
 	for key in pairs(pendingSessionUnskips) do
 		Channels.UnskipSession:SendToServer({ Key = key })
 	end
-	pendingSessionUnskips = {}
 
-	updateSaveEnabled()
-	-- Pull the canonical state back (server-side sanitising, owner names).
-	Ext.Timer.WaitForRealtime(120, function()
-		refreshNames()
-		refreshSkipped()
-		refreshSessionSkipped()
-	end)
+	-- Rebuild from the canonical server state (server-side sanitising, owner names).
+	Ext.Timer.WaitForRealtime(120, populate)
 end
 
 ---------------------------------------------------------------------------
--- Viewmodel registration
+-- Viewmodel type registration
 ---------------------------------------------------------------------------
 
 local function registerTypes()
 	pcall(function()
 		Ext.UI.RegisterType(SETTINGS_VM, {
-			IsOpen = { Type = "Bool", Notify = true },
-			PromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			PromptForNamed = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			AllowStorySummons = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			PromptForNamedEnabled = { Type = "Bool", Notify = true },
-			NameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NameEverySummonEnabled = { Type = "Bool", Notify = true },
-			ModeSkip = {
+			NysIsOpen = { Type = "Bool", Notify = true },
+			NysTypesExpanded = { Type = "Bool", Notify = true },
+			NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+			NysPromptForNamed = { Type = "Bool", Notify = true },
+			NysAllowStorySummons = { Type = "Bool", Notify = true },
+			NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
+			NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+			NysNameEverySummonEnabled = { Type = "Bool", Notify = true },
+			NysModeSkip = {
 				Type = "Bool",
 				Notify = true,
-				WriteCallback = function()
-					selectMode("skip")
+				WriteCallback = function(context)
+					selectMode(context, "skip")
 				end,
 			},
-			ModeShared = {
+			NysModeShared = {
 				Type = "Bool",
 				Notify = true,
-				WriteCallback = function()
-					selectMode("shared")
+				WriteCallback = function(context)
+					selectMode(context, "shared")
 				end,
 			},
-			ModeUnique = {
+			NysModeUnique = {
 				Type = "Bool",
 				Notify = true,
-				WriteCallback = function()
-					selectMode("unique")
+				WriteCallback = function(context)
+					selectMode(context, "unique")
 				end,
 			},
-			TypeToggles = { Type = "Collection" },
-			SavedNames = { Type = "Collection" },
-			AlwaysSkipped = { Type = "Collection" },
-			SessionSkipped = { Type = "Collection" },
-			HasSavedNames = { Type = "Bool", Notify = true },
-			HasAlwaysSkipped = { Type = "Bool", Notify = true },
-			HasSessionSkipped = { Type = "Bool", Notify = true },
-			SaveEnabled = { Type = "Bool", Notify = true },
-			SaveCommand = { Type = "Command" },
-			RefreshCommand = { Type = "Command" },
-			CloseCommand = { Type = "Command" },
+			NysTypeToggles = { Type = "Collection" },
+			NysSavedNames = { Type = "Collection" },
+			NysAlwaysSkipped = { Type = "Collection" },
+			NysSessionSkipped = { Type = "Collection" },
+			NysHasSavedNames = { Type = "Bool", Notify = true },
+			NysHasAlwaysSkipped = { Type = "Bool", Notify = true },
+			NysHasSessionSkipped = { Type = "Bool", Notify = true },
+			NysSaveCommand = { Type = "Command" },
+			NysRefreshCommand = { Type = "Command" },
+			NysCloseCommand = { Type = "Command" },
+			NysToggleTypesCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(TOGGLE_VM, {
-			Label = { Type = "String" },
-			Checked = { Type = "Bool", Notify = true, WriteCallback = onTypeToggleWrite },
-			Enabled = { Type = "Bool", Notify = true },
+			NysLabel = { Type = "String" },
+			NysChecked = { Type = "Bool", Notify = true },
+			NysEnabled = { Type = "Bool", Notify = true },
 		})
 		Ext.UI.RegisterType(NAME_ROW_VM, {
-			RowId = { Type = "String" },
-			OwnerLabel = { Type = "String" },
-			RowLabel = { Type = "String" },
-			Name = { Type = "String", Notify = true, WriteCallback = onNameRowWrite },
-			NameEnabled = { Type = "Bool", Notify = true },
-			ForgetLabel = { Type = "String", Notify = true },
-			ForgetCommand = { Type = "Command" },
+			NysRowId = { Type = "String" },
+			NysOwnerLabel = { Type = "String" },
+			NysRowLabel = { Type = "String" },
+			NysNameText = { Type = "String", Notify = true },
+			NysNameEnabled = { Type = "Bool", Notify = true },
+			NysForgetLabel = { Type = "String", Notify = true },
+			NysForgetCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(SKIP_ROW_VM, {
-			OwnerLabel = { Type = "String" },
-			TemplateLabel = { Type = "String" },
-			UndoLabel = { Type = "String", Notify = true },
-			UndoCommand = { Type = "Command" },
+			NysRowId = { Type = "String" },
+			NysOwnerLabel = { Type = "String" },
+			NysTemplateLabel = { Type = "String" },
+			NysUndoLabel = { Type = "String", Notify = true },
+			NysUndoCommand = { Type = "Command" },
 		})
 	end)
 end
 
---- Build the persistent settings viewmodel (the type toggles are static and
---- built once; only their Checked state changes on load).
+--- Build a fresh viewmodel (empty collections) and wire the window-level commands.
+--- Kept alive by the DataContext assignment in populate, not by any Lua handle;
+--- the command handlers re-fetch the live viewmodel and never close over this one.
+---@return any|nil vm
 local function buildViewModel()
-	vm = instantiate(SETTINGS_VM)
+	local vm = instantiate(SETTINGS_VM)
 	if not vm then
 		Util.Warn("NYS: could not instantiate the native settings viewmodel")
-		return
+		return nil
 	end
 	suppressWrite = true
-	typeToggleVms = {}
-	local toggles = get(vm, "TypeToggles")
+	local toggles = get(vm, "NysTypeToggles")
 	for _, cat in ipairs(Classifier.CATEGORIES) do
 		local toggle = instantiate(TOGGLE_VM)
 		if toggle then
-			local key = Classifier.SettingKey(cat.key)
-			set(toggle, "Label", cat.label)
-			set(toggle, "Checked", false)
-			set(toggle, "Enabled", true)
+			set(toggle, "NysLabel", cat.label)
+			set(toggle, "NysChecked", false)
+			set(toggle, "NysEnabled", true)
 			appendItem(toggles, toggle)
-			typeToggleVms[#typeToggleVms + 1] = { key = key, vm = toggle }
 		end
 	end
-	set(vm, "IsOpen", false)
+	set(vm, "NysIsOpen", false)
+	set(vm, "NysTypesExpanded", false)
 	pcall(function()
-		vm.SaveCommand:SetHandler(onSave)
+		vm.NysSaveCommand:SetHandler(onSave)
 	end)
 	pcall(function()
-		vm.RefreshCommand:SetHandler(refreshAll)
+		vm.NysRefreshCommand:SetHandler(function()
+			populate()
+		end)
 	end)
 	pcall(function()
-		vm.CloseCommand:SetHandler(function()
-			set(vm, "IsOpen", false)
+		vm.NysCloseCommand:SetHandler(function()
+			local v = liveVm()
+			if v then
+				set(v, "NysIsOpen", false)
+			end
+		end)
+	end)
+	pcall(function()
+		vm.NysToggleTypesCommand:SetHandler(function()
+			local v = liveVm()
+			if v then
+				set(v, "NysTypesExpanded", not get(v, "NysTypesExpanded"))
+			end
 		end)
 	end)
 	suppressWrite = false
+	return vm
 end
 
----------------------------------------------------------------------------
--- Public lifecycle (driven by NativeRenameUI, which owns panel detection)
----------------------------------------------------------------------------
-
---- Find the overlay in the live tree and bind the viewmodel to it, in one scope.
---- A Noesis node reference does not survive being held across calls, so the panel
---- is found and assigned together (the Examine panel is recreated on each open).
----@return boolean  whether the panel was found and bound
-local function attachDataContext()
-	if not panelFinder then
-		return false
+--- Rebuild the whole panel: fresh viewmodel (empty append-only collections),
+--- bind it as the DataContext, then load everything under a new generation.
+function populate()
+	local vm = buildViewModel()
+	if not vm then
+		return
 	end
-	local attached = false
-	pcall(function()
-		local panel = panelFinder("NYS_SettingsPanel")
-		if panel then
-			panel.DataContext = vm
-			attached = true
-		end
-	end)
-	return attached
+	local panel = panelFinder and panelFinder("NYS_SettingsPanel")
+	if panel then
+		set(panel, "DataContext", vm)
+	end
+	set(vm, "NysIsOpen", true)
+	generation = generation + 1
+	local gen = generation
+	rowMeta = {}
+	originalNames = {}
+	pendingForgets = {}
+	pendingUnskips = {}
+	pendingSessionUnskips = {}
+	loadSettings(gen)
+	refreshNames(gen)
+	refreshSkipList(Channels.ListSkipped, "NysAlwaysSkipped", "NysHasAlwaysSkipped", pendingUnskips, gen)
+	refreshSkipList(
+		Channels.ListSessionSkipped,
+		"NysSessionSkipped",
+		"NysHasSessionSkipped",
+		pendingSessionUnskips,
+		gen
+	)
 end
+
+---------------------------------------------------------------------------
+-- Public lifecycle (NativeRenameUI owns panel detection and node lookup)
+---------------------------------------------------------------------------
 
 --- Set the finder that resolves a live Noesis node by x:Name (NativeRenameUI).
 ---@param fn fun(name:string):any|nil
@@ -572,22 +571,9 @@ function NativeConfigUI.SetPanelFinder(fn)
 	panelFinder = fn
 end
 
---- Reset the open flag when the Examine panel closes so the overlay starts
---- hidden the next time the panel is shown.
-function NativeConfigUI.OnPanelClose()
-	set(vm, "IsOpen", false)
-end
-
---- Show the overlay and (re)load everything from the server. Called from the
---- gear's click handler.
+--- Open the overlay (build + bind + load). Called from the gear's click handler.
 function NativeConfigUI.Open()
-	if not vm then
-		return
-	end
-	local attached = attachDataContext()
-	set(vm, "IsOpen", true)
-	Util.Log("NYS: settings opened; overlay attached =", attached)
-	refreshAll()
+	populate()
 end
 
 function NativeConfigUI.Register()
@@ -596,8 +582,6 @@ function NativeConfigUI.Register()
 		return
 	end
 	registerTypes()
-	buildViewModel()
-	Util.Log("NYS: native settings registered; toggles =", #typeToggleVms)
 end
 
 return NativeConfigUI
