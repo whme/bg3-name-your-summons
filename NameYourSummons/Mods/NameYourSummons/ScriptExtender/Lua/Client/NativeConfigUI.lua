@@ -165,7 +165,7 @@ local function rowLabel(entry)
 	if entry.Slot then
 		name = name .. " #" .. tostring(entry.Slot)
 	end
-	-- Tag the row with the creature type that governs it (GH #47).
+	-- Tag the row with its type (GH #47).
 	if type(entry.Type) == "string" and entry.Type ~= "" then
 		name = name .. " (" .. entry.Type .. ")"
 	end

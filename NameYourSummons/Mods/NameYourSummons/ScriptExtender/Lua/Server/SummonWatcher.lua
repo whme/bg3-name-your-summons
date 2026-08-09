@@ -96,13 +96,13 @@ local function forLiveSummons(key, action)
 	end
 end
 
---- Record a key's creature-type category from a live summon's tags, for the
---- saved-name list (GH #47). Tags are only readable off a live instance, so we
---- capture the type opportunistically whenever a summon is seen.
+--- Record a key's type label from a live summon's tags, for the saved-name list
+--- (GH #47). Tags are only readable off a live instance, so capture it
+--- opportunistically whenever a summon is seen.
 ---@param key string
 ---@param summonRef string|EntityHandle
 local function rememberType(key, summonRef)
-	Store.SetType(key, Classifier.Classify(Naming.TagNamesOf(summonRef)))
+	Store.SetType(key, Classifier.Describe(Naming.TagNamesOf(summonRef)))
 end
 
 ---@param key string
@@ -386,17 +386,15 @@ end
 ---@return table
 local function describeKey(key)
 	local owner, template = key:match("^(.-)|(.+)$")
-	-- The saved name is governed by the summon's creature type (GH #47), recorded
-	-- from a live instance's tags when one was last seen (rememberType). Absent for
-	-- names saved before this existed, until the summon appears again.
-	local category = Store.GetType(key)
 	return {
 		Key = key,
 		Owner = owner or key,
 		-- Empty when the summoner is not loaded; the client shows the uuid.
 		OwnerName = owner and Naming.GetCurrentName(owner) or "",
 		TemplateName = templateLabel(template or key),
-		Type = category and Classifier.TypeLabel(category) or nil,
+		-- The summon's type label (GH #47), recorded from a live instance's tags
+		-- when last seen. Absent for names saved before this existed.
+		Type = Store.GetType(key),
 	}
 end
 
@@ -452,6 +450,14 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 		return
 	end
 
+	if not ownerIsPlayer(ownerUuid) then
+		return
+	end
+	-- Record the type for the saved-name and skipped lists regardless of the
+	-- prompt settings, so a summon skipped or later named via Examine still shows
+	-- its type (GH #47).
+	rememberType(key, summonGuid)
+
 	if not settings.PromptOnSummon then
 		return
 	end
@@ -459,10 +465,6 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	if Store.IsSkipped(key) then
 		return
 	end
-	if not ownerIsPlayer(ownerUuid) then
-		return
-	end
-	rememberType(key, summonGuid)
 
 	-- Story summons (e.g. "Us") are not prompted unless opted in; a saved name still reapplies above.
 	if Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons then
@@ -539,10 +541,9 @@ end
 function Watcher.ReapplyExisting()
 	Naming.SeedLoca(Store.All())
 
-	if not Store.Settings().ApplyToExisting then
-		return
-	end
-
+	-- Reapplying names on load is opt-out, but the type refresh always runs so the
+	-- saved-name list can show a type for summons that were alive at load (GH #47).
+	local applyNames = Store.Settings().ApplyToExisting
 	local summons = Naming.AllSummons()
 	local applied = 0
 	local doneKeys = {}
@@ -554,14 +555,13 @@ function Watcher.ReapplyExisting()
 			local key = Util.MakeKey(owner, template)
 			local saved = Store.Get(key)
 			if saved ~= nil then
-				-- Refresh the recorded creature type for the saved-name list (GH #47).
 				rememberType(key, summon)
 			end
-			if type(saved) == "string" then
+			if applyNames and type(saved) == "string" then
 				if Naming.Apply(summon, saved) then
 					applied = applied + 1
 				end
-			elseif type(saved) == "table" and not doneKeys[key] then
+			elseif applyNames and type(saved) == "table" and not doneKeys[key] then
 				-- A unique set is distributed across the key's siblings in one pass.
 				doneKeys[key] = true
 				applied = applied + distributeUnique(key)
@@ -788,6 +788,9 @@ function Watcher.RegisterNet()
 		end
 
 		local key = Util.MakeKey(owner, template)
+		-- Record the type here too: an Examine rename can create a saved name for a
+		-- summon that was alive at load and so never passed through HandleSummon (GH #47).
+		rememberType(key, uuid)
 		local name = Util.Sanitise(data.Name)
 		sessionSkipped[key] = nil
 

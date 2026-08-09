@@ -258,7 +258,7 @@ end
 
 --- The template label for a row, suffixed with its slot for a unique set so the
 --- several rows of one creature type are told apart (e.g. "Wolf #2"), and tagged
---- with the creature type that governs it (GH #47, e.g. "Wolf #2 (Beast)").
+--- with its type (GH #47, e.g. "Wolf #2 (Beast)").
 ---@param entry table
 ---@return string
 local function rowLabel(entry)

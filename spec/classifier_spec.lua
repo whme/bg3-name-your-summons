@@ -68,14 +68,22 @@ function TestClassifierMetadata:testEveryCategoryHasADefault()
 	end
 end
 
-TestClassifierTypeLabel = {}
+TestClassifierDescribe = {}
 
-function TestClassifierTypeLabel:testUntaggedIsOther()
-	lu.assertEquals(Classifier.TypeLabel("Untagged"), "Other")
+function TestClassifierDescribe:testCreatureTypeAndFamiliar()
+	-- A Find Familiar imp is FIEND+FIND_FAMILIAR; both are shown.
+	lu.assertEquals(Classifier.Describe({ "FIEND", "FIND_FAMILIAR" }), "Fiend, Familiar")
 end
 
-function TestClassifierTypeLabel:testKnownTypesPassThrough()
-	lu.assertEquals(Classifier.TypeLabel("Familiar"), "Familiar")
-	lu.assertEquals(Classifier.TypeLabel("Beast"), "Beast")
-	lu.assertEquals(Classifier.TypeLabel("Undead"), "Undead")
+function TestClassifierDescribe:testFamiliarWithoutCreatureType()
+	lu.assertEquals(Classifier.Describe({ "FIND_FAMILIAR" }), "Familiar")
+end
+
+function TestClassifierDescribe:testCreatureTypeOnly()
+	lu.assertEquals(Classifier.Describe({ "BEAST" }), "Beast")
+end
+
+function TestClassifierDescribe:testOtherWhenUntagged()
+	lu.assertEquals(Classifier.Describe({ "SUMMON" }), "Other")
+	lu.assertEquals(Classifier.Describe({}), "Other")
 end

@@ -67,35 +67,56 @@ function Classifier.SettingKey(category)
 	return "Name" .. category
 end
 
---- A short, human-readable label for a category, for the saved-name list. The
---- category key is already a single word; only the catch-all is reworded.
----@param category string
----@return string
-function Classifier.TypeLabel(category)
-	if category == "Untagged" then
-		return "Other"
-	end
-	return category
-end
-
---- Classify a summon from the tag names on its entity.
+--- The upper-cased set of an entity's tag names, for presence lookups.
 ---@param tagNames string[]
----@return string category  one of the Classifier.CATEGORIES keys
-function Classifier.Classify(tagNames)
+---@return table<string, boolean>
+local function tagSet(tagNames)
 	local present = {}
 	for _, name in ipairs(tagNames or {}) do
 		present[tostring(name):upper()] = true
 	end
+	return present
+end
 
-	if present[FAMILIAR_TAG] then
-		return "Familiar"
-	end
+--- The highest-priority creature-type category present, or nil if none.
+---@param present table<string, boolean>
+---@return string|nil
+local function creatureType(present)
 	for _, category in ipairs(TYPE_ORDER) do
 		if present[category:upper()] then
 			return category
 		end
 	end
-	return "Untagged"
+	return nil
+end
+
+--- Classify a summon from the tag names on its entity. Familiars take priority
+--- over their creature type, matching the per-type filter.
+---@param tagNames string[]
+---@return string category  one of the Classifier.CATEGORIES keys
+function Classifier.Classify(tagNames)
+	local present = tagSet(tagNames)
+	if present[FAMILIAR_TAG] then
+		return "Familiar"
+	end
+	return creatureType(present) or "Untagged"
+end
+
+--- A human-readable label of a summon's type for the saved-name list. Creature
+--- type and familiar status are independent (an imp is a Fiend and a Familiar),
+--- so both are shown: "Fiend, Familiar", "Beast", "Familiar", or "Other".
+---@param tagNames string[]
+---@return string
+function Classifier.Describe(tagNames)
+	local present = tagSet(tagNames)
+	local category = creatureType(present)
+	if category and present[FAMILIAR_TAG] then
+		return category .. ", Familiar"
+	end
+	if present[FAMILIAR_TAG] then
+		return "Familiar"
+	end
+	return category or "Other"
 end
 
 --- Whether a summon of these tags may be prompted, given the current settings.

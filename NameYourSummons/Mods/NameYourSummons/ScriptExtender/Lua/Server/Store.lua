@@ -250,9 +250,9 @@ end
 ---------------------------------------------------------------------------
 -- Creature types
 --
--- The classifier category (e.g. "Familiar", "Beast") last seen for a key, so
--- the saved-name list can show a summon's type even when no instance is alive
--- to read tags from. Populated from a live summon's tags whenever one is seen.
+-- The type label (e.g. "Fiend, Familiar", "Beast") last seen for a key, so the
+-- saved-name list can show a summon's type even when no instance is alive to
+-- read tags from. Populated from a live summon's tags whenever one is seen.
 ---------------------------------------------------------------------------
 
 ---@return table<string,string>
@@ -267,14 +267,14 @@ function Store.GetType(key)
 end
 
 ---@param key string
----@param category string
-function Store.SetType(key, category)
+---@param label string
+function Store.SetType(key, label)
 	local v = vars()
 	local t = v[VAR_TYPES] or {}
-	if t[key] == category then
+	if t[key] == label then
 		return
 	end
-	t[key] = category
+	t[key] = label
 	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
 	v[VAR_TYPES] = t
 end
