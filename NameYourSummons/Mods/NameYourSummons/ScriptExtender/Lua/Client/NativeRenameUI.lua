@@ -113,17 +113,19 @@ end
 ---@param key string
 ---@return any
 local function dcProp(dc, key)
-	-- Prefer the property bag: these runtime props live there, and asking the typed
-	-- getter for one it lacks (e.g. EntityUUID on DCExamine) logs a Noesis warning.
+	-- Read ONLY the property bag. These runtime props (EntityUUID, CharacterType)
+	-- live there; the typed getter lacks them and logs a Noesis warning per miss. A
+	-- fallback to dc:GetProperty(key) here scanned the whole visual tree that way and
+	-- spammed thousands of warnings, costing 200-500ms just to open Examine on a
+	-- summon (verified in game). The bag has no such cost and always carries these
+	-- props where they exist, so there is nothing useful to fall back to.
 	local all = safe(function()
 		return dc:GetAllProperties()
 	end)
-	if type(all) == "table" and all[key] ~= nil then
+	if type(all) == "table" then
 		return all[key]
 	end
-	return safe(function()
-		return dc:GetProperty(key)
-	end)
+	return nil
 end
 
 --- The uuid of the summon shown on the currently-open Examine screen, or nil.
