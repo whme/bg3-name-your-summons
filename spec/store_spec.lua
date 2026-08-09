@@ -108,9 +108,9 @@ function TestStoreSettings:testSetSettingPersistsWhitelistedKey()
 end
 
 function TestStoreSettings:testSetPauseOnPromptPersists()
-	lu.assertTrue(Store.SetSetting("PauseOnPrompt", false))
-	lu.assertEquals(backing["Settings"]["PauseOnPrompt"], false)
-	lu.assertEquals(Store.Settings().PauseOnPrompt, false)
+	lu.assertTrue(Store.SetSetting("PauseOnPrompt", true))
+	lu.assertEquals(backing["Settings"]["PauseOnPrompt"], true)
+	lu.assertEquals(Store.Settings().PauseOnPrompt, true)
 end
 
 function TestStoreSettings:testSetSettingRejectsUnknownKey()
