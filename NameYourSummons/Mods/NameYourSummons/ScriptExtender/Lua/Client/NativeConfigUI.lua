@@ -59,6 +59,12 @@ local generation = 0
 -- flush the fresh viewmodel's default (all-false) settings over the real ones.
 local settingsLoadedGen = 0
 
+-- The generation already flushed by Save. Save stays clickable until populate
+-- rebuilds (120ms later); without this a double-click would replay the staged
+-- forgets, and a unique-set ForgetSlot compacts the array, so the replay deletes
+-- the wrong name. Cleared implicitly: populate bumps `generation` past it.
+local savedGen = 0
+
 -- Guards WriteCallbacks against the programmatic writes we do while loading or
 -- enforcing radio exclusivity (those must not recurse or be treated as edits).
 local suppressWrite = false
@@ -375,6 +381,10 @@ local function onSave()
 	if settingsLoadedGen ~= generation then
 		return
 	end
+	if savedGen == generation then
+		return
+	end
+	savedGen = generation
 	local settings = {
 		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
 		PromptForNamed = get(v, "NysPromptForNamed") == true,
