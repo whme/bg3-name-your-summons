@@ -4,18 +4,16 @@
     The examined creature's uuid is read from the Examine panel's Noesis
     DataContext (EntityUUID + CharacterType) and a rename is sent to the server.
 
-    Native-UI approach (verified in game, GH #50 - see docs/bg3-modding-toolchain.md
-    and AGENTS.md for the full "one proven way"):
+    Native-UI approach (see docs/bg3-modding-toolchain.md and AGENTS.md):
     - Controls WE add to the game's Examine panel are driven by per-element MVVM,
       not by global mouse hit-testing: the gear is an `ls:LSButton` whose `Command`
       binds to a small viewmodel we set as its nested DataContext; the name field
-      commits via its own per-element key/focus subscriptions. All of these fire on
-      the FIRST panel of a session (the old "per-element events are dead on the
-      first panel" claim was WRONG).
-    - There is no panel-open event (Ext.UI.GetStateMachine() is nil) and Examine
-      cannot be closed from Lua, so exactly ONE cheap global mouse hook remains, as
-      the sole lifecycle detector (panel present in the tree = open). This is the
-      single sanctioned exception to "our controls use bindings".
+      commits via its own per-element key/focus subscriptions.
+    - There is no panel-open event (Ext.UI.GetStateMachine() is nil), so ONE global
+      mouse hook remains as the sole lifecycle detector (panel present in the tree =
+      open). This is the single exception to "our controls use bindings".
+    - Close the panel from Lua with closeExaminePanel (GH #54): drive its CustomEvent
+      command with a boxed string planted as a XAML resource.
     - Never compare a Noesis object with `== nil` (its __eq crashes on an expired
       object) and never cache one across ticks; fetch fresh and test truthiness.
 ]]
@@ -49,9 +47,9 @@ local SEARCH_DEPTH_LIMIT = 80
 -- DataContext so its XAML `Command="{Binding NysGearCommand}"` resolves.
 local GEAR_VM = "NYS_GearVM"
 
--- One-shot open-animation settle (ms) after we Execute Examine on a queued summon:
--- keep ignoring input while it plays so rapid skipping cannot dismiss the fresh
--- panel, and wire the field/gear once it has settled. Empirical.
+-- Advancing the queue waits CLOSE_MS for the old panel's close animation before Executing
+-- Examine on the next summon, then ignores input for SETTLE_MS while the open animation
+-- plays so rapid skipping cannot dismiss the fresh panel. Empirical.
 local EXAMINE_CLOSE_MS = 400
 local EXAMINE_SETTLE_MS = 400
 
@@ -215,15 +213,15 @@ end
 -- On-summon naming state (GH #19); the interaction below drives it
 ---------------------------------------------------------------------------
 --
--- The server still owns detection, the pending count, the world-pause, and (in
--- unique mode) asking per creature; the client answers by opening the native Examine
--- panel. Only one Examine panel exists and it cannot be closed from Lua (C3), so as a
--- DESIGN CHOICE the queued summons are shown one at a time and the next opens once the
--- player closes the current panel (a swap-through-the-queue redesign is GH #51 - the
--- engine does NOT force one-at-a-time: ExamineCommand:Execute on an open panel swaps
--- its content, C4). Naming a summon answers over SubmitName (the channel the old ImGui
--- window used, so the server's pause/pending bookkeeping is untouched) and leaves the
--- panel up; closing it advances, skipping (abort) any summon left unnamed.
+-- The server owns detection, the pending count, the world-pause, and (in unique mode)
+-- asking per creature; the client answers by opening the native Examine panel. Only one
+-- Examine panel exists, so summons are shown one at a time - a design choice, not an
+-- engine limit (Executing Examine on an open panel swaps its content). The next opens
+-- once the current one is closed: by the player when naming, or by closeExaminePanel
+-- (GH #54) when the server retracts the on-screen prompt. Naming answers over SubmitName
+-- (the channel the ImGui window used, so the server's pause/pending bookkeeping is
+-- untouched) and leaves the panel up; closing it advances, skipping (abort) any unnamed
+-- summon. A swap-through-the-queue redesign is tracked in GH #51.
 local examineQueue = {} -- AskName requests not yet shown, FIFO
 local current = nil -- the request whose summon is being examined now, or nil
 local answered = false -- the current summon got a name (so closing it just advances)
@@ -671,6 +669,37 @@ function startNext(afterClose)
 	end
 end
 
+-- Closing Examine from Lua (GH #54): its close runs the "CloseWidget" state event (action
+-- <ls:RemoveState/>) through the widget's CustomEvent command, whose parameter must be a
+-- BOXED Noesis string - a raw Lua string is rejected and SE cannot mint one, so we plant a
+-- <System:String x:Key="NYS_CloseWidget"> resource in the Examine.xaml override and read it
+-- back live via element:Resource(). See AGENTS.md for why the resource is the only way in.
+local CLOSE_WIDGET_RESOURCE = "NYS_CloseWidget"
+
+--- Close the open Examine panel; true if the close command was issued. Command and param
+--- are fetched fresh - a Noesis handle does not survive across ticks.
+---@return boolean
+local function closeExaminePanel()
+	local examine = examineNode()
+	if not examine then
+		return false
+	end
+	local command = safe(function()
+		return examine.DataContext:GetProperty("CustomEvent")
+	end)
+	local param = safe(function()
+		return examine:Resource(CLOSE_WIDGET_RESOURCE)
+	end)
+	if not command or not param then
+		return false
+	end
+	return pcall(function()
+		-- A disabled command Executes as a silent no-op; CanExecute guards that.
+		assert(command:CanExecute(param))
+		command:Execute(param)
+	end) == true
+end
+
 --- Find a live Noesis node by x:Name within the Examine subtree (exposed so
 --- NativeConfigUI can resolve its overlay fresh at the moment it binds it).
 ---@param name string
@@ -717,7 +746,9 @@ function NativeRenameUI.Register()
 
 	-- The server retracted a prompt (a skip-mode sibling revealed a group it already
 	-- resolved): its pending is cleared, so answer nothing. Drop it from the queue; if it
-	-- is the summon on screen, mark it answered so closing its panel just advances.
+	-- is the on-screen summon, mark it answered (so no abort is sent) and close its panel
+	-- from Lua to advance at once (closeExaminePanel, GH #54). If the close does not issue,
+	-- the panel stays up and the player's close advances it.
 	Channels.RetractPrompt:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.Key) ~= "string" then
 			return
@@ -730,6 +761,9 @@ function NativeRenameUI.Register()
 		end
 		if current ~= nil and current.Key == key then
 			answered = true
+			if closeExaminePanel() then
+				finishCurrent()
+			end
 		end
 	end)
 end
