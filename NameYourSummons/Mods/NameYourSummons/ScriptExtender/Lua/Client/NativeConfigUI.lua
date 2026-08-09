@@ -69,10 +69,7 @@ local settingsLoadedGen = 0
 local savedGen = 0
 
 -- Guards the `onSettingWrite` recompute against the bulk programmatic writes we do
--- while loading a viewmodel (those must not be treated as user edits). It does NOT
--- guard radio exclusivity: WriteCallbacks dispatch async, so a sync flag cannot fence
--- re-entry - `selectMode` is instead idempotent (writes only real changes) so the
--- deferred re-entrant callbacks converge. See the module header and `selectMode`.
+-- while loading a viewmodel (those must not be treated as user edits).
 local suppressWrite = false
 
 local populate
@@ -177,14 +174,9 @@ end
 -- Dependent enable/disable and multi-summon mode
 ---------------------------------------------------------------------------
 
---- The selected multi-summon mode value from the three radio-style toggles.
+--- The selected multi-summon mode value from the dropdown.
 local function selectedMode(v)
-	if get(v, "NysModeShared") then
-		return "shared"
-	elseif get(v, "NysModeUnique") then
-		return "unique"
-	end
-	return "skip"
+	return get(v, "NysModeValue") or "skip"
 end
 
 --- Grey the toggles that cannot take effect: the "every summon" master overrides
@@ -210,30 +202,6 @@ local function onSettingWrite(context)
 		return
 	end
 	recomputeEnabled(context)
-end
-
-local MODE_PROP = { skip = "NysModeSkip", shared = "NysModeShared", unique = "NysModeUnique" }
-
---- Enforce radio exclusivity across the three mode toggles. Noesis dispatches
---- WriteCallbacks DEFERRED, so a suppress flag cannot guard re-entry and
---- rewriting all three bools each call cascades into a game-crashing callback
---- storm. Write only real changes, so the re-entrant callbacks converge.
-local function selectMode(context, active)
-	if get(context, MODE_PROP[active]) == true then
-		for mode, prop in pairs(MODE_PROP) do
-			if mode ~= active and get(context, prop) == true then
-				set(context, prop, false)
-			end
-		end
-		return
-	end
-	-- Active turned off: a sibling being on means we are mid-switch; else re-assert to keep one selected.
-	for mode, prop in pairs(MODE_PROP) do
-		if mode ~= active and get(context, prop) == true then
-			return
-		end
-	end
-	set(context, MODE_PROP[active], true)
 end
 
 ---------------------------------------------------------------------------
@@ -303,9 +271,7 @@ local function loadSettings(gen)
 		set(v, "NysPauseOnPrompt", s.PauseOnPrompt == true)
 		set(v, "NysAllowStorySummons", s.AllowStorySummons == true)
 		set(v, "NysNameEverySummon", s[Classifier.MASTER_KEY] == true)
-		set(v, "NysModeSkip", modeVal == "skip")
-		set(v, "NysModeShared", modeVal == "shared")
-		set(v, "NysModeUnique", modeVal == "unique")
+		set(v, "NysModeValue", modeVal)
 		local toggles = get(v, "NysTypeToggles")
 		for index, cat in ipairs(Classifier.CATEGORIES) do
 			local toggle = toggles and toggles[index]
@@ -490,27 +456,11 @@ local function registerTypes()
 			NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
 			NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
 			NysNameEverySummonEnabled = { Type = "Bool", Notify = true },
-			NysModeSkip = {
-				Type = "Bool",
-				Notify = true,
-				WriteCallback = function(context)
-					selectMode(context, "skip")
-				end,
-			},
-			NysModeShared = {
-				Type = "Bool",
-				Notify = true,
-				WriteCallback = function(context)
-					selectMode(context, "shared")
-				end,
-			},
-			NysModeUnique = {
-				Type = "Bool",
-				Notify = true,
-				WriteCallback = function(context)
-					selectMode(context, "unique")
-				end,
-			},
+			NysModeValue = { Type = "String", Notify = true },
+			NysModeOpen = { Type = "Bool", Notify = true },
+			NysSelectSkipCommand = { Type = "Command" },
+			NysSelectSharedCommand = { Type = "Command" },
+			NysSelectUniqueCommand = { Type = "Command" },
 			NysTypeToggles = { Type = "Collection" },
 			NysSavedNames = { Type = "Collection" },
 			NysAlwaysSkipped = { Type = "Collection" },
@@ -570,6 +520,23 @@ local function buildViewModel()
 	end
 	set(vm, "NysIsOpen", false)
 	set(vm, "NysTypesExpanded", false)
+	set(vm, "NysModeValue", "skip")
+	set(vm, "NysModeOpen", false)
+	for field, mode in pairs({
+		NysSelectSkipCommand = "skip",
+		NysSelectSharedCommand = "shared",
+		NysSelectUniqueCommand = "unique",
+	}) do
+		pcall(function()
+			vm[field]:SetHandler(function()
+				local v = liveVm()
+				if v then
+					set(v, "NysModeValue", mode)
+					set(v, "NysModeOpen", false)
+				end
+			end)
+		end)
+	end
 	pcall(function()
 		vm.NysSaveCommand:SetHandler(onSave)
 	end)

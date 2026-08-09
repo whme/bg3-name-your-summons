@@ -323,6 +323,46 @@
 
         </ControlTemplate.Triggers>
     </ControlTemplate>
+
+    <!-- Name Your Summons: vanilla options-menu dropdown art for the multi-summon
+         mode selector. All self-contained pack:// URIs into the game's Core assembly
+         (the same assets the vanilla Options dropdowns use), so there is no dependency
+         on any other mod. -->
+    <BitmapImage x:Key="NYS_PillDefault"    UriSource="pack://application:,,,/Core;component/Assets/Options/dropdownBox_wide_d.png"/>
+    <BitmapImage x:Key="NYS_PillHighlight"  UriSource="pack://application:,,,/Core;component/Assets/Options/dropdownBox_wide_h.png"/>
+    <BitmapImage x:Key="NYS_RoundDefault"   UriSource="pack://application:,,,/Core;component/Assets/Buttons/btn_small_round_d.png"/>
+    <BitmapImage x:Key="NYS_RoundHighlight" UriSource="pack://application:,,,/Core;component/Assets/Buttons/btn_small_round_h.png"/>
+    <BitmapImage x:Key="NYS_ArrowClosed"    UriSource="pack://application:,,,/Core;component/Assets/Options/input_dropUpArrow_d.png"/>
+    <BitmapImage x:Key="NYS_ArrowClosedHL"  UriSource="pack://application:,,,/Core;component/Assets/Options/input_dropUpArrow_h.png"/>
+    <BitmapImage x:Key="NYS_ArrowOpen"      UriSource="pack://application:,,,/Core;component/Assets/Options/input_dropDownArrow_d.png"/>
+    <ImageSource x:Key="NYS_FlyoutSelected">pack://application:,,,/Core;component/Assets/Options/input_dropdown_flyout_selected.png</ImageSource>
+
+    <Style x:Key="NYS_FlyoutItemText" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FontSize" Value="{StaticResource ScaledDefaultFontSize}"/>
+        <Setter Property="Foreground" Value="{StaticResource LS_accent75TxtColor}"/>
+    </Style>
+
+    <ControlTemplate x:Key="NYS_FlyoutItemTemplate" TargetType="Button">
+        <Grid Background="Transparent" MinHeight="60">
+            <Rectangle x:Name="fibg" Visibility="Collapsed">
+                <Rectangle.Fill>
+                    <ImageBrush ImageSource="{StaticResource NYS_FlyoutSelected}" Stretch="UniformToFill"/>
+                </Rectangle.Fill>
+            </Rectangle>
+            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left" Margin="24,0"/>
+            <b:Interaction.Triggers>
+                <b:EventTrigger EventName="MouseEnter">
+                    <ls:LSPlaySound Sound="UI_Shared_Hover"/>
+                </b:EventTrigger>
+            </b:Interaction.Triggers>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="fibg" Property="Visibility" Value="Visible"/>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
     </ls:UIWidget.Resources>
 
 
@@ -510,21 +550,82 @@
                                         </ItemsControl>
                                     </StackPanel>
 
-                                    <!-- ===== Multi-summon mode (radio-style toggles) ===== -->
+                                    <!-- ===== Multi-summon mode (vanilla options-menu dropdown) ===== -->
                                     <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,16,0,0"
                                                Text="When one spell summons several creatures at once:"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeSkip, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Do not name them"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeShared, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Share one name"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeUnique, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Name each individually"/>
-                                    </StackPanel>
+                                    <Grid HorizontalAlignment="Left" Width="520" Height="80" Margin="0,8,0,0">
+                                        <ls:LSToggleButton x:Name="NYS_ModeToggle" SoundID="UI_HUD_Options_ComboBox"
+                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                           IsChecked="{Binding NysModeOpen, Mode=TwoWay}">
+                                            <ls:LSToggleButton.Template>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Grid Background="Transparent" VerticalAlignment="Stretch">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <ls:LSNineSliceImage Grid.Column="0" Grid.ColumnSpan="2" x:Name="pill"
+                                                                             ImageSource="{StaticResource NYS_PillDefault}" VerticalAlignment="Stretch" Slices="40" IsHitTestVisible="False"/>
+                                                        <Image Grid.Column="1" x:Name="rnd" Source="{StaticResource NYS_RoundDefault}" Stretch="None"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12,0" IsHitTestVisible="False"/>
+                                                        <Image Grid.Column="1" x:Name="arw" Source="{StaticResource NYS_ArrowClosed}" Stretch="None"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                                    </Grid>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="pill" Property="ImageSource" Value="{StaticResource NYS_PillHighlight}"/>
+                                                            <Setter TargetName="arw" Property="Source" Value="{StaticResource NYS_ArrowClosedHL}"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="rnd" Property="Source" Value="{StaticResource NYS_RoundHighlight}"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter TargetName="arw" Property="Source" Value="{StaticResource NYS_ArrowOpen}"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </ls:LSToggleButton.Template>
+                                        </ls:LSToggleButton>
+
+                                        <!-- The current value, drawn over the pill (clicks pass through to the toggle). -->
+                                        <TextBlock IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="36,0,0,0"
+                                                   Foreground="{StaticResource LS_accent100TxtColor}" FontSize="{StaticResource ScaledDefaultFontSize}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Do not name them"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding NysModeValue}" Value="shared">
+                                                            <Setter Property="Text" Value="Share one name"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding NysModeValue}" Value="unique">
+                                                            <Setter Property="Text" Value="Name each individually"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- The flyout: one entry per value. -->
+                                        <Popup Placement="Bottom" PlacementTarget="{Binding ElementName=NYS_ModeToggle}"
+                                               IsOpen="{Binding IsChecked, ElementName=NYS_ModeToggle}">
+                                            <ls:LSNineSliceImage Style="{StaticResource PopoutNineSliceStyle}" MinWidth="{Binding ActualWidth, ElementName=NYS_ModeToggle}">
+                                                <StackPanel Orientation="Vertical">
+                                                    <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
+                                                            Command="{Binding NysSelectSkipCommand}">
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Do not name them"/>
+                                                    </Button>
+                                                    <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
+                                                            Command="{Binding NysSelectSharedCommand}">
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Share one name"/>
+                                                    </Button>
+                                                    <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
+                                                            Command="{Binding NysSelectUniqueCommand}">
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Name each individually"/>
+                                                    </Button>
+                                                </StackPanel>
+                                            </ls:LSNineSliceImage>
+                                        </Popup>
+                                    </Grid>
 
                                     <!-- ===== Saved names ===== -->
                                     <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
