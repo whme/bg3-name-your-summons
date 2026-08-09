@@ -74,6 +74,11 @@ you can:
   - **Allow renaming story-bound summons (e.g. 'Us')** - off by default, so named
     story creatures like the intellect devourer "Us" are never offered the rename
     prompt; turn it on to name them like any other summon.
+- Pick which **summon types to name** by creature type. Only familiars are
+  prompted by default. A Find Familiar summon counts as a Familiar whatever its
+  creature type, so an undead or fiend familiar is covered by the "Familiars"
+  toggle, not by "Undead" or "Fiend" - the creature-type toggles govern
+  non-familiar summons. "Every summon" ignores the filter entirely.
 
 Settings and names live in the host's save.
 

@@ -581,8 +581,11 @@ function ConfigUI.Open()
 		allowStorySummons.OnChange = onSettingChange
 
 		local typesHeader = configWindow:AddCollapsingHeader("Summon types to name")
-		local typesHint =
-			typesHeader:AddText("Which kinds of summon to prompt for. A creature's type is read from its tags.")
+		local typesHint = typesHeader:AddText(
+			"Which summons to prompt for, by the creature type read from its tags. "
+				.. "Familiars count as 'Familiars' whatever their type, so the creature types below "
+				.. "apply to non-familiar summons only."
+		)
 		typesHint.Disabled = true
 		everySummonCheck = typesHeader:AddCheckbox("Every summon (ignore the type filter below)", false)
 		everySummonCheck.OnChange = onTypeChange
