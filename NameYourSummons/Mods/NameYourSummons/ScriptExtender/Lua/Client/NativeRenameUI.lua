@@ -1,5 +1,5 @@
 --[[
-    Client side of the native "rename this summon" control (GH #9, #19, #50).
+    Client side of the native "rename this summon" control (GH #9, #19, #50, #51).
 
     The examined creature's uuid is read from the Examine panel's Noesis
     DataContext (EntityUUID + CharacterType) and a rename is sent to the server.
@@ -47,11 +47,19 @@ local SEARCH_DEPTH_LIMIT = 80
 -- DataContext so its XAML `Command="{Binding NysGearCommand}"` resolves.
 local GEAR_VM = "NYS_GearVM"
 
--- Advancing the queue waits CLOSE_MS for the old panel's close animation before Executing
--- Examine on the next summon, then ignores input for SETTLE_MS while the open animation
--- plays so rapid skipping cannot dismiss the fresh panel. Empirical.
-local EXAMINE_CLOSE_MS = 400
+-- The Skip button viewmodel: a Command plus a Bool visibility flag (shown only for a
+-- multi-summon group). Set as the Skip button's nested DataContext (GH #51).
+local SKIP_VM = "NYS_SkipVM"
+
+-- After opening or swapping the panel, ignore input for SETTLE_MS while the swapped-in
+-- field element and its DataContext appear, then wire the fresh field and set its text.
+-- Empirical.
 local EXAMINE_SETTLE_MS = 400
+
+-- KeyDown is not delivered to our Subscribe on the rename LSTextBox (verified in game), so
+-- Enter is detected as a focus loss. A blur within this window of a left click is treated
+-- as click-driven (Skip/gear/close/elsewhere), not an Enter commit. Empirical.
+local CLICK_BLUR_WINDOW_MS = 250
 
 local function safe(fn, ...)
 	local ok, res = pcall(fn, ...)
@@ -210,23 +218,24 @@ local function submitRename(uuid, rawName)
 end
 
 ---------------------------------------------------------------------------
--- On-summon naming state (GH #19); the interaction below drives it
+-- On-summon naming state (GH #19, #51); the interaction below drives it
 ---------------------------------------------------------------------------
 --
 -- The server owns detection, the pending count, the world-pause, and (in unique mode)
 -- asking per creature; the client answers by opening the native Examine panel. Only one
--- Examine panel exists, so summons are shown one at a time - a design choice, not an
--- engine limit (Executing Examine on an open panel swaps its content). The next opens
--- once the current one is closed: by the player when naming, or by closeExaminePanel
--- (GH #54) when the server retracts the on-screen prompt. Naming answers over SubmitName
+-- Examine panel exists, and Executing Examine on an open panel SWAPS its content (GH #50
+-- finding C4), so a multi-summon group is shown in ONE panel that swaps through the queue:
+-- the player names each with Enter (which answers over SubmitName and swaps to the next),
+-- skips one with the Skip button (abort + swap), and closes the panel once at the end.
+-- Closing before the queue drains skips every remaining summon (abort each), so the
+-- server's pending count still clears and the pause lifts. Naming answers over SubmitName
 -- (the channel the ImGui window used, so the server's pause/pending bookkeeping is
--- untouched) and leaves the panel up; closing it advances, skipping (abort) any unnamed
--- summon. A swap-through-the-queue redesign is tracked in GH #51.
+-- untouched).
 local examineQueue = {} -- AskName requests not yet shown, FIFO
 local current = nil -- the request whose summon is being examined now, or nil
-local answered = false -- the current summon got a name (so closing it just advances)
-local awaitingOpen = false -- next panel scheduled after a close; ignore input meanwhile
-local startNext -- forward decl: advance the queue
+local answered = false -- the current summon got a name (SubmitName sent; later edits rename)
+local awaitingOpen = false -- panel opening/swapping; ignore input until it settles
+local showNext -- forward decl: swap to the next queued request (or open the first)
 local answerSession -- forward decl: answer a session over SubmitName
 local openExamine -- forward decl: Execute Examine on a request
 
@@ -237,6 +246,7 @@ local panelOpen = false
 local wired = false
 local fieldSubs = {} -- { { field = node, handle = h }, ... } to unsubscribe on teardown
 local lastSent = nil -- last committed sanitised text, to dedupe Enter + blur
+local recentClick = false -- a left click just happened, so a blur now is click-driven not Enter
 
 --- Reset per-summon state for the new `current` request.
 local function beginCurrent()
@@ -244,23 +254,23 @@ local function beginCurrent()
 	lastSent = Util.Sanitise(current.DefaultName or "")
 end
 
---- Finish the current summon and move to the next. Called when the player closes the
---- panel; a summon left unnamed is a skip (abort - the server re-asks it next summon),
---- a named one is already saved.
-local function finishCurrent()
-	if not current then
+--- Skip the current summon (if unnamed) and every summon still queued, then clear the
+--- batch. Called when the player closes the panel: closing means "skip the rest", so each
+--- is aborted (the server re-asks it next cast) and its pending count clears.
+local function abortRemaining()
+	if not current and #examineQueue == 0 then
 		return
 	end
-	log("finishCurrent: answered =", answered)
-	if not answered then
-		-- Skip an unnamed summon; a failed abort send keeps it so a later close retries.
-		local sent = answerSession(current, "", true)
-		log("finishCurrent: abort sent =", sent)
-		if not sent then
-			return
-		end
+	log("abortRemaining: current =", current and current.SummonUuid or "none", "queued =", #examineQueue)
+	if current and not answered then
+		answerSession(current, "", true)
 	end
-	startNext(true)
+	for _, req in ipairs(examineQueue) do
+		answerSession(req, "", true)
+	end
+	examineQueue = {}
+	current = nil
+	answered = false
 end
 
 --- The live rename field, or nil when no Examine panel is open.
@@ -298,11 +308,30 @@ local function nodeText(node)
 	return type(t) == "string" and t or ""
 end
 
+--- Set the rename field's text from Lua. The field's `Text` binding is OneWay and does
+--- NOT follow an Examine content swap (GH #51), so on each swap we write the new
+--- creature's name in directly. Baseline lastSent so a blur without an edit does not
+--- re-submit.
+---@param text string
+local function setFieldText(text)
+	local field = liveField()
+	if not field then
+		return
+	end
+	pcall(function()
+		field.Text = text or ""
+	end)
+	lastSent = Util.Sanitise(text or "")
+end
+
 --- Rename the examined summon to `field`'s current text. Deduped via lastSent so an
 --- Enter followed by a blur (or repeated triggers) sends only once. The uuid (a
 --- DataContext walk) is resolved only after we know the text actually changed.
 ---@param field any
 local function commitField(field)
+	if awaitingOpen then
+		return
+	end
 	local raw = nodeText(field)
 	local name = Util.Sanitise(raw)
 	log("commitField: text =", name, "lastSent =", lastSent)
@@ -344,6 +373,24 @@ local function onGearClick()
 	end
 end
 
+--- Skip the current summon (abort so the server re-asks it next cast) and swap to the
+--- next. Bound to the Skip button's NysSkipCommand; only shown for a multi-summon group.
+local function skipCurrent()
+	if not current or awaitingOpen then
+		return
+	end
+	log("skipCurrent:", current.SummonUuid, "answered =", answered)
+	-- A preceding blur may have already saved a typed name; then just advance, do not abort.
+	if answered then
+		showNext()
+		return
+	end
+	if answerSession(current, "", true) then
+		answered = true
+		showNext()
+	end
+end
+
 --- element:Subscribe hands the handler either (args) or (sender, args); return the
 --- one that looks like the event args (has a readable field), else the first.
 local function eventArgs(a, b)
@@ -372,8 +419,47 @@ local function commitLiveField()
 	end
 end
 
---- Per-element KeyDown on the name field: commit on Enter only (committing on every
---- keystroke would rename mid-typing). C1/C7: KeyDown fires on the field first-open.
+--- Enter on the name field. During an active on-summon session it names (or confirms) the
+--- current creature and swaps to the next; an empty field is a no-op (skipping is the Skip
+--- button's job). With no active session it is a plain rename of the examined creature.
+local function onFieldEnter()
+	if awaitingOpen then
+		return
+	end
+	local field = liveField()
+	if not field then
+		return
+	end
+	if current == nil then
+		commitField(field)
+		return
+	end
+	local raw = nodeText(field)
+	local name = Util.Sanitise(raw)
+	if not answered then
+		if name == "" then
+			return
+		end
+		-- First answer over SubmitName; a failed send keeps us here so Enter can retry.
+		if not answerSession(current, name) then
+			return
+		end
+		lastSent = name
+		answered = true
+	elseif name ~= "" and name ~= lastSent then
+		-- Already answered (e.g. a prior blur): a further edit renames idempotently.
+		local uuid = examinedSummonUuid()
+		if uuid and submitRename(uuid, raw) then
+			lastSent = name
+		end
+	end
+	log("onFieldEnter: advancing", uiState())
+	showNext()
+end
+
+--- Per-element KeyDown on the name field: act on Enter only. KeyDown is NOT delivered for
+--- this LSTextBox in the current build (Enter is handled via focus loss in onFieldBlur); this
+--- stays as a dormant fallback, guarded against double-advance by awaitingOpen.
 local function onFieldKeyDown(a, b)
 	local e = eventArgs(a, b)
 	local key = safe(function()
@@ -381,17 +467,39 @@ local function onFieldKeyDown(a, b)
 	end)
 	log("field KeyDown key =", tostring(key), uiState())
 	if key ~= nil and ENTER_KEYS[tostring(key)] then
-		commitLiveField()
+		onFieldEnter()
 	end
 end
 
---- Per-element focus-loss on the name field: commit unconditionally (blur = save). Both
---- LostFocus and LostKeyboardFocus fire on every blur (verified GH #50) - we keep both
---- for robustness; commitField dedupes so the second is a cheap no-op.
+--- Per-element focus-loss on the name field. Enter is not delivered as KeyDown here, it
+--- arrives as a focus loss, so a blur with no preceding click is an Enter commit (save +
+--- advance via onFieldEnter). A blur right after a click is click-driven (save only; the
+--- clicked control - Skip / gear / close - does its own thing). Both LostFocus and
+--- LostKeyboardFocus fire per blur; the second is deduped (commitField) or gated
+--- (awaitingOpen after an advance).
 ---@param evName string
 local function onFieldBlur(evName)
-	log("field blur event:", evName, uiState())
-	commitLiveField()
+	log("field blur event:", evName, "recentClick =", tostring(recentClick), uiState())
+	if recentClick then
+		commitLiveField()
+	else
+		onFieldEnter()
+	end
+end
+
+--- Show the Skip button only when there is a next summon to swap to (hidden for single
+--- summons and on the last of a group). Update the live button - the queue may have grown
+--- or shrunk after it was wired. Fetch fresh; a Noesis handle does not survive.
+local function refreshSkipVisibility()
+	local skip = findNamed("NYS_SkipButton")
+	local vm = skip and safe(function()
+		return skip.DataContext
+	end)
+	if vm then
+		pcall(function()
+			vm.NysShowSkip = #examineQueue > 0
+		end)
+	end
 end
 
 --- Attach the gear's Command viewmodel and the field's key/focus subscriptions to the
@@ -443,6 +551,26 @@ local function wirePanel()
 		end
 	end
 
+	-- Skip: nested DataContext = a fresh NYS_SkipVM; NysShowSkip hides it for single
+	-- summons (only a group needs a per-creature skip).
+	local skip = findNamed("NYS_SkipButton")
+	if skip then
+		local vm = safe(function()
+			return Ext.UI.Instantiate(SKIP_VM)
+		end)
+		if vm then
+			pcall(function()
+				vm.NysSkipCommand:SetHandler(skipCurrent)
+			end)
+			pcall(function()
+				vm.NysShowSkip = #examineQueue > 0
+			end)
+			pcall(function()
+				skip.DataContext = vm
+			end)
+		end
+	end
+
 	wired = true
 	log("wirePanel: wired", #fieldSubs, "field subs", uiState())
 end
@@ -459,8 +587,8 @@ local function unwirePanel()
 	wired = false
 end
 
---- React to the panel opening or closing. On close, tear down wiring and advance the
---- active on-summon session (a close we did not otherwise catch still advances).
+--- React to the panel opening or closing. On close, tear down wiring and skip whatever is
+--- left of the batch (the player closed, so the rest of the queue is skipped).
 ---@param open boolean
 local function setPanelOpen(open)
 	if open == panelOpen then
@@ -472,7 +600,7 @@ local function setPanelOpen(open)
 		wirePanel()
 	else
 		unwirePanel()
-		finishCurrent()
+		abortRemaining()
 	end
 end
 
@@ -503,17 +631,22 @@ local function onMouseButton(e)
 	if pressed ~= true or button ~= 1 then
 		return
 	end
-	-- Ignore clicks while the old panel animates shut and the next is scheduled.
+	-- Mark the blur that this click is about to cause as click-driven, not an Enter commit.
+	recentClick = true
+	Ext.Timer.WaitForRealtime(CLICK_BLUR_WINDOW_MS, function()
+		recentClick = false
+	end)
+	-- Ignore clicks while the panel opens/swaps and its field settles.
 	if awaitingOpen then
 		log("onMouseButton: ignored (awaitingOpen)")
 		return
 	end
 	log("onMouseButton: left click", uiState())
 	local present = pollLifecycle()
-	-- A click may start a close or open a panel still animating in, neither yet in the
-	-- tree; reconcile once after the animations settle. One-shot, not a poll loop.
+	-- A click may start a close animation not yet reflected in the tree; reconcile once
+	-- after it settles. One-shot, not a poll loop.
 	if present or current ~= nil then
-		Ext.Timer.WaitForRealtime(EXAMINE_CLOSE_MS + EXAMINE_SETTLE_MS, pollLifecycle)
+		Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
 	end
 end
 
@@ -591,11 +724,12 @@ function answerSession(req, name, abort)
 	end)
 end
 
---- Execute Examine on `req`'s summon. Only ever called with no panel on screen (the
---- first summon, or after the player closed the previous one). If it cannot open - the
---- command or entity view-model is missing, or Execute throws on a stale handle - skip
---- it and go straight to the next, so the server's pending count never hangs the pause.
+--- Execute Examine on `req`'s summon: opens the panel (nothing on screen) or SWAPS its
+--- content (a panel already open, C4). Returns whether it opened. If it cannot - the
+--- command or entity view-model is missing, or Execute throws on a stale handle - the
+--- caller skips this summon so the server's pending count never hangs the pause.
 ---@param req table
+---@return boolean
 function openExamine(req)
 	local command = getExamineCommand()
 	local handle = entityHandleFor(req.SummonUuid)
@@ -619,54 +753,45 @@ function openExamine(req)
 				tostring(canExec)
 			)
 		)
-		-- Nothing opened, so no close to wait for: skip and open the next at once.
-		if answerSession(req, "", true) then
-			startNext(false)
-		end
 	end
+	return opened and true or false
 end
 
---- Examine the next queued request (an empty queue just clears `current`). After a
---- close, the panel's shut is animated and the next open must wait for it to be gone,
---- so defer by EXAMINE_CLOSE_MS; the first summon (nothing open) shows at once.
----@param afterClose boolean|nil
-function startNext(afterClose)
+--- Show the next queued request by swapping the open panel (or opening the first). The
+--- outgoing `current` must already be resolved (answered, skipped, or retracted) - this
+--- never aborts it. An empty queue leaves the panel open on the last creature and ends
+--- the batch. A summon that cannot be opened is skipped so the pause never hangs.
+function showNext()
 	current = table.remove(examineQueue, 1)
-	log(
-		"startNext: next =",
-		current and current.SummonUuid or "none",
-		"queued =",
-		#examineQueue,
-		"afterClose =",
-		afterClose == true
-	)
+	log("showNext: next =", current and current.SummonUuid or "none", "queued =", #examineQueue)
 	if not current then
 		return
 	end
 	beginCurrent()
 	-- Execute on an already-open panel swaps in a fresh field element (C4), so drop the
-	-- prior panel's wiring; pollLifecycle re-wires the new field once it has settled.
+	-- prior panel's wiring; the settle below re-wires the new field.
 	unwirePanel()
-	if afterClose then
-		awaitingOpen = true
-		Ext.Timer.WaitForRealtime(EXAMINE_CLOSE_MS, function()
-			if not current then
-				awaitingOpen = false
-				return
-			end
-			openExamine(current)
-			-- Stay closed to input while the open animation plays, so a second, too-early
-			-- close/Escape (rapid skipping) does not dismiss the panel we just opened; then
-			-- wire the fresh panel without waiting for a click.
-			Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, function()
-				awaitingOpen = false
-				pollLifecycle()
-			end)
-		end)
-	else
-		openExamine(current)
-		Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, pollLifecycle)
+	awaitingOpen = true
+	if not openExamine(current) then
+		awaitingOpen = false
+		if answerSession(current, "", true) then
+			showNext()
+		end
+		return
 	end
+	-- Ignore input while the open/swap settles, then wire the fresh field and set its text
+	-- (the OneWay binding does not follow a swap). One-shot, not a poll loop.
+	Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, function()
+		awaitingOpen = false
+		if not current then
+			return
+		end
+		-- pollLifecycle may notice the panel closed and clear the batch, so re-check current.
+		pollLifecycle()
+		if current then
+			setFieldText(current.DefaultName)
+		end
+	end)
 end
 
 -- Closing Examine from Lua (GH #54): its close runs the "CloseWidget" state event (action
@@ -723,6 +848,10 @@ function NativeRenameUI.Register()
 	end)
 
 	pcall(function()
+		Ext.UI.RegisterType(SKIP_VM, { NysSkipCommand = { Type = "Command" }, NysShowSkip = { Type = "Bool" } })
+	end)
+
+	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
 	end)
 
@@ -740,15 +869,19 @@ function NativeRenameUI.Register()
 		log("AskName:", data.SummonUuid, "scope =", data.Scope)
 		table.insert(examineQueue, data)
 		if current == nil and not awaitingOpen then
-			startNext(false)
+			showNext()
+		else
+			-- A sibling arrived while a session is active: there is now a next to skip to,
+			-- so reveal the Skip button on the panel already showing.
+			refreshSkipVisibility()
 		end
 	end)
 
 	-- The server retracted a prompt (a skip-mode sibling revealed a group it already
 	-- resolved): its pending is cleared, so answer nothing. Drop it from the queue; if it
-	-- is the on-screen summon, mark it answered (so no abort is sent) and close its panel
-	-- from Lua to advance at once (closeExaminePanel, GH #54). If the close does not issue,
-	-- the panel stays up and the player's close advances it.
+	-- is the on-screen summon, swap to the next queued summon, or close the panel from Lua
+	-- (closeExaminePanel, GH #54) when nothing is left. Do NOT abort it - the server
+	-- already cleared it.
 	Channels.RetractPrompt:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.Key) ~= "string" then
 			return
@@ -760,10 +893,15 @@ function NativeRenameUI.Register()
 			end
 		end
 		if current ~= nil and current.Key == key then
-			answered = true
-			if closeExaminePanel() then
-				finishCurrent()
+			if #examineQueue > 0 then
+				showNext()
+			else
+				current = nil
+				answered = false
+				closeExaminePanel()
 			end
+		else
+			refreshSkipVisibility()
 		end
 	end)
 end
