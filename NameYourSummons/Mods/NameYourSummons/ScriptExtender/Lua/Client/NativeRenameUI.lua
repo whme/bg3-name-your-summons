@@ -107,18 +107,13 @@ local function findNamed(name)
 	end)
 end
 
---- Read a Noesis property, preferring the direct getter and falling back to the
---- dynamic property bag (these view models expose runtime props via either).
+--- Read a runtime property from a view model's dynamic property bag.
 ---@param dc any
 ---@param key string
 ---@return any
 local function dcProp(dc, key)
-	-- Read ONLY the property bag. These runtime props (EntityUUID, CharacterType)
-	-- live there; the typed getter lacks them and logs a Noesis warning per miss. A
-	-- fallback to dc:GetProperty(key) here scanned the whole visual tree that way and
-	-- spammed thousands of warnings, costing 200-500ms just to open Examine on a
-	-- summon (verified in game). The bag has no such cost and always carries these
-	-- props where they exist, so there is nothing useful to fall back to.
+	-- Bag only: dc:GetProperty warns per missing key, so falling back to it while
+	-- scanning the tree cost 200-500ms to open Examine (verified in game).
 	local all = safe(function()
 		return dc:GetAllProperties()
 	end)
