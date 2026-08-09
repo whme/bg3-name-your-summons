@@ -205,10 +205,9 @@ end
 local MODE_PROP = { skip = "NysModeSkip", shared = "NysModeShared", unique = "NysModeUnique" }
 
 --- Enforce radio exclusivity across the three mode toggles. Noesis dispatches
---- WriteCallbacks DEFERRED, so a synchronous suppress flag cannot guard re-entry;
---- blindly rewriting all three bools each call cascades into an exponential
---- callback storm that crashes the game. Write only real changes instead - the
---- deferred re-entrant callbacks then find nothing to change and converge.
+--- WriteCallbacks DEFERRED, so a suppress flag cannot guard re-entry and
+--- rewriting all three bools each call cascades into a game-crashing callback
+--- storm. Write only real changes, so the re-entrant callbacks converge.
 local function selectMode(context, active)
 	if get(context, MODE_PROP[active]) == true then
 		for mode, prop in pairs(MODE_PROP) do
@@ -218,8 +217,7 @@ local function selectMode(context, active)
 		end
 		return
 	end
-	-- Toggle turned off. If a sibling is on, this is us clearing active mid-switch;
-	-- leave it. Otherwise the active one was unchecked - re-assert to keep one on.
+	-- Active turned off: a sibling being on means we are mid-switch; else re-assert to keep one selected.
 	for mode, prop in pairs(MODE_PROP) do
 		if mode ~= active and get(context, prop) == true then
 			return
