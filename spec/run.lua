@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 -- Entry point for the unit suite: `lua spec/run.lua` (run from the repo root).
 -- Invoked by `./make.ps1 test`, which downloads a Lua 5.4 interpreter and
 -- LuaUnit into .tools/ first.

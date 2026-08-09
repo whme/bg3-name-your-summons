@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     Shared net channels. Loaded by BOTH BootstrapServer.lua and BootstrapClient.lua
     so that the same channel names exist in both Lua states.

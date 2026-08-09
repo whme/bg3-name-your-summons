@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
 	Maps a summon to one naming category from the tag names on its entity.
 

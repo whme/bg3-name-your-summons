@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local lu = require("luaunit")
 local Writer = Ext.Require("Shared/NameWriter.lua")
 

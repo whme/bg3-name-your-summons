@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local Util = {}
 
 Util.MAX_NAME_LENGTH = 40

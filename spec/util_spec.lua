@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local lu = require("luaunit")
 local Util = Ext.Require("Shared/Util.lua")
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local lu = require("luaunit")
 local MultiMode = Ext.Require("Shared/MultiSummonMode.lua")
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 
 local Store = {}

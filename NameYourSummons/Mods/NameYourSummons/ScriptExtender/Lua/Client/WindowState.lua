@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     Client-side persistence of ImGui window geometry (position and size).
 

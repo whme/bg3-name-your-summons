@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
 	The MultiSummonMode setting: how to handle one spell that summons several
 	creatures of the same type at once (e.g. Conjure Animals). Shared by the

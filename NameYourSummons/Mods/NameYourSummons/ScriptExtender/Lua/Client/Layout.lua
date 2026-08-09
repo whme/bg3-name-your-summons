@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 --[[
     Viewport-relative sizing. Sizes are authored in pixels against a 4K
     (3840x2160) reference and scaled to the player's actual viewport, so the

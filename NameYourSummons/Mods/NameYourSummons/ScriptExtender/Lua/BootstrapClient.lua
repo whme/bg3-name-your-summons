@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 local Util = Ext.Require("Shared/Util.lua")
 Ext.Require("Shared/Channels.lua")
 
