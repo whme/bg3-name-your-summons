@@ -99,10 +99,12 @@ Install MCM (plus its own requirements), load it before KEN, and restart.
 
 - `ContentRoot` is the composition root; panels hang off it by name (`Examine`,
   `PlayerPortraits`, ...), and `PlayerPortraits` is always present.
-- The root `ui::DCWidget` DataContext carries the global command surface - the
+- A `ui::DCWidget` DataContext carries the global command surface - ~200 of the
   game's `ui::DeferredCommand`s (`ExamineCommand`, `ShowProfileCommand`, ...) as
-  `Noesis::BaseCommand` objects - plus platform flags. Invoke them with the
-  command technique above.
+  `Noesis::BaseCommand` objects - plus platform flags. It is NOT on `ContentRoot`'s
+  own DataContext; it is inherited onto HUD nodes, so read it off an always-present
+  one - e.g. the `HudIndicator` node under `ContentRoot` (verified GH #50) - rather
+  than assuming the literal root. Invoke the commands with the technique above.
 - Per-entity view-models expose `EntityUUID`, `CharacterType`, and a Noesis
   `EntityHandle`; that `EntityHandle` is the object entity-commands take as their
   `CommandParameter` (confirmed against the game's XAML). `CurrentPlayer` exposes
@@ -110,6 +112,17 @@ Install MCM (plus its own requirements), load it before KEN, and restart.
   collection.
 - The options page uses `UIData.ActiveState` = `GameOptions` / `VideoOptions`
   (per tab) with `ls.GameData`-typed controls.
+- **Read the dynamic property bag, not `GetProperty`, when scanning.** For a runtime
+  DataContext property (`EntityUUID`, `CharacterType`, ...), read `GetAllProperties()`
+  and index the result; `dc:GetProperty(key)` logs a Noesis warning for every object
+  lacking the key, and falling back to it while walking the tree cost 238-510 ms to
+  open Examine (GH #50). Use the direct getter only for a single known object (e.g.
+  `dc:GetProperty("EntityHandle")` on the one matched view-model, where you need the
+  live object rather than a bag copy).
+- **Anchor tree scans; never walk the whole root.** Find `ContentRoot` (near the
+  root), then the panel node by name (`Examine`), and DFS only that subtree. A
+  fixed `MAX_DEPTH` over the whole tree is both a magic number and a perf sink -
+  anchoring bounds the walk to what you actually need.
 
 ### UI-mod packaging (the `GUI/` tree)
 

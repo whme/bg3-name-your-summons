@@ -1,10 +1,23 @@
 --[[
-    Client side of the native "rename this summon" control (GH #9).
+    Client side of the native "rename this summon" control (GH #9, #19, #50).
 
     The examined creature's uuid is read from the Examine panel's Noesis
     DataContext (EntityUUID + CharacterType) and a rename is sent to the server.
-    Commit is driven by global input events, not the panel's routed UI events -
-    see the note above the control handlers for why.
+
+    Native-UI approach (verified in game, GH #50 - see docs/bg3-modding-toolchain.md
+    and AGENTS.md for the full "one proven way"):
+    - Controls WE add to the game's Examine panel are driven by per-element MVVM,
+      not by global mouse hit-testing: the gear is an `ls:LSButton` whose `Command`
+      binds to a small viewmodel we set as its nested DataContext; the name field
+      commits via its own per-element key/focus subscriptions. All of these fire on
+      the FIRST panel of a session (the old "per-element events are dead on the
+      first panel" claim was WRONG).
+    - There is no panel-open event (Ext.UI.GetStateMachine() is nil) and Examine
+      cannot be closed from Lua, so exactly ONE cheap global mouse hook remains, as
+      the sole lifecycle detector (panel present in the tree = open). This is the
+      single sanctioned exception to "our controls use bindings".
+    - Never compare a Noesis object with `== nil` (its __eq crashes on an expired
+      object) and never cache one across ticks; fetch fresh and test truthiness.
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
@@ -16,7 +29,7 @@ local NativeRenameUI = {}
 -- drive the native settings overlay without a circular require.
 local onGearClickHandler -- fun() - called when the gear is clicked
 
--- Verbose tracing of the Examine gear/close/naming flow; off by default, toggle at
+-- Verbose tracing of the Examine gear/field/naming flow; off by default, toggle at
 -- runtime from the client console with `!nys_uidebug` (this native UI has no other
 -- way to be observed, and the flow depends on finicky Noesis event/hit behaviour).
 local diagEnabled = false
@@ -27,14 +40,18 @@ local function log(...)
 end
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
-local MAX_DEPTH = 60
 
--- Examine cannot be closed from Lua (its close is a UICancel bound event / a Noesis-
--- typed CustomEvent param, neither reachable via SE), and ExamineCommand is ignored
--- while a panel is on screen. So the next queued summon opens only after the player
--- closes the current one: wait CLOSE_MS (the close animation) before Executing so the
--- old panel is gone, then keep ignoring input for SETTLE_MS (the open animation) so a
--- too-eager second close/Escape cannot dismiss the freshly opened panel. Empirical.
+-- Recursion safety only. Every search below is ANCHORED at ContentRoot/Examine, so
+-- it never walks the whole tree; this bound just stops a pathological cycle.
+local SEARCH_DEPTH_LIMIT = 80
+
+-- The registered gear viewmodel: one Command, set as the gear button's nested
+-- DataContext so its XAML `Command="{Binding NysGearCommand}"` resolves.
+local GEAR_VM = "NYS_GearVM"
+
+-- One-shot open-animation settle (ms) after we Execute Examine on a queued summon:
+-- keep ignoring input while it plays so rapid skipping cannot dismiss the fresh
+-- panel, and wire the field/gear once it has settled. Empirical.
 local EXAMINE_CLOSE_MS = 400
 local EXAMINE_SETTLE_MS = 400
 
@@ -46,8 +63,8 @@ local function safe(fn, ...)
 	return nil
 end
 
--- Hoisted out of the per-node walk so it does not allocate a closure per access
--- (the walk runs on every click). VisualChild is 1-based (bg3se GetVisualChild).
+-- Hoisted out of the per-node walk so it does not allocate a closure per access.
+-- VisualChild is 1-based (bg3se GetVisualChild).
 local function readName(node)
 	return node.Name
 end
@@ -73,13 +90,14 @@ local function visualChildCount(node)
 end
 
 --- Depth-first search of the visual tree for the first node (incl. `node`)
---- satisfying `predicate`.
+--- satisfying `predicate`. Callers ANCHOR the search by passing ContentRoot or the
+--- Examine node as `node`, so it only ever walks that subtree.
 ---@param node any
 ---@param depth integer
 ---@param predicate fun(node:any):boolean
 ---@return any|nil
 local function findNode(node, depth, predicate)
-	if node == nil or depth > MAX_DEPTH then
+	if node == nil or depth > SEARCH_DEPTH_LIMIT then
 		return nil
 	end
 	if predicate(node) then
@@ -94,11 +112,11 @@ local function findNode(node, depth, predicate)
 	return nil
 end
 
---- The first visual node named `name` from the composition root, or nil.
+--- The first descendant of `root` (incl. `root`) named `name`, or nil.
+---@param root any
 ---@param name string
 ---@return any|nil
-local function findNamed(name)
-	local root = safe(Ext.UI.GetRoot)
+local function findFrom(root, name)
 	if root == nil then
 		return nil
 	end
@@ -107,13 +125,35 @@ local function findNamed(name)
 	end)
 end
 
+--- The composition root (`ContentRoot`), the cheap anchor for every scan: panels
+--- and the always-present portrait view-models hang off it. Fetched fresh (a stale
+--- Noesis handle crashes on use); the search is shallow (ContentRoot sits near root).
+---@return any|nil
+local function contentRoot()
+	return findFrom(safe(Ext.UI.GetRoot), "ContentRoot")
+end
+
+--- The Examine panel node, or nil when it is not on screen. Anchored at ContentRoot.
+---@return any|nil
+local function examineNode()
+	return findFrom(contentRoot(), "Examine")
+end
+
+--- A live Noesis node by x:Name from WITHIN the Examine subtree, or nil. Used for
+--- our own controls (NYS_NameInput, NYS_SettingsButton) and the game's CloseExamine.
+---@param name string
+---@return any|nil
+local function findNamed(name)
+	return findFrom(examineNode(), name)
+end
+
 --- Read a runtime property from a view model's dynamic property bag.
 ---@param dc any
 ---@param key string
 ---@return any
 local function dcProp(dc, key)
 	-- Bag only: dc:GetProperty warns per missing key, so falling back to it while
-	-- scanning the tree cost 200-500ms to open Examine (verified in game).
+	-- scanning the tree cost 238-510ms to open Examine (verified in game, GH #50).
 	local all = safe(function()
 		return dc:GetAllProperties()
 	end)
@@ -124,12 +164,11 @@ local function dcProp(dc, key)
 end
 
 --- The uuid of the summon shown on the currently-open Examine screen, or nil.
---- Finds the Examine panel, then the first descendant whose DataContext carries
---- an EntityUUID and a "Summon" CharacterType (the examined-creature view model,
---- inherited down the subtree).
+--- Scans the Examine subtree for the first DataContext carrying an EntityUUID and a
+--- "Summon" CharacterType (the examined-creature view model, inherited down the subtree).
 ---@return string|nil
 local function examinedSummonUuid()
-	local examine = findNamed("Examine")
+	local examine = examineNode()
 	if examine == nil then
 		return nil
 	end
@@ -165,38 +204,26 @@ local function submitRename(uuid, rawName)
 	if type(uuid) ~= "string" or name == "" then
 		return false
 	end
-	-- A channel/send failure must not escape this global input callback and tear
-	-- down the client Lua state.
+	-- A channel/send failure must not escape this input callback and tear down the
+	-- client Lua state.
 	return pcall(function()
 		Channels.RenameSummon:SendToServer({ SummonUuid = uuid, Name = name })
 	end)
 end
 
 ---------------------------------------------------------------------------
--- Native controls: Enter or click-away renames the summon; the gear opens config
+-- On-summon naming state (GH #19); the interaction below drives it
 ---------------------------------------------------------------------------
 --
--- The Examine panel's routed UI events are unreliable: it is a separate Noesis popup
--- tree Ext.UI.GetRoot() never receives events from, the field's focus events do not
--- fire on the first open after a load, and a per-element mouse subscription does not
--- take effect on the first panel of a session. The global SDL-level input events
--- (MouseButtonInput / KeyInput) fire on every click and key regardless, so the whole
--- control is driven by those: on a click we hit-test the gear and close button by
--- their IsMouseOver, and commit/baseline the field.
-local editing = false -- an edit session is active (baseline captured on first click)
-local panelOpen = false -- last-seen panel presence (field exists)
-local keySub = nil -- KeyInput subscription handle; only held while the panel is open
-local lastSent = nil -- last committed sanitised text, to dedup Enter + click-away
-
--- On-summon naming (GH #19). The server still owns detection, the pending count,
--- the world-pause, and (in unique mode) asking per creature; the client now answers
--- by opening the native Examine panel instead of an ImGui window. Only one Examine
--- panel exists AND it cannot be closed from Lua, so summons are shown one at a time
--- and the next opens only once the player closes the current panel. Naming a summon
--- (Enter / click-away) answers over SubmitName - the channel the old window used, so
--- the server's pause/pending bookkeeping is untouched - but leaves the panel up;
--- closing it (X / Escape) advances to the next, skipping (abort) any summon left
--- unnamed. The queue is drained one close at a time.
+-- The server still owns detection, the pending count, the world-pause, and (in
+-- unique mode) asking per creature; the client answers by opening the native Examine
+-- panel. Only one Examine panel exists and it cannot be closed from Lua (C3), so as a
+-- DESIGN CHOICE the queued summons are shown one at a time and the next opens once the
+-- player closes the current panel (a swap-through-the-queue redesign is GH #51 - the
+-- engine does NOT force one-at-a-time: ExamineCommand:Execute on an open panel swaps
+-- its content, C4). Naming a summon answers over SubmitName (the channel the old ImGui
+-- window used, so the server's pause/pending bookkeeping is untouched) and leaves the
+-- panel up; closing it advances, skipping (abort) any summon left unnamed.
 local examineQueue = {} -- AskName requests not yet shown, FIFO
 local current = nil -- the request whose summon is being examined now, or nil
 local answered = false -- the current summon got a name (so closing it just advances)
@@ -205,16 +232,23 @@ local startNext -- forward decl: advance the queue
 local answerSession -- forward decl: answer a session over SubmitName
 local openExamine -- forward decl: Execute Examine on a request
 
+-- Panel lifecycle + per-element wiring. `panelOpen` is the last-seen presence of the
+-- Examine node; `wired` is whether the current panel's field/gear have their
+-- per-element bindings/subscriptions attached (idempotent, torn down on close).
+local panelOpen = false
+local wired = false
+local fieldSubs = {} -- { { field = node, handle = h }, ... } to unsubscribe on teardown
+local lastSent = nil -- last committed sanitised text, to dedupe Enter + blur
+
 --- Reset per-summon state for the new `current` request.
 local function beginCurrent()
 	answered = false
-	editing = false
 	lastSent = Util.Sanitise(current.DefaultName or "")
 end
 
 --- Finish the current summon and move to the next. Called when the player closes the
---- panel (X, Escape, or a close detected after the fact); a summon left unnamed is a
---- skip (abort - the server re-asks it next summon), a named one is already saved.
+--- panel; a summon left unnamed is a skip (abort - the server re-asks it next summon),
+--- a named one is already saved.
 local function finishCurrent()
 	if not current then
 		return
@@ -238,17 +272,17 @@ local function liveField()
 end
 
 --- A snapshot of what is ACTUALLY on screen right now (not our internal flags), for
---- tracing: whether the Examine panel and our name field are present, plus the state
---- machine's own view. Walks the tree, so it is skipped entirely unless tracing is on.
+--- tracing. Walks the Examine subtree, so it is skipped entirely unless tracing is on.
 ---@return string
 local function uiState()
 	if not diagEnabled then
 		return ""
 	end
 	return string.format(
-		"[examine=%s field=%s | current=%s answered=%s awaitingOpen=%s queued=%d]",
-		tostring(findNamed("Examine") ~= nil),
+		"[examine=%s field=%s wired=%s | current=%s answered=%s awaitingOpen=%s queued=%d]",
+		tostring(examineNode() ~= nil),
 		tostring(liveField() ~= nil),
+		tostring(wired),
 		current and current.SummonUuid or "none",
 		tostring(answered),
 		tostring(awaitingOpen),
@@ -266,9 +300,9 @@ local function nodeText(node)
 	return type(t) == "string" and t or ""
 end
 
---- Rename the examined summon to `field`'s current text. Deduped via lastSent so
---- Enter followed by a click-away (or repeated clicks) sends only once. The uuid
---- (a DataContext walk) is resolved only after we know the text actually changed.
+--- Rename the examined summon to `field`'s current text. Deduped via lastSent so an
+--- Enter followed by a blur (or repeated triggers) sends only once. The uuid (a
+--- DataContext walk) is resolved only after we know the text actually changed.
 ---@param field any
 local function commitField(field)
 	local raw = nodeText(field)
@@ -300,22 +334,11 @@ local function commitField(field)
 	end
 end
 
---- Whether the mouse is currently over the named panel control. Read on a global
---- click to hit-test the gear / close button: unlike a per-element event
---- subscription, this works on the first Examine panel of a session too.
----@param name string
----@return boolean
-local function mouseOver(name)
-	local element = findNamed(name)
-	if not element then
-		return false
-	end
-	return safe(function()
-		return element.IsMouseOver
-	end) == true
-end
+---------------------------------------------------------------------------
+-- Owned controls: per-element MVVM (gear Command binding + field key/focus subs)
+---------------------------------------------------------------------------
 
---- Open the native settings overlay (on a click over the gear).
+--- Open the native settings overlay (bound to the gear's NysGearCommand).
 local function onGearClick()
 	log("onGearClick -> native settings overlay")
 	if onGearClickHandler then
@@ -323,61 +346,124 @@ local function onGearClick()
 	end
 end
 
---- Global key hook: Enter commits, Escape closes the panel and advances (Escape is
---- what closes Examine, so it doubles as the "next summon" step). NOTE: the engine
---- also raises ESCAPE for its own UICancel (e.g. the close button), so an "ESCAPE"
---- here is not necessarily a physical key press - the trace records it verbatim.
----@param e any
-local function onKeyInput(e)
-	local pressed = safe(function()
-		return e.Pressed
-	end)
+--- element:Subscribe hands the handler either (args) or (sender, args); return the
+--- one that looks like the event args (has a readable field), else the first.
+local function eventArgs(a, b)
+	if b ~= nil then
+		return b
+	end
+	return a
+end
+
+-- Enter-key names, covering the shapes the Noesis KeyEventArgs.Key may report.
+local ENTER_KEYS = {
+	Return = true,
+	Enter = true,
+	Key_Return = true,
+	Key_Enter = true,
+	KP_Enter = true,
+	Key_NumPadEnter = true,
+	NumPadEnter = true,
+}
+
+--- Commit the field now (from a key/focus event). Re-fetches the live field.
+local function commitLiveField()
+	local field = liveField()
+	if field then
+		commitField(field)
+	end
+end
+
+--- Per-element KeyDown on the name field: commit on Enter only (committing on every
+--- keystroke would fire a rename mid-typing). The raw key is traced so the exact name
+--- is known (GH #50 spike). C1/C7: KeyDown fires on the field first-open; focus does not.
+local function onFieldKeyDown(a, b)
+	local e = eventArgs(a, b)
 	local key = safe(function()
 		return e.Key
 	end)
-	-- Log only the keys we act on (plus while a session/panel is up), so the trace
-	-- shows exactly what arrived without drowning in movement/hotkey spam.
-	if key == "RETURN" or key == "RETURN2" or key == "KP_ENTER" or key == "ESCAPE" then
-		log("onKeyInput: key =", key, "pressed =", pressed, uiState())
-	end
-	if pressed ~= true then
-		return
-	end
-	if awaitingOpen then
-		if key == "RETURN" or key == "RETURN2" or key == "KP_ENTER" or key == "ESCAPE" then
-			log("onKeyInput: ignored (awaitingOpen)")
-		end
-		return
-	end
-	if key == "RETURN" or key == "RETURN2" or key == "KP_ENTER" then
-		local field = liveField()
-		if field then
-			commitField(field)
-		end
-	elseif key == "ESCAPE" then
-		finishCurrent()
+	log("field KeyDown key =", tostring(key), uiState())
+	if key ~= nil and ENTER_KEYS[tostring(key)] then
+		commitLiveField()
 	end
 end
 
---- Keep the global key hook subscribed exactly while it is useful - during a
---- naming session, or while the panel is open for a manual rename - and dropped
---- otherwise, since KeyInput fires on every keystroke in the game.
-local function refreshKeyHook()
-	local want = current ~= nil or panelOpen
-	if want and not keySub then
-		keySub = safe(function()
-			return Ext.Events.KeyInput:Subscribe(onKeyInput)
+--- Per-element focus-loss on the name field: commit unconditionally (blur = save). Both
+--- LostFocus and LostKeyboardFocus fire on every blur (verified GH #50) - we keep both
+--- for robustness; commitField dedupes so the second is a cheap no-op.
+---@param evName string
+local function onFieldBlur(evName)
+	log("field blur event:", evName, uiState())
+	commitLiveField()
+end
+
+--- Attach the gear's Command viewmodel and the field's key/focus subscriptions to the
+--- current panel. Idempotent (guarded by `wired`); no-op until the field node exists
+--- (the panel may still be animating open).
+local function wirePanel()
+	if wired then
+		return
+	end
+	local field = liveField()
+	if not field then
+		return
+	end
+
+	-- Baseline the dedupe key to the text already shown, so a blur without an edit
+	-- does not submit.
+	lastSent = Util.Sanitise(nodeText(field))
+
+	fieldSubs = {}
+	local function sub(event, fn)
+		local handle = safe(function()
+			return field:Subscribe(event, fn)
 		end)
-	elseif not want and keySub then
+		if handle ~= nil then
+			fieldSubs[#fieldSubs + 1] = { field = field, handle = handle }
+		end
+	end
+	sub("KeyDown", onFieldKeyDown)
+	sub("LostFocus", function()
+		onFieldBlur("LostFocus")
+	end)
+	sub("LostKeyboardFocus", function()
+		onFieldBlur("LostKeyboardFocus")
+	end)
+
+	-- Gear: nested DataContext = a fresh NYS_GearVM whose command opens settings.
+	local gear = findNamed("NYS_SettingsButton")
+	if gear then
+		local vm = safe(function()
+			return Ext.UI.Instantiate(GEAR_VM)
+		end)
+		if vm then
+			pcall(function()
+				vm.NysGearCommand:SetHandler(onGearClick)
+			end)
+			pcall(function()
+				gear.DataContext = vm
+			end)
+		end
+	end
+
+	wired = true
+	log("wirePanel: wired", #fieldSubs, "field subs", uiState())
+end
+
+--- Drop the current panel's per-element wiring. The Examine field element is
+--- destroyed/hidden on close, so unsubscribe is best-effort (a dead handle throws).
+local function unwirePanel()
+	for _, entry in ipairs(fieldSubs) do
 		pcall(function()
-			Ext.Events.KeyInput:Unsubscribe(keySub)
+			entry.field:Unsubscribe(entry.handle)
 		end)
-		keySub = nil
 	end
+	fieldSubs = {}
+	wired = false
 end
 
---- React to the panel opening or closing (detected by the always-live mouse hook).
---- A close we did not catch as an X/Escape still advances the active session.
+--- React to the panel opening or closing. On close, tear down wiring and advance the
+--- active on-summon session (a close we did not otherwise catch still advances).
 ---@param open boolean
 local function setPanelOpen(open)
 	if open == panelOpen then
@@ -385,18 +471,28 @@ local function setPanelOpen(open)
 	end
 	log("setPanelOpen:", open, uiState())
 	panelOpen = open
-	if not open then
-		editing = false
+	if open then
+		wirePanel()
+	else
+		unwirePanel()
 		finishCurrent()
 	end
-	refreshKeyHook()
 end
 
---- Global left-click hook (always subscribed - it is our only "panel opened"
---- detector, and it drives the gear/close hit-test since element subscriptions are
---- unreliable). A click over the close button advances the session; a click over the
---- gear opens config; otherwise it is a field click - the first captures the edit
---- baseline, a later one commits if the text changed (the click-away rename).
+--- The single sanctioned global hook: reconcile our state with the live tree
+--- (presence of the Examine node), and wire the panel once its field exists.
+local function pollLifecycle()
+	local present = examineNode() ~= nil
+	if present ~= panelOpen then
+		setPanelOpen(present)
+	elseif present then
+		wirePanel() -- idempotent; catches the field appearing after the open transition
+	end
+end
+
+--- Global left-click hook - the ONLY global input hook, and purely a lifecycle
+--- detector (there is no panel-open event; C9). It does NOT hit-test the gear/close/
+--- field: those are per-element bindings/subscriptions now.
 ---@param e any
 local function onMouseButton(e)
 	local pressed = safe(function()
@@ -408,38 +504,19 @@ local function onMouseButton(e)
 	if pressed ~= true or button ~= 1 then
 		return
 	end
-	log("onMouseButton: left click", uiState())
 	-- Ignore clicks while the old panel animates shut and the next is scheduled.
 	if awaitingOpen then
 		log("onMouseButton: ignored (awaitingOpen)")
 		return
 	end
-	local field = liveField()
-	if field == nil then
-		log("onMouseButton: no field -> treat as panel closed")
-		setPanelOpen(false)
-		return
-	end
-	setPanelOpen(true)
-
-	local overClose = mouseOver("CloseExamine")
-	local overGear = mouseOver("NYS_SettingsButton")
-	log("onMouseButton: overClose =", overClose, "overGear =", overGear, "editing =", editing)
-
-	if overClose then
-		finishCurrent()
-		return
-	end
-	if overGear then
-		onGearClick()
-		return
-	end
-	if editing then
-		commitField(field)
-	else
-		editing = true
-		lastSent = Util.Sanitise(nodeText(field))
-		log("onMouseButton: baseline lastSent =", lastSent)
+	log("onMouseButton: left click", uiState())
+	pollLifecycle()
+	-- A click while a panel is up (or a session is active) may have started a close (the
+	-- animated X) or opened a panel still animating in - neither is visible in the tree
+	-- yet. Reconcile once after the animations settle so the panel wires, or a close
+	-- advances the queue, without needing a second click. One-shot, not a poll loop.
+	if examineNode() ~= nil or current ~= nil then
+		Ext.Timer.WaitForRealtime(EXAMINE_CLOSE_MS + EXAMINE_SETTLE_MS, pollLifecycle)
 	end
 end
 
@@ -448,48 +525,37 @@ end
 ---------------------------------------------------------------------------
 --
 -- Opening Examine on a specific creature drives native UI that has no SE/Osiris
--- entry point: fetch the game's ExamineCommand (a Noesis BaseCommand) off the root
--- DataContext and Execute it with the summon's Noesis EntityHandle - the exact
--- CommandParameter the game's own XAML binds. See docs/bg3-modding-toolchain.md.
--- Never compare a Noesis object with == nil (its __eq crashes on an expired
--- object) and never cache one across calls; fetch fresh and test with truthiness.
+-- entry point: fetch the game's ExamineCommand (a Noesis BaseCommand) off the HUD
+-- command-surface DataContext and Execute it with the summon's Noesis EntityHandle -
+-- the exact CommandParameter the game's own XAML binds. See docs/bg3-modding-toolchain.md.
 
---- The game's ExamineCommand, found on the root DataContext (findNode visits it
---- first). Returned fresh, never cached - a stale Noesis handle crashes on use.
+-- The global command surface (ExamineCommand + ~200 other game commands) is a ui::DCWidget
+-- that is NOT on ContentRoot's own DataContext but IS inherited onto the always-present
+-- "HudIndicator" node beneath it (verified in game, GH #50). Named for the direct lookup.
+local COMMAND_SURFACE_NODE = "HudIndicator"
+
+--- The game's ExamineCommand. Read directly off the HUD command-surface DataContext
+--- (a small anchored hop: ContentRoot -> HudIndicator). Runs once per open. Returned
+--- fresh, never cached (a stale Noesis handle crashes on use).
 ---@return any|nil
 local function getExamineCommand()
-	local root = safe(Ext.UI.GetRoot)
-	if not root then
-		return nil
-	end
-	local command
-	findNode(root, 0, function(node)
-		local dc = safe(function()
-			return node.DataContext
-		end)
-		if not dc then
-			return false
-		end
-		command = safe(function()
-			return dc:GetProperty("ExamineCommand")
-		end)
-		return command and true or false
+	local hud = findFrom(contentRoot(), COMMAND_SURFACE_NODE)
+	local dc = hud and safe(function()
+		return hud.DataContext
 	end)
-	return command
+	return dc and safe(function()
+		return dc:GetProperty("ExamineCommand")
+	end)
 end
 
---- The Noesis EntityHandle for a summon uuid, read off any live per-entity
---- DataContext (the always-present portrait view-models carry one). The direct
---- getter returns the live object Execute needs; the property bag may copy it.
+--- The Noesis EntityHandle for a summon uuid, off any live per-entity DataContext (the
+--- always-present portrait view-models carry one). Anchored at ContentRoot. The direct
+--- getter returns the object Execute needs; the bag may copy it.
 ---@param uuid string
 ---@return any|nil
 local function entityHandleFor(uuid)
-	local root = safe(Ext.UI.GetRoot)
-	if not root then
-		return nil
-	end
 	local handle
-	findNode(root, 0, function(node)
+	findNode(contentRoot(), 0, function(node)
 		local dc = safe(function()
 			return node.DataContext
 		end)
@@ -537,15 +603,25 @@ function openExamine(req)
 	local command = getExamineCommand()
 	local handle = entityHandleFor(req.SummonUuid)
 	log("openExamine:", req.SummonUuid, "command =", command and true or false, "handle =", handle and true or false)
+	local canExec = nil
 	local opened = command
 		and handle
 		and pcall(function()
 			-- A disabled command Executes as a silent no-op, hanging the pause; CanExecute guards it.
-			assert(command:CanExecute(handle))
+			canExec = command:CanExecute(handle)
+			assert(canExec)
 			command:Execute(handle)
 		end)
 	if not opened then
-		Util.Warn("Could not open Examine for summon " .. tostring(req.SummonUuid) .. "; skipping.")
+		-- Name which precondition failed - unconditional, so it survives a diag-flag reset.
+		Util.Warn(
+			("Could not open Examine for summon %s (command=%s handle=%s canExecute=%s); skipping."):format(
+				tostring(req.SummonUuid),
+				tostring(command and true or false),
+				tostring(handle and true or false),
+				tostring(canExec)
+			)
+		)
 		-- Nothing opened, so no close to wait for: skip and open the next at once.
 		if answerSession(req, "", true) then
 			startNext(false)
@@ -554,8 +630,8 @@ function openExamine(req)
 end
 
 --- Examine the next queued request (an empty queue just clears `current`). After a
---- close, the panel's shut is animated and ExamineCommand is ignored until it is gone,
---- so defer the open by EXAMINE_CLOSE_MS; the first summon (nothing open) shows at once.
+--- close, the panel's shut is animated and the next open must wait for it to be gone,
+--- so defer by EXAMINE_CLOSE_MS; the first summon (nothing open) shows at once.
 ---@param afterClose boolean|nil
 function startNext(afterClose)
 	current = table.remove(examineQueue, 1)
@@ -567,11 +643,13 @@ function startNext(afterClose)
 		"afterClose =",
 		afterClose == true
 	)
-	refreshKeyHook()
 	if not current then
 		return
 	end
 	beginCurrent()
+	-- Execute on an already-open panel swaps in a fresh field element (C4), so drop the
+	-- prior panel's wiring; pollLifecycle re-wires the new field once it has settled.
+	unwirePanel()
 	if afterClose then
 		awaitingOpen = true
 		Ext.Timer.WaitForRealtime(EXAMINE_CLOSE_MS, function()
@@ -581,17 +659,20 @@ function startNext(afterClose)
 			end
 			openExamine(current)
 			-- Stay closed to input while the open animation plays, so a second, too-early
-			-- close/Escape (rapid skipping) does not dismiss the panel we just opened.
+			-- close/Escape (rapid skipping) does not dismiss the panel we just opened; then
+			-- wire the fresh panel without waiting for a click.
 			Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, function()
 				awaitingOpen = false
+				pollLifecycle()
 			end)
 		end)
 	else
 		openExamine(current)
+		Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, pollLifecycle)
 	end
 end
 
---- Find a live Noesis node by x:Name from the composition root (exposed so
+--- Find a live Noesis node by x:Name within the Examine subtree (exposed so
 --- NativeConfigUI can resolve its overlay fresh at the moment it binds it).
 ---@param name string
 ---@return any|nil
@@ -606,9 +687,13 @@ function NativeRenameUI.SetGearHandler(fn)
 end
 
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent
--- "MouseButtonInput"/"KeyInput"); the IDE helper's "EclLua*" names are stale for this
--- build, and Ext.Events is not enumerable. The key hook is wired on demand elsewhere.
+-- "MouseButtonInput"); the IDE helper's "EclLua*" names are stale for this build, and
+-- Ext.Events is not enumerable.
 function NativeRenameUI.Register()
+	pcall(function()
+		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" } })
+	end)
+
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
 	end)

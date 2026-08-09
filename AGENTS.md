@@ -63,28 +63,49 @@ the game.
   older summons of the type keep their names), and it follows the CURRENT
   `MultiSummonMode`, not how the value was stored - switching `unique` -> `shared`
   collapses the stored set to its first name on the next summon and re-asks once.
+- **Native UI - the one proven approach (GH #50).** Verified in game (Patch 8, SE
+  v30). Implement and extend native UI this way; do not re-litigate:
+  1. Open a game panel (Examine) - fetch `ExamineCommand` off the HUD command-surface
+     DataContext (a `ui::DCWidget` with ~200 game commands, inherited onto the
+     always-present `HudIndicator` node under `ContentRoot`; `ContentRoot`'s OWN
+     DataContext does not expose it) and `Execute` it with the summon's Noesis
+     `EntityHandle`; on an already-open panel this SWAPS content.
+  2. Our own overlay (settings) - set our viewmodel as the element `DataContext`
+     and flip a `Bool` visibility prop (no window API; `GetStateMachine()` is nil).
+  3. Panels we own - MVVM via `Ext.UI.RegisterType` / `Ext.UI.Instantiate`
+     (`Bool` / `Collection` / `Command` props, every field prefixed `Nys`).
+     WriteCallbacks dispatch ASYNC, so make writes idempotent (never a synchronous
+     re-entry flag); never cache a viewmodel/node handle; rebuild the viewmodel to
+     clear a `Collection` (`coll[i]=nil` is the only in-place removal).
+  4. Controls on a game DataContext (the rename bar) - buttons we add get their own
+     nested DataContext + a `Command` binding; the field commits via per-element
+     key/focus subscriptions. These work on the FIRST panel; do NOT hit-test with a
+     global mouse hook.
+  5. Lifecycle of a game panel - there is no open event and no closable command, so
+     keep exactly ONE cheap global mouse hook as the detector (presence of the
+     `Examine` node = open), the sole sanctioned exception to rule 4. Anchor every
+     scan at `ContentRoot` / `Examine` (never a whole-tree walk) and read the
+     DataContext property bag (`GetAllProperties`); the direct `GetProperty` is
+     only ever for one known object (the HUD command surface, a matched entity handle).
 - **Native Examine rename** (`Client/NativeRenameUI.lua` + `GUI/`): the Examine
   panel gets an editable name field (`NYS_NameInput`) and a settings gear
   (`NYS_SettingsButton`) via an `Examine.xaml` override (a state override in
   `StateMachines/Keyboard.xaml` points the Examine state at our page). The
   examined creature's uuid is read from the panel's Noesis DataContext
-  (`DCExamine.EntityUUID` + `CharacterType == "Summon"`) and renames go to the
-  server over `Channels.RenameSummon`. Commit is driven by GLOBAL input events
-  (`Ext.Events.MouseButtonInput` / `KeyInput`), NOT the panel's routed UI events:
-  the panel is a separate Noesis popup tree (`Ext.UI.GetRoot()` never sees its
-  events) and the field's focus events do not fire on the first open after a load.
-  Enter and click-away both commit (deduped). The gear and close button are NOT
-  driven by per-element event subscriptions - those never take effect on the first
-  Examine panel of a session (confirmed by tracing). Instead the always-reliable
-  global mouse hook hit-tests them on each click by their `IsMouseOver` (the same
-  property their XAML hover uses): a click over `CloseExamine` aborts the session, a
-  click over `NYS_SettingsButton` opens the native settings panel (below), otherwise
-  it is a field click. A `!nys_uidebug` client console command toggles verbose
-  tracing of this whole flow. The mouse hook is always live
-  (it is the only "panel opened" detector - `Ext.UI.GetStateMachine()` is stubbed
-  to `nullptr` in this SE build, so there is no cheap/event-driven signal); the key
-  hook is subscribed only while the panel is open. See GH issue for the
-  state-machine follow-up.
+  (`EntityUUID` + `CharacterType == "Summon"`, bag-only) and renames go to the
+  server over `Channels.RenameSummon`. Following the approach above, the controls we
+  add are driven by per-element MVVM (proven to fire on the first panel of a
+  session): the gear is an `ls:LSButton` whose `Command` binds to a tiny `NYS_GearVM`
+  set as its nested DataContext; the field commits on its own per-element `KeyDown`
+  (Enter) and focus-loss subscriptions. (Focus-GAIN events - `GotFocus` /
+  `GotKeyboardFocus` - and a bare `Grid` (no `Click`) are the only things that stay
+  silent.) The single remaining global input hook is one `Ext.Events.MouseButtonInput`
+  used SOLELY as the panel lifecycle detector, because `Ext.UI.GetStateMachine()` is
+  stubbed to `nullptr` in this SE build and there is no open event. Every scan is
+  anchored at `ContentRoot` / `Examine` and reads the property bag; `GetProperty`
+  warns per miss and cost 238-510 ms to open Examine when used to scan, so it is
+  reserved for one known object (the HUD command surface, a matched entity handle). A
+  `!nys_uidebug` client console command toggles verbose tracing of the whole flow.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
   `Examine.xaml` override - reproducing the ImGui `ConfigUI` (prompt options,
@@ -107,11 +128,12 @@ the game.
     from the panel (`liveVm`) at each use, and use the live `context`/`value`
     inside a `WriteCallback`. Never compare a Noesis object with `== nil` (routes
     through `__eq`, which throws on an expired object) - use truthiness.
-  - **An SE `Collection` is append-only from Lua** (`Clear`/`RemoveAt`/
-    `table.remove`/whole-array assign all fail). The only clean list is a fresh
-    viewmodel, so the whole panel is rebuilt on every open/refresh/save/forget
-    (`populate`), guarded by a `generation` counter so a slow reply cannot append
-    to a newer viewmodel.
+  - **An SE `Collection` is effectively append-only from Lua** (`Clear`/`RemoveAt`/
+    `table.remove`/whole-array assign all fail; the ONE in-place exception is
+    `coll[i]=nil`, which removes a single element - unused here). The only wholly
+    clean list is a fresh viewmodel, so the whole panel is rebuilt on every
+    open/refresh/save/forget (`populate`), guarded by a `generation` counter so a
+    slow reply cannot append to a newer viewmodel.
   - **Prefix every viewmodel field `Nys`** so it cannot alias a built-in (an
     unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
     literal "Name").
@@ -124,36 +146,38 @@ the game.
   Detection, the pending count, the world-pause, and per-creature `unique`
   prompting all stay server-side and unchanged; the server still sends `AskName`.
   The client answers by opening Examine on the summon: fetch the game's
-  `ExamineCommand` (a Noesis `BaseCommand`) off the root DataContext and
+  `ExamineCommand` (a Noesis `BaseCommand`) off the HUD command-surface DataContext
+  (the `HudIndicator` node under `ContentRoot`) and
   `Execute` it with the summon's Noesis `EntityHandle` (the exact
   `CommandParameter` its XAML binds; a uuid string or SE `Entity` is rejected) -
   the handle is read by `EntityUUID` off a live per-entity DataContext (the
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
   clears its pending count / lifts the pause, exactly as the old window did.
-- **Multi-summon = one panel at a time, close to advance.** Only one Examine panel
-  exists AND it cannot be closed from Lua (its close is a `UICancel` bound event /
-  a Noesis-typed `CustomEvent("CloseWidget")` param - both unreachable via SE; a Lua
-  string is rejected, `CanExecute` returns nil), and `ExamineCommand` is IGNORED
-  while a panel is on screen. So summons are shown one at a time and the NEXT opens
-  only after the PLAYER closes the current one. Naming (Enter / click-away) answers
-  over `SubmitName` but leaves the panel up (`answered = true`); closing it (the
-  `CloseExamine` button, hit-tested by the global mouse hook, or Escape - which the
-  engine ALSO raises as its own `UICancel`, so an "ESCAPE" key event is not
-  necessarily a physical press) advances: a summon left unnamed is a skip (abort),
-  a named one is already saved. Because close is animated, `startNext(afterClose)`
-  waits `EXAMINE_CLOSE_MS` before Executing the next (old panel gone) and keeps
-  ignoring input for `EXAMINE_SETTLE_MS` after (open animation), so rapid skipping
-  cannot dismiss the freshly opened panel (`awaitingOpen` gates all input in that
-  window). One-shot `Ext.Timer.WaitForRealtime`, not polling. A failure to open
-  Examine (command/handle missing or `Execute` throwing) skips to the next, so the
-  pause never deadlocks. Noesis objects are fetched fresh and tested with truthiness
-  (never `== nil`, never cached - a stale handle crashes on use). A `!nys_uidebug`
-  client console command toggles verbose tracing (each line carries a live
-  `[examine=.. field=.. | current=.. answered=.. awaitingOpen=..]` snapshot of the
-  real UI, since internal flags alone once misled a debugging pass). The old ImGui
-  prompt (`Client/PromptUI.lua`) is kept but no longer wired to `AskName`; its
-  removal is a separate follow-up.
+- **Multi-summon = one panel at a time, close to advance (a DESIGN CHOICE, not an
+  engine limit).** Only one Examine panel exists, and it cannot be closed from Lua
+  (its close is a `UICancel` bound event / a Noesis-typed `CustomEvent("CloseWidget")`
+  param - both unreachable via SE; a Lua string is rejected, `CanExecute` returns nil).
+  But `ExamineCommand:Execute` on an ALREADY-OPEN panel swaps its content rather than
+  being ignored (verified GH #50), so a swap-through-the-queue UX is possible and is
+  the GH #51 follow-up. Today we keep the simpler close-to-advance flow: naming (Enter
+  / blur) answers over `SubmitName` but leaves the panel up (`answered = true`);
+  closing it (the `CloseExamine` button or Escape - which the engine ALSO raises as
+  its own `UICancel`, so an "ESCAPE" is not necessarily a physical press) advances,
+  detected by the lifecycle mouse hook noticing the `Examine` node is gone: a summon
+  left unnamed is a skip (abort), a named one is already saved. Because close is
+  animated, `startNext(afterClose)` waits `EXAMINE_CLOSE_MS` before Executing the next
+  (old panel gone) and keeps ignoring input for `EXAMINE_SETTLE_MS` after (open
+  animation), so rapid skipping cannot dismiss the freshly opened panel (`awaitingOpen`
+  gates all input in that window). One-shot `Ext.Timer.WaitForRealtime`, not polling. A
+  failure to open Examine (command/handle missing or `Execute` throwing) skips to the
+  next, so the pause never deadlocks. Noesis objects are fetched fresh and tested with
+  truthiness (never `== nil`, never cached - a stale handle crashes on use). A
+  `!nys_uidebug` client console command toggles verbose tracing (each line carries a
+  live `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=..]`
+  snapshot of the real UI, since internal flags alone once misled a debugging pass).
+  The old ImGui prompt (`Client/PromptUI.lua`) is kept but no longer wired to
+  `AskName`; its removal is a separate follow-up.
 
 ## Project Structure
 

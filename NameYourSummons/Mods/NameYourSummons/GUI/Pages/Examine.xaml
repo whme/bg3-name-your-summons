@@ -96,20 +96,25 @@
                                                     </Style>
                                                 </StackPanel.Style>
                                                 <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" Focusable="True" SelectTextOnFocus="True"/>
-                                                <Grid x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center" Background="Transparent">
-                                                    <Image Stretch="Uniform">
-                                                        <Image.Style>
-                                                            <Style TargetType="Image">
-                                                                <Setter Property="Source" Value="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsMouseOver, ElementName=NYS_SettingsButton}" Value="True">
-                                                                        <Setter Property="Source" Value="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_h.png"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Image.Style>
-                                                    </Image>
-                                                </Grid>
+                                                <!-- GH #50: an LSButton with a Command binding (a Grid has no Click/command).
+                                                     Its DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
+                                                <ls:LSButton x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                             Background="Transparent" Command="{Binding NysGearCommand}">
+                                                    <ls:LSButton.Template>
+                                                        <ControlTemplate TargetType="{x:Type ls:LSButton}">
+                                                            <Grid Background="Transparent">
+                                                                <Image x:Name="NYS_GearIcon" Stretch="Uniform"
+                                                                       Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
+                                                            </Grid>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="NYS_GearIcon" Property="Source"
+                                                                            Value="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_h.png"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </ls:LSButton.Template>
+                                                </ls:LSButton>
                                             </StackPanel>
                                             <TextBlock Text="{Binding Title}" Style="{StaticResource DetailedListText}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Visibility="{Binding Title, Converter={StaticResource NullToCollapsedConverter}, ConverterParameter='EmptyString'}"/>
                                         </StackPanel>
