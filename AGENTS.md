@@ -283,6 +283,7 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 typecheck     # lua-language-server --check
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
+./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
 ./make.ps1 all           # format + lint + typecheck + test (verify locally)
 ./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
 ./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md (changelogging)
