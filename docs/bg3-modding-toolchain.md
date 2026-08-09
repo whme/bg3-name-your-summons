@@ -67,7 +67,10 @@ rename and confirm against the extender source. (In #9 the live client event was
   `Param 2: expected a light C++ object` / `Expected Noesis::BaseComponent, got
   Entity`). This drives native UI that has no SE/Osiris entry point - e.g. opening
   the Examine panel even though `Ext.UI.GetStateMachine()` is stubbed (see KEN,
-  below).
+  below). When the parameter is a boxed primitive SE cannot mint (a string naming
+  an event), plant it as a `System:*` XAML resource and read it back with
+  `element:Resource(key)`. Full method:
+  [driving-native-ui-from-lua.md](driving-native-ui-from-lua.md).
 
 ### Using KEN (live Noesis inspection)
 

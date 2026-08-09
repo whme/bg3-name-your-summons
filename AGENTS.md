@@ -154,29 +154,35 @@ the game.
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
   clears its pending count / lifts the pause, exactly as the old window did.
+- **Closing Examine from Lua** (`closeExaminePanel`, GH #54): the panel's close runs the
+  `CloseWidget` state event (action `<ls:RemoveState/>`) through the widget's own
+  `CustomEvent` command. Its parameter must be a BOXED Noesis string, which SE cannot mint,
+  so plant one as a `<System:String x:Key="NYS_CloseWidget">` resource in the `Examine.xaml`
+  override and read it back live via `element:Resource("NYS_CloseWidget")` (a
+  `Noesis::BaseComponent`), then pass it to `CustomEvent:Execute`. This is the general recipe
+  for driving any Noesis command that needs a boxed primitive parameter -
+  [docs/driving-native-ui-from-lua.md](docs/driving-native-ui-from-lua.md).
 - **Multi-summon = one panel at a time, close to advance (a DESIGN CHOICE, not an
-  engine limit).** Only one Examine panel exists, and it cannot be closed from Lua
-  (its close is a `UICancel` bound event / a Noesis-typed `CustomEvent("CloseWidget")`
-  param - both unreachable via SE; a Lua string is rejected, `CanExecute` returns nil).
-  But `ExamineCommand:Execute` on an ALREADY-OPEN panel swaps its content rather than
-  being ignored (verified GH #50), so a swap-through-the-queue UX is possible and is
-  the GH #51 follow-up. Today we keep the simpler close-to-advance flow: naming (Enter
-  / blur) answers over `SubmitName` but leaves the panel up (`answered = true`);
-  closing it (the `CloseExamine` button or Escape - which the engine ALSO raises as
-  its own `UICancel`, so an "ESCAPE" is not necessarily a physical press) advances,
-  detected by the lifecycle mouse hook noticing the `Examine` node is gone: a summon
-  left unnamed is a skip (abort), a named one is already saved. Because close is
-  animated, `startNext(afterClose)` waits `EXAMINE_CLOSE_MS` before Executing the next
-  (old panel gone) and keeps ignoring input for `EXAMINE_SETTLE_MS` after (open
-  animation), so rapid skipping cannot dismiss the freshly opened panel (`awaitingOpen`
-  gates all input in that window). One-shot `Ext.Timer.WaitForRealtime`, not polling. A
-  failure to open Examine (command/handle missing or `Execute` throwing) skips to the
-  next, so the pause never deadlocks. Noesis objects are fetched fresh and tested with
-  truthiness (never `== nil`, never cached - a stale handle crashes on use). A
-  `!nys_uidebug` client console command toggles verbose tracing (each line carries a
-  live `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=..]`
-  snapshot of the real UI, since internal flags alone once misled a debugging pass).
-  The old ImGui prompt (`Client/PromptUI.lua`) is kept but no longer wired to
+  engine limit).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
+  already-open panel swaps its content rather than being ignored, so a
+  swap-through-the-queue UX is possible (the GH #51 follow-up). Today we keep the simpler
+  close-to-advance flow: naming (Enter / blur) answers over `SubmitName` but leaves the
+  panel up (`answered = true`); the next opens once the current one is closed - by the
+  player, or by `closeExaminePanel` when the server retracts the on-screen prompt (GH #54).
+  Closing advances, detected by the lifecycle mouse hook noticing the `Examine` node is
+  gone: a summon left unnamed is a skip (abort), a named one is already saved. Closing via
+  the `CloseExamine` button or Escape both work - the engine also raises Escape as its own
+  `UICancel`, so an "ESCAPE" key event is not necessarily a physical press. Because close is
+  animated, `startNext(afterClose)` waits `EXAMINE_CLOSE_MS` before Executing the next (old
+  panel gone) and keeps ignoring input for `EXAMINE_SETTLE_MS` after (open animation), so
+  rapid skipping cannot dismiss the freshly opened panel (`awaitingOpen` gates all input in
+  that window). One-shot `Ext.Timer.WaitForRealtime`, not polling. A failure to open Examine
+  (command/handle missing or `Execute` throwing) skips to the next, so the pause never
+  deadlocks. Noesis objects are fetched fresh and tested with truthiness (never `== nil`,
+  never cached - a stale handle crashes on use). A `!nys_uidebug` client console command
+  toggles verbose tracing (each line carries a live
+  `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=..]` snapshot of the
+  real UI). The old ImGui prompt (`Client/PromptUI.lua`) is kept but no longer wired to
   `AskName`; its removal is a separate follow-up.
 
 ## Project Structure
@@ -218,7 +224,10 @@ NameYourSummons/                     <- pak this folder
 
 For the full tool/documentation map (BG3SE, Osiris, NoesisGUI, LSLib) and the
 NoesisGUI facts an agent needs for native UI, see
-[docs/bg3-modding-toolchain.md](docs/bg3-modding-toolchain.md). The essentials:
+[docs/bg3-modding-toolchain.md](docs/bg3-modding-toolchain.md). To invoke any
+native UI command from Lua - including passing a boxed parameter SE cannot mint -
+see [docs/driving-native-ui-from-lua.md](docs/driving-native-ui-from-lua.md). The
+essentials:
 
 - API docs - `github.com/Norbyte/bg3se/blob/main/Docs/API.md`
 - IDE helpers - `bg3se/blob/main/BG3Extender/IdeHelpers/ExtIdeHelpers.lua` -

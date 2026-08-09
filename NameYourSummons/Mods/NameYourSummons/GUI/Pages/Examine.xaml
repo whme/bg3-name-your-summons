@@ -13,6 +13,11 @@
              ls:TooltipExtender.Owner="{Binding CurrentPlayer.UIData.ExamineTarget}">
 
     <ls:UIWidget.Resources>
+    <!-- Name Your Summons (GH #54): a boxed Noesis string the client reads back with
+         element:Resource("NYS_CloseWidget") to close this panel from Lua. CustomEvent's
+         "CloseWidget" parameter must be a boxed Noesis value, not a Lua string, and SE
+         cannot mint one - so we plant it here. Do not remove; NativeRenameUI depends on it. -->
+    <System:String x:Key="NYS_CloseWidget">CloseWidget</System:String>
     <ControlTemplate x:Key="CharSheetTabController" TargetType="Control">
         <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
             <TabControl>
