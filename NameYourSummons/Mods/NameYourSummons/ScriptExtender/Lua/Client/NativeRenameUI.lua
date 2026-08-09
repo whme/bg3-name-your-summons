@@ -375,8 +375,7 @@ local function commitLiveField()
 end
 
 --- Per-element KeyDown on the name field: commit on Enter only (committing on every
---- keystroke would fire a rename mid-typing). The raw key is traced so the exact name
---- is known (GH #50 spike). C1/C7: KeyDown fires on the field first-open; focus does not.
+--- keystroke would rename mid-typing). C1/C7: KeyDown fires on the field first-open.
 local function onFieldKeyDown(a, b)
 	local e = eventArgs(a, b)
 	local key = safe(function()
@@ -479,8 +478,9 @@ local function setPanelOpen(open)
 	end
 end
 
---- The single sanctioned global hook: reconcile our state with the live tree
---- (presence of the Examine node), and wire the panel once its field exists.
+--- Reconcile our state with the live tree (presence of the Examine node) and wire the
+--- panel once its field exists. Returns whether Examine is currently present.
+---@return boolean
 local function pollLifecycle()
 	local present = examineNode() ~= nil
 	if present ~= panelOpen then
@@ -488,6 +488,7 @@ local function pollLifecycle()
 	elseif present then
 		wirePanel() -- idempotent; catches the field appearing after the open transition
 	end
+	return present
 end
 
 --- Global left-click hook - the ONLY global input hook, and purely a lifecycle
@@ -510,12 +511,10 @@ local function onMouseButton(e)
 		return
 	end
 	log("onMouseButton: left click", uiState())
-	pollLifecycle()
-	-- A click while a panel is up (or a session is active) may have started a close (the
-	-- animated X) or opened a panel still animating in - neither is visible in the tree
-	-- yet. Reconcile once after the animations settle so the panel wires, or a close
-	-- advances the queue, without needing a second click. One-shot, not a poll loop.
-	if examineNode() ~= nil or current ~= nil then
+	local present = pollLifecycle()
+	-- A click may start a close or open a panel still animating in, neither yet in the
+	-- tree; reconcile once after the animations settle. One-shot, not a poll loop.
+	if present or current ~= nil then
 		Ext.Timer.WaitForRealtime(EXAMINE_CLOSE_MS + EXAMINE_SETTLE_MS, pollLifecycle)
 	end
 end
