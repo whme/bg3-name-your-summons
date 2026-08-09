@@ -162,28 +162,40 @@ the game.
   `Noesis::BaseComponent`), then pass it to `CustomEvent:Execute`. This is the general recipe
   for driving any Noesis command that needs a boxed primitive parameter -
   [docs/driving-native-ui-from-lua.md](docs/driving-native-ui-from-lua.md).
-- **Multi-summon = one panel at a time, close to advance (a DESIGN CHOICE, not an
-  engine limit).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
-  already-open panel swaps its content rather than being ignored, so a
-  swap-through-the-queue UX is possible (the GH #51 follow-up). Today we keep the simpler
-  close-to-advance flow: naming (Enter / blur) answers over `SubmitName` but leaves the
-  panel up (`answered = true`); the next opens once the current one is closed - by the
-  player, or by `closeExaminePanel` when the server retracts the on-screen prompt (GH #54).
-  Closing advances, detected by the lifecycle mouse hook noticing the `Examine` node is
-  gone: a summon left unnamed is a skip (abort), a named one is already saved. Closing via
-  the `CloseExamine` button or Escape both work - the engine also raises Escape as its own
-  `UICancel`, so an "ESCAPE" key event is not necessarily a physical press. Because close is
-  animated, `startNext(afterClose)` waits `EXAMINE_CLOSE_MS` before Executing the next (old
-  panel gone) and keeps ignoring input for `EXAMINE_SETTLE_MS` after (open animation), so
-  rapid skipping cannot dismiss the freshly opened panel (`awaitingOpen` gates all input in
-  that window). One-shot `Ext.Timer.WaitForRealtime`, not polling. A failure to open Examine
+- **Multi-summon = ONE panel that swaps through the queue, closed once at the end
+  (GH #51).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
+  already-open panel SWAPS its content rather than being ignored (GH #50 finding C4), so a
+  group is named in one panel: name a creature with Enter (answers over `SubmitName`,
+  decrements the server's pending count) and the panel swaps to the next queued summon;
+  repeat until the queue drains; the player closes the panel once at the end. `showNext`
+  Executes Examine on the next request (open, or content-swap if a panel is up); the
+  outgoing `current` is always already resolved (answered, skipped, or retracted), so
+  `showNext` never aborts it. Because the field's `Text` binding is OneWay and does NOT
+  follow a swap, `setFieldText` writes the new creature's name in directly after each swap.
+  Skipping one creature is the `NYS_SkipButton` (abort + swap), shown only while there is a
+  next summon to swap to via a `Bool NysShowSkip` on its `NYS_SkipVM` (set from
+  `#examineQueue > 0`, so it is hidden for single summons and on the last of a group).
+  KeyDown is NOT delivered to our Subscribe on the rename `LSTextBox` (verified in game -
+  not even for character keys), so Enter arrives as a focus loss: a field blur with no left
+  click in the last `CLICK_BLUR_WINDOW_MS` is an Enter commit (save + swap via
+  `onFieldEnter`), while a blur just after a click is click-driven and does NOT save during a
+  session - the clicked control (Skip / gear / close) acts, so Skip and close are free to
+  abort (a plain Examine rename with no session still saves on blur). Closing the panel
+  mid-queue skips ALL that is left (`abortRemaining` aborts `current` if unnamed and every
+  still-queued request), so the pending count still clears and the pause lifts; a retract of
+  the on-screen summon swaps to the next or, if the queue is empty, closes the panel via
+  `closeExaminePanel` (GH #54). After each open/swap, input is ignored for
+  `EXAMINE_SETTLE_MS` (`awaitingOpen` gates it) while the swapped-in field settles, then the
+  fresh field is wired and its text set - one-shot `Ext.Timer.WaitForRealtime`, not polling;
+  an `openGeneration` token makes a superseded settle callback bail (and drain any summon
+  queued while it waited) when a retract swaps `current` mid-settle. A failure to open Examine
   (command/handle missing or `Execute` throwing) skips to the next, so the pause never
   deadlocks. Noesis objects are fetched fresh and tested with truthiness (never `== nil`,
   never cached - a stale handle crashes on use). A `!nys_uidebug` client console command
   toggles verbose tracing (each line carries a live
-  `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=..]` snapshot of the
-  real UI). The old ImGui prompt (`Client/PromptUI.lua`) is kept but no longer wired to
-  `AskName`; its removal is a separate follow-up.
+  `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=.. queued=..]`
+  snapshot of the real UI). The old ImGui prompt (`Client/PromptUI.lua`) is kept but no
+  longer wired to `AskName`; its removal is a separate follow-up.
 
 ## Project Structure
 
