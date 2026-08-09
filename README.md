@@ -1,4 +1,6 @@
-# Name Your Summons - a BG3 mod for naming your summons
+<h1 align="center">Name Your Summons</h1>
+<p align="center"><i>a BG3 mod for naming your summons</i></p>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-rename.png" width="1000" alt="Examine screen"></img></a></p>
 
 Names your summoned creatures, remembers the names, and reapplies them
 automatically the next time you summon the same creature. Optionally opens the
@@ -22,7 +24,8 @@ Install both parts in order.
 
 Want to build from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Using it
+<h1 align="center">Using it</h3>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-rename.png" width="1000" alt="Examine screen"></img></a></p>
 
 Summon something. The creature's Examine panel opens with its name field ready
 to edit, pre-filled with its current name, so you can name it in peace. Type a
@@ -33,6 +36,8 @@ comes back automatically every time you re-summon that creature. A spell that
 summons several creatures at once shows them one at a time: name (or skip) each
 creature and close its panel, and the next one's opens.
 
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-ingame.png" width="1000" alt="Examine screen"></img></a></p>
+
 If you would rather not be rushed, the settings offer a toggle to freeze the
 world while you name a summon. It is off by default; turn it on and, out of
 combat, the freeze is solo turn-based mode (the same pause the tactical camera
@@ -42,7 +47,7 @@ Play resumes as soon as you have dealt with every summon.
 Each summoner keeps its own names, and different familiar shapes (cat, raven,
 spider) are remembered separately.
 
-### Renaming from the Examine panel
+#### Renaming from the Examine panel
 
 You can also rename a summon any time from its Examine screen (right-click the
 creature -> *Examine*). Summons get an editable name field in place of the usual
@@ -50,7 +55,8 @@ name: click it, type, and press Enter - or just click away - to rename. The gear
 button next to the field opens the config window. This uses the same saved names
 as the prompt, so a rename here sticks and comes back on the next summon.
 
-### In-game config
+<h1 align="center">In-game config</h3>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-settings.png" width="1000" alt="Examine screen"></img></a></p>
 
 The gear button next to the Examine name field opens the config window. There
 you can:
