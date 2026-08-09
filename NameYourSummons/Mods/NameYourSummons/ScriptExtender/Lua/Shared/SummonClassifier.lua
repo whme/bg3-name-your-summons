@@ -38,7 +38,7 @@ local TYPE_ORDER = {
 -- Toggle metadata for the config UI, in display order. Familiar first, the
 -- generic catch-all Untagged last.
 Classifier.CATEGORIES = {
-	{ key = "Familiar", label = "Familiars (Find Familiar)" },
+	{ key = "Familiar", label = "Familiars (all, whatever their creature type)" },
 	{ key = "Beast", label = "Beasts / animals" },
 	{ key = "Undead", label = "Undead" },
 	{ key = "Elemental", label = "Elementals" },

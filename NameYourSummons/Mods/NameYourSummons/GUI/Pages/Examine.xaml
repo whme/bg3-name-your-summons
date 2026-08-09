@@ -483,7 +483,7 @@
                                                  Content="Summon types to name..." Command="{Binding NysToggleTypesCommand}"/>
                                     <StackPanel Visibility="{Binding NysTypesExpanded, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                                         <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                                   Text="Which kinds of summon to prompt for. A creature's type is read from its tags."/>
+                                                   Text="Which kinds of summon to prompt for, by the creature type read from its tags. Familiars count as 'Familiars' whatever their type, so the creature types below apply to non-familiar summons only."/>
                                         <StackPanel Orientation="Horizontal" Margin="0,6" IsEnabled="{Binding NysNameEverySummonEnabled}">
                                             <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysNameEverySummon, Mode=TwoWay}"/>
                                             <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Every summon (ignore the type filter below)"/>
