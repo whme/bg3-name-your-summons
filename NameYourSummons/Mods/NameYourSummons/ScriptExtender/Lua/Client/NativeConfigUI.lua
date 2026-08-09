@@ -54,6 +54,11 @@ local pendingSessionUnskips = {} -- session-skipped key -> true
 -- and must not touch the current viewmodel (see the module header, constraint 2).
 local generation = 0
 
+-- The generation whose settings reply has landed. Save reads settings off the
+-- viewmodel, so it must wait for this to catch up to `generation` or it would
+-- flush the fresh viewmodel's default (all-false) settings over the real ones.
+local settingsLoadedGen = 0
+
 -- Guards WriteCallbacks against the programmatic writes we do while loading or
 -- enforcing radio exclusivity (those must not recurse or be treated as edits).
 local suppressWrite = false
@@ -283,6 +288,7 @@ local function loadSettings(gen)
 		suppressWrite = false
 
 		recomputeEnabled(v)
+		settingsLoadedGen = gen
 	end)
 end
 
@@ -364,6 +370,11 @@ local function onSave()
 	if not v then
 		return
 	end
+	-- Before the settings reply lands the viewmodel holds only its all-false
+	-- defaults; saving then would overwrite the real settings with them.
+	if settingsLoadedGen ~= generation then
+		return
+	end
 	local settings = {
 		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
 		PromptForNamed = get(v, "NysPromptForNamed") == true,
@@ -393,8 +404,31 @@ local function onSave()
 		end
 	end
 
+	-- ForgetSlot compacts the unique set, so several slots under one key must be
+	-- sent highest-first; otherwise each removal shifts the ones still to come.
+	local forgetSlotsByKey = {}
 	for id in pairs(pendingForgets) do
-		Channels.ForgetName:SendToServer({ Key = rowMeta[id].Key, Slot = rowMeta[id].Slot })
+		local meta = rowMeta[id]
+		local slots = forgetSlotsByKey[meta.Key]
+		if not slots then
+			slots = {}
+			forgetSlotsByKey[meta.Key] = slots
+		end
+		if meta.Slot then
+			slots[#slots + 1] = meta.Slot
+		end
+	end
+	for key, slots in pairs(forgetSlotsByKey) do
+		if #slots == 0 then
+			Channels.ForgetName:SendToServer({ Key = key })
+		else
+			table.sort(slots, function(left, right)
+				return left > right
+			end)
+			for _, slot in ipairs(slots) do
+				Channels.ForgetName:SendToServer({ Key = key, Slot = slot })
+			end
+		end
 	end
 	for key in pairs(pendingUnskips) do
 		Channels.Unskip:SendToServer({ Key = key })
