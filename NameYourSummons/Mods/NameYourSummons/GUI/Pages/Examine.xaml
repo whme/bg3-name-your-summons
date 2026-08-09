@@ -344,7 +344,7 @@
     </Style>
 
     <ControlTemplate x:Key="NYS_FlyoutItemTemplate" TargetType="Button">
-        <Grid x:Name="fi" Background="Transparent" MinHeight="60">
+        <Grid Background="Transparent" MinHeight="60">
             <Rectangle x:Name="fibg" Visibility="Collapsed">
                 <Rectangle.Fill>
                     <ImageBrush ImageSource="{StaticResource NYS_FlyoutSelected}" Stretch="UniformToFill"/>
