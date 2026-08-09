@@ -423,6 +423,178 @@
                     </ls:LSNineSliceImage>
                 </Grid>
 
+                <!-- ===== Name Your Summons: native settings overlay (GH #20) =====
+                     DataContext is an SE viewmodel set from Lua (NativeConfigUI) when
+                     the panel opens; the gear toggles IsOpen. FallbackValue keeps it
+                     collapsed before the DataContext is bound. -->
+                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="100">
+                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1820" Margin="0,150,0,0"
+                                         Visibility="{Binding NysIsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                        <Grid Margin="80,60,80,60">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <ContentControl Style="{StaticResource BaseTitleStyle}" HorizontalAlignment="Center">
+                                    <TextBlock Text="Name Your Summons"/>
+                                </ContentControl>
+                                <ls:LSButton Style="{DynamicResource SmallCloseButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                             SoundID="UI_Shared_Cancel" Command="{Binding NysCloseCommand}"/>
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="1" Style="{StaticResource NoForcedScrollViewerStyle}" Padding="{StaticResource ScrollOffset}" Margin="0,20,0,20">
+                                <StackPanel>
+                                    <!-- ===== Prompt ===== -->
+                                    <ContentControl Style="{StaticResource BaseTitleStyle}">
+                                        <TextBlock Text="Prompt"/>
+                                    </ContentControl>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPromptOnSummon, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Ask me to name new summons"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6" IsEnabled="{Binding NysPromptForNamedEnabled}">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPromptForNamed, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Also re-ask for summons I have already named"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysAllowStorySummons, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Allow renaming story-bound summons (e.g. 'Us')"/>
+                                    </StackPanel>
+
+                                    <!-- ===== Summon types to name (collapsible) ===== -->
+                                    <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" HorizontalAlignment="Left" Margin="0,20,0,0"
+                                                 Content="Summon types to name..." Command="{Binding NysToggleTypesCommand}"/>
+                                    <StackPanel Visibility="{Binding NysTypesExpanded, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                                        <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="Which kinds of summon to prompt for. A creature's type is read from its tags."/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,6" IsEnabled="{Binding NysNameEverySummonEnabled}">
+                                            <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysNameEverySummon, Mode=TwoWay}"/>
+                                            <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Every summon (ignore the type filter below)"/>
+                                        </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding NysTypeToggles}" Margin="0,4,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,4" IsEnabled="{Binding NysEnabled}">
+                                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysChecked, Mode=TwoWay}"/>
+                                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding NysLabel}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <!-- ===== Multi-summon mode (radio-style toggles) ===== -->
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,16,0,0"
+                                               Text="When one spell summons several creatures at once:"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeSkip, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Do not name them"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeShared, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Share one name"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysModeUnique, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Name each individually"/>
+                                    </StackPanel>
+
+                                    <!-- ===== Saved names ===== -->
+                                    <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Saved names"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No saved names yet."
+                                               Visibility="{Binding NysHasSavedNames, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysSavedNames}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysRowLabel}"/>
+                                                    </StackPanel>
+                                                    <ls:LSTextBox Grid.Column="1" Width="520" MaxLines="1" TextWrapping="NoWrap" VerticalAlignment="Center"
+                                                                  IsEnabled="{Binding NysNameEnabled}" TextImmediateSourceUpdate="True"
+                                                                  Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <ls:LSButton Grid.Column="2" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                                 Content="{Binding NysForgetLabel}" Command="{Binding NysForgetCommand}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- ===== Always skipped ===== -->
+                                    <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Always skipped"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
+                                               Text="Summons you chose never to be prompted about. Use 'Prompt again' to undo."/>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No always-skipped summons yet."
+                                               Visibility="{Binding NysHasAlwaysSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysAlwaysSkipped}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
+                                                    </StackPanel>
+                                                    <ls:LSButton Grid.Column="1" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                                 Content="{Binding NysUndoLabel}" Command="{Binding NysUndoCommand}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- ===== Skipped this session ===== -->
+                                    <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Skipped this session"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
+                                               Text="Summons you skipped since the game loaded; forgotten on reload."/>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="Nothing skipped this session."
+                                               Visibility="{Binding NysHasSessionSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysSessionSkipped}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
+                                                    </StackPanel>
+                                                    <ls:LSButton Grid.Column="1" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                                 Content="{Binding NysUndoLabel}" Command="{Binding NysUndoCommand}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="Refresh" Command="{Binding NysRefreshCommand}"/>
+                                <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="Save" Command="{Binding NysSaveCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ls:LSNineSliceImage>
+                </Grid>
+
                 <!--===== TRIGGERS & ANIMATIONS =====-->
                 <b:Interaction.Triggers>
                     <b:StoryboardCompletedTrigger Storyboard="{Binding ElementName=CloseAnimation,Path=Storyboard}">

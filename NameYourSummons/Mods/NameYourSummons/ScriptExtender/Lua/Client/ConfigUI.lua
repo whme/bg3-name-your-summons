@@ -3,6 +3,7 @@ local Channels = Ext.Require("Shared/Channels.lua")
 local Layout = Ext.Require("Client/Layout.lua")
 local WindowState = Ext.Require("Client/WindowState.lua")
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
+local MultiMode = Ext.Require("Shared/MultiSummonMode.lua")
 
 local ConfigUI = {}
 
@@ -14,34 +15,13 @@ local promptOnSummon, promptForNamed, allowStorySummons, everySummonCheck, multi
 -- settings key ("NameUndead", ...) -> its checkbox widget.
 local typeChecks = {}
 
--- The MultiSummonMode enum, in the order it appears in the dropdown (a combo's
--- SelectedIndex is 0-based, so index = position - 1).
-local MULTI_MODES = { "skip", "shared", "unique" }
-local MULTI_MODE_LABELS = {
-	"Do not name them",
-	"Share one name",
-	"Name each individually",
-}
-
---- The 0-based combo index for a stored mode value (defaults to "skip").
----@param value any
----@return integer
-local function multiModeIndex(value)
-	for i, mode in ipairs(MULTI_MODES) do
-		if mode == value then
-			return i - 1
-		end
-	end
-	return 0
-end
-
 --- The currently selected mode value, or "skip" before the combo exists.
 ---@return string
 local function selectedMultiMode()
 	if not multiSummonMode then
 		return "skip"
 	end
-	return MULTI_MODES[multiSummonMode.SelectedIndex + 1] or "skip"
+	return MultiMode.ValueAt(multiSummonMode.SelectedIndex)
 end
 
 -- Edits stay local until Save; reopening reloads from the server, which is
@@ -143,12 +123,12 @@ local function loadSettings()
 		local onSummon = s.PromptOnSummon ~= false
 		local forNamed = s.PromptForNamed == true
 		local allowStory = s.AllowStorySummons == true
-		local modeIdx = multiModeIndex(s.MultiSummonMode)
+		local modeIdx = MultiMode.IndexOf(s.MultiSummonMode)
 		baseSettings = {
 			PromptOnSummon = onSummon,
 			PromptForNamed = forNamed,
 			AllowStorySummons = allowStory,
-			MultiSummonMode = MULTI_MODES[modeIdx + 1],
+			MultiSummonMode = MultiMode.ValueAt(modeIdx),
 		}
 		promptOnSummon.Checked = onSummon
 		promptForNamed.Checked = forNamed
@@ -598,7 +578,7 @@ function ConfigUI.Open()
 		multiLabel.Disabled = true
 		multiSummonMode = configWindow:AddCombo("")
 		multiSummonMode.IDContext = "multiSummonMode"
-		multiSummonMode.Options = MULTI_MODE_LABELS
+		multiSummonMode.Options = MultiMode.LABELS
 		multiSummonMode.SelectedIndex = 0
 		multiSummonMode.OnChange = updateSaveButton
 		local multiHint = configWindow:AddText("The names are remembered and reused the next time you summon.")

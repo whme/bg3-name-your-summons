@@ -9,9 +9,12 @@
 
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
-local ConfigUI = Ext.Require("Client/ConfigUI.lua")
 
 local NativeRenameUI = {}
+
+-- Set by BootstrapClient so this module (which owns Examine-panel detection) can
+-- drive the native settings overlay without a circular require.
+local onGearClickHandler -- fun() - called when the gear is clicked
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 local MAX_DEPTH = 60
@@ -201,9 +204,11 @@ local function commitField(field)
 	end
 end
 
---- Open the config window (subscribed on the gear element's tunneling click).
+--- Open the native settings overlay (subscribed on the gear's tunneling click).
 local function onGearClick()
-	ConfigUI.Open()
+	if onGearClickHandler then
+		onGearClickHandler()
+	end
 end
 
 --- Subscribe the gear's click once per panel open. The gear is a plain Grid, so its
@@ -293,6 +298,20 @@ local function onMouseButton(e)
 		editing = true
 		lastSent = Util.Sanitise(nodeText(field))
 	end
+end
+
+--- Find a live Noesis node by x:Name from the composition root (exposed so
+--- NativeConfigUI can resolve its overlay fresh at the moment it binds it).
+---@param name string
+---@return any|nil
+function NativeRenameUI.FindNamed(name)
+	return findNamed(name)
+end
+
+--- Wire the gear-click action (opens the native settings overlay).
+---@param fn fun()
+function NativeRenameUI.SetGearHandler(fn)
+	onGearClickHandler = fn
 end
 
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent
