@@ -470,6 +470,10 @@
                                         <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Also re-ask for summons I have already named"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,6">
+                                        <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPauseOnPrompt, Mode=TwoWay}"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Pause the game (turn-based mode) while I name a summon"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6">
                                         <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysAllowStorySummons, Mode=TwoWay}"/>
                                         <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Allow renaming story-bound summons (e.g. 'Us')"/>
                                     </StackPanel>

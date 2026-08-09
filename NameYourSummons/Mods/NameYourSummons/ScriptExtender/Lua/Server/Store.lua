@@ -19,7 +19,7 @@ local DEFAULT_SETTINGS = {
 	PromptOnSummon = true, -- pop the naming window the first time a summon appears
 	PromptForNamed = false, -- also re-prompt for summons that already have a saved name
 	ApplyToExisting = true, -- re-apply saved names to summons already alive on load
-	PauseOnPrompt = true, -- freeze the world (solo turn-based mode) while the prompt is up
+	PauseOnPrompt = false, -- freeze the world (solo turn-based mode) while the prompt is up
 	AllowStorySummons = false, -- prompt to rename story-bound summons (e.g. "Us"); off = leave them alone
 	MultiSummonMode = "skip", -- skip | shared | unique (see MULTI_SUMMON_MODES)
 }
@@ -33,6 +33,7 @@ end
 local WRITABLE_SETTINGS = {
 	PromptOnSummon = isBoolean,
 	PromptForNamed = isBoolean,
+	PauseOnPrompt = isBoolean,
 	AllowStorySummons = isBoolean,
 	MultiSummonMode = function(value)
 		return MULTI_SUMMON_MODES[value] == true

@@ -295,6 +295,7 @@ local function loadSettings(gen)
 		suppressWrite = true
 		set(v, "NysPromptOnSummon", s.PromptOnSummon ~= false)
 		set(v, "NysPromptForNamed", s.PromptForNamed == true)
+		set(v, "NysPauseOnPrompt", s.PauseOnPrompt == true)
 		set(v, "NysAllowStorySummons", s.AllowStorySummons == true)
 		set(v, "NysNameEverySummon", s[Classifier.MASTER_KEY] == true)
 		set(v, "NysModeSkip", modeVal == "skip")
@@ -404,6 +405,7 @@ local function onSave()
 	local settings = {
 		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
 		PromptForNamed = get(v, "NysPromptForNamed") == true,
+		PauseOnPrompt = get(v, "NysPauseOnPrompt") == true,
 		AllowStorySummons = get(v, "NysAllowStorySummons") == true,
 		MultiSummonMode = selectedMode(v),
 		[Classifier.MASTER_KEY] = get(v, "NysNameEverySummon") == true,
@@ -478,6 +480,7 @@ local function registerTypes()
 			NysTypesExpanded = { Type = "Bool", Notify = true },
 			NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
 			NysPromptForNamed = { Type = "Bool", Notify = true },
+			NysPauseOnPrompt = { Type = "Bool", Notify = true },
 			NysAllowStorySummons = { Type = "Bool", Notify = true },
 			NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
 			NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
