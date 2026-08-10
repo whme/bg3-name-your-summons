@@ -88,7 +88,10 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <!-- ===== Name Your Summons: editable name + settings (summons only; Enter renames) ===== -->
+                                            <!-- Name Your Summons: the summon's name + settings gear (summons only).
+                                                 The name box defaults to read-only/Focusable/IsHitTestVisible all off - the
+                                                 native plain-name look, correct for a forbidden summon; NativeRenameUI flips
+                                                 those input-checked flags on for a renamable one (GH #48). -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
@@ -101,7 +104,7 @@
                                                     </Style>
                                                 </StackPanel.Style>
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                    <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" Focusable="True" SelectTextOnFocus="True"/>
+                                                    <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
                                                     <!-- GH #50: an LSButton with a Command binding (a Grid has no Click/command).
                                                          Its DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
                                                     <ls:LSButton x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center"

@@ -106,6 +106,24 @@ the game.
   warns per miss and cost 238-510 ms to open Examine when used to scan, so it is
   reserved for one known object (the HUD command surface, a matched entity handle). A
   `!nys_uidebug` client console command toggles verbose tracing of the whole flow.
+  **Non-interactive by default; editing is opt-in (GH #48).** The name field
+  (`NYS_NameInput`) defaults to `IsReadOnly`, `Focusable`, and `IsHitTestVisible` all off
+  in the XAML, so it renders as the native plain name - no caret, no hover border, not
+  clickable. That default is the correct look for a **forbidden** summon (a story-bound one
+  - `Util.IsStorySummon` - with the opt-in off) with NO Lua action needed, which is what
+  makes it work despite a manually-opened Examine panel not repainting a Lua-driven change
+  until the next real click. `enableEditing` flips those three flags on for an on-summon
+  prompt or a click on a renamable manually-examined summon; they are checked at INPUT time,
+  not painted, so this needs no repaint. A forbidden summon is never enabled:
+  `panelForbidden` is computed in `wirePanel` by `isForbiddenSummon`, which reads the root
+  template off the client entity (`Ext.Entity.Get(uuid).OriginalTemplate.OriginalTemplate`)
+  and tests `Util.IsStorySummon` against `cachedAllowStory` - a copy of `AllowStorySummons`
+  seeded on `SessionLoaded` (once persisted ModVars have loaded) and kept fresh by the
+  server's `Channels.SettingsChanged` broadcast (the live value cannot be fetched
+  synchronously; fails open to renamable if the template is not readable client-side). That
+  broadcast also re-evaluates the on-screen panel, so toggling the setting takes effect on
+  the next examine - and live, a now-forbidden summon reverts to plain text via
+  `disableEditing` - without a re-summon. The gear is always shown.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
   `Examine.xaml` override - reproducing the ImGui `ConfigUI` (prompt options,

@@ -226,7 +226,13 @@ local function resolveGroup(key, batch, ownerUuid, ownerRaw, rootTemplate)
 	end
 	local settings = Store.Settings()
 	local mode = settings.MultiSummonMode
-	local reAsk = settings.PromptOnSummon and settings.PromptForNamed and ownerIsPlayer(ownerUuid)
+	-- A story summon whose opt-in is off is never re-prompted, matching HandleSummon's gate
+	-- (GH #48); its saved name still reapplies below.
+	local storyForbidden = Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons
+	local reAsk = settings.PromptOnSummon
+		and settings.PromptForNamed
+		and ownerIsPlayer(ownerUuid)
+		and not storyForbidden
 
 	local live = {}
 	for _, uuid in ipairs(batch) do
@@ -467,14 +473,17 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 		return
 	end
 
-	-- Story summons (e.g. "Us") are not prompted unless opted in; a saved name still reapplies above.
-	if Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons then
+	-- Story summons are gated by their own opt-in, and an opted-in one then bypasses the
+	-- per-creature-type filter below: its type (e.g. Aberration for "Us") is rarely one the
+	-- player enabled, so requiring both would make the opt-in look broken (GH #48).
+	local isStory = Util.IsStorySummon(rootTemplate)
+	if isStory and not settings.AllowStorySummons then
 		return
 	end
 
-	-- Only prompt for summon types the player has enabled (GH #14); a saved name
-	-- still reapplies above regardless of type.
-	if not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
+	-- Only prompt for summon types the player has enabled (GH #14); opted-in story summons
+	-- bypass this (see above).
+	if not isStory and not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
 		return
 	end
 
@@ -861,6 +870,11 @@ function Watcher.RegisterNet()
 		for key, value in pairs(data) do
 			Store.SetSetting(key, value)
 		end
+		-- Push the new settings to clients so a locally cached copy (the story-summon
+		-- rename gate in NativeRenameUI) updates at once, not on the next re-summon.
+		pcall(function()
+			Channels.SettingsChanged:Broadcast(Store.Settings())
+		end)
 	end)
 end
 

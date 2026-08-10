@@ -47,6 +47,10 @@ Channels.GetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSet
 -- Client -> Server: "store these settings"
 Channels.SetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SetSettings")
 
+-- Server -> All Clients: the settings just changed, so a client can refresh anything it
+-- caches locally (the story-summon rename gate in NativeRenameUI). Payload: the settings.
+Channels.SettingsChanged = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SettingsChanged")
+
 -- Server -> All Clients: the text behind a localisation handle, for remote peers
 -- whose separate string table has never seen a handle the host minted.
 Channels.ApplyName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ApplyName")
