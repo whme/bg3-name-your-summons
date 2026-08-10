@@ -93,9 +93,8 @@
                                                  native plain-name look, correct for a forbidden summon; NativeRenameUI flips
                                                  those input-checked flags on for a renamable one (GH #48).
                                                  OpenVirtualKeyboardOnFocus=False on the text fields: this page loads only in
-                                                 keyboard mode, and with Steam Input active (Big Picture) the default (True)
-                                                 pops Steam's on-screen keyboard on focus even though a physical keyboard is
-                                                 present. Off here keeps the overlay keyboard gamepad-only (GH #87). -->
+                                                 keyboard mode, but with Steam Input active (Big Picture) the default (True)
+                                                 pops Steam's on-screen keyboard on focus - off here keeps it gamepad-only (GH #87). -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
