@@ -230,8 +230,7 @@ end
 -- skips one with the Skip button (abort + swap), and closes the panel once at the end.
 -- Closing before the queue drains skips every remaining summon (abort each), so the
 -- server's pending count still clears and the pause lifts. Naming answers over SubmitName
--- (the channel the ImGui window used, so the server's pause/pending bookkeeping is
--- untouched).
+-- (not RenameSummon) so the server clears its pending count and lifts the pause.
 local examineQueue = {} -- AskName requests not yet shown, FIFO
 local current = nil -- the request whose summon is being examined now, or nil
 local answered = false -- the current summon got a name (SubmitName sent; later edits rename)
@@ -722,7 +721,7 @@ local function onMouseButton(e)
 end
 
 ---------------------------------------------------------------------------
--- On-summon naming: open the Examine panel instead of the ImGui prompt (GH #19)
+-- On-summon naming: open the Examine panel on the summon (GH #19)
 ---------------------------------------------------------------------------
 --
 -- Opening Examine on a specific creature drives native UI that has no SE/Osiris
@@ -775,9 +774,9 @@ function entityHandleFor(uuid)
 	return handle
 end
 
---- Answer a session over SubmitName - the channel the old window used - so the
---- server saves the name, or (empty name + abort) re-asks next summon, AND clears
---- its pending count, lifting the world-pause. Returns pcall success.
+--- Answer a session over SubmitName so the server saves the name, or (empty name
+--- + abort) re-asks next summon, AND clears its pending count, lifting the
+--- world-pause. Returns pcall success.
 ---@param req table
 ---@param name string
 ---@param abort boolean|nil

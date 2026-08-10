@@ -57,8 +57,7 @@ Classifier.CATEGORIES = {
 	{ key = "Untagged", label = "Other / untagged summons" },
 }
 
--- The master toggle: when on, every summon is eligible regardless of type
--- (reproduces the pre-#14 behaviour).
+-- The master toggle: when on, every summon is eligible regardless of type.
 Classifier.MASTER_KEY = "NameEverySummon"
 
 --- The settings key for a category (e.g. "Familiar" -> "NameFamiliar").

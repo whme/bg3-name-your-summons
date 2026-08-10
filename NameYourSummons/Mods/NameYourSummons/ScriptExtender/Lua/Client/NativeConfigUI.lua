@@ -32,7 +32,6 @@
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
-local MultiMode = Ext.Require("Shared/MultiSummonMode.lua")
 
 local NativeConfigUI = {}
 
@@ -139,7 +138,7 @@ local function liveVm()
 end
 
 ---------------------------------------------------------------------------
--- Row/label helpers (same shaping as ConfigUI so the server payloads match)
+-- Row/label helpers (shaped to match the server's net-channel payloads)
 ---------------------------------------------------------------------------
 
 local function ownerLabel(entry)
@@ -263,7 +262,7 @@ local function loadSettings(gen)
 			return
 		end
 		local s = response or {}
-		local modeVal = MultiMode.ValueAt(MultiMode.IndexOf(s.MultiSummonMode))
+		local modeVal = s.MultiSummonMode or "skip"
 
 		suppressWrite = true
 		set(v, "NysPromptOnSummon", s.PromptOnSummon ~= false)

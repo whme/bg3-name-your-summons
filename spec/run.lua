@@ -18,6 +18,5 @@ require("util_spec")
 require("store_spec")
 require("name_writer_spec")
 require("classifier_spec")
-require("multi_summon_mode_spec")
 
 os.exit(lu.LuaUnit.run())
