@@ -40,10 +40,7 @@ the game.
 - **Persistence**: names live in ModVars (`Ext.Vars.RegisterModVariable`),
   written into the savegame. `PersistentVars` is deprecated and not used. A
   saved value is EITHER one string (the shared name) OR an array of strings (a
-  "unique set" - one distinct name per creature of a multi-summon; see below). A
-  parallel `SkippedSummons` ModVar is the set of keys the player chose to always
-  skip; it is mutually exclusive with a saved name (naming clears the skip and
-  vice versa).
+  "unique set" - one distinct name per creature of a multi-summon; see below).
 - **Stable key**: a summon's UUID changes every conjure, so the key is
   `"<owner uuid>|<root template>"` (`Util.MakeKey`). Runtime loca entries do
   not survive a restart, so every saved name's handle is re-registered on
@@ -128,8 +125,7 @@ the game.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
   `Examine.xaml` override - covering prompt options, the per-creature-type filter,
-  multi-summon mode, and the saved-name / always-skipped / session-skipped
-  managers. It is real MVVM: a viewmodel built
+  multi-summon mode, and the saved-name manager. It is real MVVM: a viewmodel built
   via `Ext.UI.RegisterType` / `Ext.UI.Instantiate` (`Bool` props for checkboxes,
   a `Collection` per `ItemsControl`, `Command` props for buttons) is set as the
   panel's `DataContext`. `NativeRenameUI` owns Examine-panel detection and feeds
@@ -163,9 +159,8 @@ the game.
   - **Prefix every viewmodel field `Nys`** so it cannot alias a built-in (an
     unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
     literal "Name").
-  Forgets and un-skips are staged (toggle to Undo) and flushed on Save; edited
-  names are read off the live rows at Save. It is the sole config UI; no server
-  changes.
+  Forgets are staged (toggle to Undo) and flushed on Save; edited names are read
+  off the live rows at Save. It is the sole config UI; no server changes.
 - **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`, GH #19):
   the on-summon naming UI is the native Examine panel. Detection, the pending
   count, the world-pause, and per-creature `unique` prompting are all server-side;
@@ -381,10 +376,10 @@ Diagnostic console commands (server state unless noted):
 
 | Command | What it does |
 |---|---|
-| `!nys_list` | list all saved names, always-skipped and session-skipped summons |
+| `!nys_list` | list all saved names |
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
-| `!nys_clear` | wipe all saved names and always-skip choices |
+| `!nys_clear` | wipe all saved names |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to

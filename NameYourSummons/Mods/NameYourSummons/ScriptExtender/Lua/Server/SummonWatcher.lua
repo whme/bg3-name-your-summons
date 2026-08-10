@@ -11,12 +11,6 @@ local Watcher = {}
 -- prompt is not nagged every single time they re-cast the spell.
 local askedThisSession = {}
 
--- Keys the player actively skipped this session (dismissed the prompt without a
--- name), as opposed to always-skipped keys, which persist in the savegame. This
--- is transient and resets on reload; the config lists it so the player can
--- change their mind. A saved name or an always-skip clears the entry.
-local sessionSkipped = {}
-
 -- Keys we are currently waiting on a name for: key -> count of open prompts. A
 -- unique multi-summon has one open prompt per creature, so this is a count, not
 -- a single uuid, and the world stays paused until every one is answered.
@@ -181,8 +175,8 @@ end
 
 --- Ask the owner's client to name a summon. Deferred so the summon has finished
 --- spawning and the default name we show is the real one. Aborts if the prompt
---- was retracted or the group always-skipped during the delay (pending cleared);
---- pausing only here means a retracted skip-mode group never freezes the world.
+--- was retracted during the delay (pending cleared); pausing only here means a
+--- retracted skip-mode group never freezes the world.
 ---@param key string
 ---@param summonGuid string
 ---@param rootTemplate string
@@ -405,17 +399,6 @@ local function describeKey(key)
 	}
 end
 
---- Order display entries by summoner, then by summon type.
----@param a table
----@param b table
----@return boolean
-local function byOwnerThenTemplate(a, b)
-	if a.OwnerName ~= b.OwnerName then
-		return a.OwnerName:lower() < b.OwnerName:lower()
-	end
-	return a.TemplateName:lower() < b.TemplateName:lower()
-end
-
 ---------------------------------------------------------------------------
 -- Core
 ---------------------------------------------------------------------------
@@ -466,10 +449,6 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	rememberType(key, summonGuid)
 
 	if not settings.PromptOnSummon then
-		return
-	end
-	-- The player asked never to be prompted about this summon.
-	if Store.IsSkipped(key) then
 		return
 	end
 
@@ -594,38 +573,15 @@ function Watcher.RegisterNet()
 		local key = data.Key
 		local scope = data.Scope
 
-		-- "Always skip": persist the choice so we never prompt for this key again,
-		-- and cancel the rest of a unique group so a later slot cannot revive it.
-		if data.AlwaysSkip then
-			Store.Skip(key)
-			sessionSkipped[key] = nil
-			pending[key] = nil
-			unpauseIfIdle()
-			Util.Log("Always-skipping key " .. key)
-			return
-		end
-
-		-- A straggling submit for a key that was always-skipped (e.g. another
-		-- creature of this group) is ignored, name and all.
-		if Store.IsSkipped(key) then
-			resolvePending(key)
-			unpauseIfIdle()
-			return
-		end
-
 		local name = Util.Sanitise(data.Name)
 		if name == "" then
 			if data.Abort then
-				-- Aborted via the X: clear the "already asked" marks so a re-summon
-				-- prompts again rather than recording a skip.
+				-- Aborted via the X/Skip: clear the "already asked" marks so a
+				-- re-summon prompts again.
 				askedThisSession[key] = nil
 				if data.SummonUuid then
 					askedUnique[data.SummonUuid] = nil
 				end
-			elseif scope ~= "unique" then
-				-- Dismissed via Skip: a session-only skip the config can undo. One
-				-- creature of a unique group is just left unnamed; siblings still ask.
-				sessionSkipped[key] = true
 			end
 			resolvePending(key)
 			unpauseIfIdle()
@@ -642,7 +598,6 @@ function Watcher.RegisterNet()
 		else
 			Store.Set(key, name)
 		end
-		sessionSkipped[key] = nil
 
 		if scope == "shared" then
 			-- Name every live sibling now, not just the one that was prompted.
@@ -682,47 +637,6 @@ function Watcher.RegisterNet()
 			return a.Name:lower() < b.Name:lower()
 		end)
 		return { Entries = out }
-	end)
-
-	Channels.ListSkipped:SetRequestHandler(function(_data, _user)
-		local out = {}
-		for key in pairs(Store.AllSkipped()) do
-			out[#out + 1] = describeKey(key)
-		end
-		table.sort(out, byOwnerThenTemplate)
-		return { Entries = out }
-	end)
-
-	Channels.Unskip:SetHandler(function(data, _user)
-		if type(data) ~= "table" or type(data.Key) ~= "string" then
-			return
-		end
-		Store.Unskip(data.Key)
-		-- Let the prompt reappear for this summon this session.
-		askedThisSession[data.Key] = nil
-		Util.Log("Cleared always-skip for key " .. data.Key)
-	end)
-
-	Channels.ListSessionSkipped:SetRequestHandler(function(_data, _user)
-		local out = {}
-		for key in pairs(sessionSkipped) do
-			-- A key that has since been named or always-skipped no longer counts.
-			if not Store.Get(key) and not Store.IsSkipped(key) then
-				out[#out + 1] = describeKey(key)
-			end
-		end
-		table.sort(out, byOwnerThenTemplate)
-		return { Entries = out }
-	end)
-
-	Channels.UnskipSession:SetHandler(function(data, _user)
-		if type(data) ~= "table" or type(data.Key) ~= "string" then
-			return
-		end
-		sessionSkipped[data.Key] = nil
-		-- Clear the "already asked" mark so the next summon re-prompts this session.
-		askedThisSession[data.Key] = nil
-		Util.Log("Cleared session-skip for key " .. data.Key)
 	end)
 
 	Channels.ForgetName:SetHandler(function(data, _user)
@@ -802,7 +716,6 @@ function Watcher.RegisterNet()
 		-- summon that was alive at load and so never passed through HandleSummon (GH #47).
 		rememberType(key, uuid)
 		local name = Util.Sanitise(data.Name)
-		sessionSkipped[key] = nil
 
 		-- Follow the CURRENT MultiSummonMode, like resolveGroup: a leftover unique
 		-- set must not force unique behaviour after the player switches to shared or
@@ -822,8 +735,7 @@ function Watcher.RegisterNet()
 
 			-- Seed a dense set aligned to the live siblings, then overwrite the target
 			-- slot. SetSlot/AppendUnique cannot: they no-op when the saved set is
-			-- shorter than the target slot (absent on the first Examine rename) and
-			-- silently honour a stale always-skip.
+			-- shorter than the target slot (absent on the first Examine rename).
 			local saved = Store.Get(key)
 			local names = {}
 			if type(saved) == "table" then
@@ -926,20 +838,6 @@ function Watcher.RegisterConsole()
 			end
 		end
 		Util.Log(("%d saved name(s)."):format(n))
-
-		local skipped = 0
-		for key in pairs(Store.AllSkipped()) do
-			Util.Log(("  %-70s -> (always skipped)"):format(key))
-			skipped = skipped + 1
-		end
-		Util.Log(("%d always-skipped summon(s)."):format(skipped))
-
-		local session = 0
-		for key in pairs(sessionSkipped) do
-			Util.Log(("  %-70s -> (skipped this session)"):format(key))
-			session = session + 1
-		end
-		Util.Log(("%d summon(s) skipped this session."):format(session))
 	end)
 
 	-- Run the save/load reapply pass on demand, without reloading.
@@ -951,13 +849,9 @@ function Watcher.RegisterConsole()
 		for key in pairs(Store.All()) do
 			Store.Forget(key)
 		end
-		for key in pairs(Store.AllSkipped()) do
-			Store.Unskip(key)
-		end
 		askedThisSession = {}
-		sessionSkipped = {}
 		askedUnique = {}
-		Util.Log("Cleared all saved summon names and always-skip choices.")
+		Util.Log("Cleared all saved summon names.")
 	end)
 end
 

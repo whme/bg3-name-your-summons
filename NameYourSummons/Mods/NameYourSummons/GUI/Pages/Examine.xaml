@@ -658,60 +658,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-
-                                    <!-- ===== Always skipped ===== -->
-                                    <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
-                                        <TextBlock Text="Always skipped"/>
-                                    </ContentControl>
-                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
-                                               Text="Summons you chose never to be prompted about. Use 'Prompt again' to undo."/>
-                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No always-skipped summons yet."
-                                               Visibility="{Binding NysHasAlwaysSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
-                                    <ItemsControl ItemsSource="{Binding NysAlwaysSkipped}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
-                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
-                                                    </StackPanel>
-                                                    <ls:LSButton Grid.Column="1" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
-                                                                 Content="{Binding NysUndoLabel}" Command="{Binding NysUndoCommand}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-
-                                    <!-- ===== Skipped this session ===== -->
-                                    <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
-                                        <TextBlock Text="Skipped this session"/>
-                                    </ContentControl>
-                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
-                                               Text="Summons you skipped since the game loaded; forgotten on reload."/>
-                                    <TextBlock Style="{StaticResource DetailedListText}" Text="Nothing skipped this session."
-                                               Visibility="{Binding NysHasSessionSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
-                                    <ItemsControl ItemsSource="{Binding NysSessionSkipped}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
-                                                        <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
-                                                    </StackPanel>
-                                                    <ls:LSButton Grid.Column="1" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
-                                                                 Content="{Binding NysUndoLabel}" Command="{Binding NysUndoCommand}"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
                                 </StackPanel>
                             </ScrollViewer>
 
