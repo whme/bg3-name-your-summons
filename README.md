@@ -1,6 +1,6 @@
 <h1 align="center">Name Your Summons</h1>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/mod-thumbnail.png" width="1000" alt="Name Your Summons"></img></a></p>
 <p align="center"><i>a BG3 mod for naming your summons</i></p>
-<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-rename.png" width="1000" alt="Examine screen"></img></a></p>
 
 Names your summoned creatures, remembers the names, and reapplies them
 automatically the next time you summon the same creature. Optionally opens the

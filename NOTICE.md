@@ -29,10 +29,24 @@ the MIT License:
   `pack://application:,,,/Core;component/Assets/...` asset references) is Larian's
   original work. Only the `NYS_*` elements added by this mod are original; the
   surrounding markup is reproduced only to override the Examine page.
-- `assets/nys-rename.png`, `assets/nys-ingame.png`, `assets/nys-settings.png` -
-  screenshots depicting Baldur's Gate 3, included for documentation.
+- `assets/nys-rename.png`, `assets/nys-ingame.png`, `assets/nys-settings.png`,
+  and `assets/mod-thumbnail.png` - screenshots depicting Baldur's Gate 3,
+  included for documentation and preview art. `assets/mod-thumbnail.png` is
+  composited from `assets/nys-rename.png`.
 
 These remain the property of their respective owners.
+
+## The thumbnail composer tool
+
+`tools/thumbnail-composer.html` is an offline helper used to compose the preview
+image. Its own HTML, CSS, and JavaScript are original work under the [MIT
+License](LICENSE). It embeds, as base64 data, third-party content used only to
+render the preview - none of it is part of the shipped mod:
+
+- A Baldur's Gate 3 screenshot (see above) - the property of Larian Studios.
+- Cinzel Decorative (c) The Cinzel Project Authors - SIL Open Font License 1.1.
+- Material Symbols (c) Google - Apache License 2.0. Only a 3-glyph subset
+  (keyboard, mouse, gamepad) is embedded.
 
 ## Trademarks and attribution
 
