@@ -182,8 +182,9 @@ function Store.ForgetSlot(key, slot)
 	v[VAR_NAMES] = t
 end
 
--- The type label (e.g. "Fiend, Familiar") last seen for a key, so the saved-name
--- list can show a type even when no instance is alive to read tags from.
+-- The language-neutral type token (Classifier.DescribeKey: { Creature, Familiar })
+-- last seen for a key, so the saved-name list can show a type even when no instance
+-- is alive to read tags from. The client localises it in the viewer's language.
 
 ---@return table<string,string>
 function Store.AllTypes()

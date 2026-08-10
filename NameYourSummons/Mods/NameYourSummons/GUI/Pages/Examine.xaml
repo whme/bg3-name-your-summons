@@ -131,11 +131,11 @@
                                                      and on the last of a group. -->
                                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
-                                                             Content="Confirm" Command="{Binding NysConfirmCommand}"
+                                                             Content="{Binding Source='h9e870cd5g805bg467dgb6b6gb12d4c9d8028', Converter={StaticResource TranslatedStringConverter}}" Command="{Binding NysConfirmCommand}"
                                                              Visibility="{Binding NysShowConfirm, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}"/>
                                                 <ls:LSButton x:Name="NYS_SkipButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
-                                                             Content="Skip" Command="{Binding NysSkipCommand}"
+                                                             Content="{Binding Source='h2e1c64c5g940ag4327g9c16g82dfb467d903', Converter={StaticResource TranslatedStringConverter}}" Command="{Binding NysSkipCommand}"
                                                              Visibility="{Binding NysShowSkip, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}"/>
                                             </StackPanel>
                                             <TextBlock Text="{Binding Title}" Style="{StaticResource DetailedListText}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Visibility="{Binding Title, Converter={StaticResource NullToCollapsedConverter}, ConverterParameter='EmptyString'}"/>
@@ -506,7 +506,7 @@
 
                             <Grid Grid.Row="0">
                                 <ContentControl Style="{StaticResource BaseTitleStyle}" HorizontalAlignment="Center">
-                                    <TextBlock Text="Name Your Summons"/>
+                                    <TextBlock Text="{Binding Source='hf22514a5g1077g4b9eg8b09g329d3d6cc37f', Converter={StaticResource TranslatedStringConverter}}"/>
                                 </ContentControl>
                                 <ls:LSButton Style="{DynamicResource SmallCloseButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
                                              SoundID="UI_Shared_Cancel" Command="{Binding NysCloseCommand}"/>
@@ -516,34 +516,34 @@
                                 <StackPanel>
                                     <!-- ===== Prompt ===== -->
                                     <ContentControl Style="{StaticResource BaseTitleStyle}">
-                                        <TextBlock Text="Prompt"/>
+                                        <TextBlock Text="{Binding Source='h0397207dg538dg4a9fga9b9ga9532038ca92', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </ContentControl>
                                     <StackPanel Orientation="Horizontal" Margin="0,6">
                                         <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPromptOnSummon, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Ask me to name new summons"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding Source='h0ca636b6gfbc1g43e8gaa90ga7d4c161319c', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,6" IsEnabled="{Binding NysPromptForNamedEnabled}">
                                         <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPromptForNamed, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Also re-ask for summons I have already named"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding Source='h97b2a47agdec6g413fg9a9dgfdf7232a441c', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,6">
                                         <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysPauseOnPrompt, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Pause the game (turn-based mode) while I name a summon"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding Source='hd5911703g4eefg4918ga4b4g9e5c6f7910cf', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,6">
                                         <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysAllowStorySummons, Mode=TwoWay}"/>
-                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Allow renaming story-bound summons (e.g. 'Us')"/>
+                                        <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding Source='h093552b9gd8d8g48e6gb4afg4f958d58c0e0', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </StackPanel>
 
                                     <!-- ===== Summon types to name (collapsible) ===== -->
                                     <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" HorizontalAlignment="Left" Margin="0,20,0,0"
-                                                 Content="Summon types to name..." Command="{Binding NysToggleTypesCommand}"/>
+                                                 Content="{Binding Source='heee8452fg89d7g47dfgb6dfg67e334190cdf', Converter={StaticResource TranslatedStringConverter}}" Command="{Binding NysToggleTypesCommand}"/>
                                     <StackPanel Visibility="{Binding NysTypesExpanded, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                                         <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                                   Text="Which summons to prompt for, by the creature type read from its tags. Familiars count as 'Familiars' whatever their type, so the creature types below apply to non-familiar summons only."/>
+                                                   Text="{Binding Source='ha1d27f83g8cafg4f0ag9ac0g0207d25296dd', Converter={StaticResource TranslatedStringConverter}}"/>
                                         <StackPanel Orientation="Horizontal" Margin="0,6" IsEnabled="{Binding NysNameEverySummonEnabled}">
                                             <ls:LSToggleButton Style="{DynamicResource TickBox}" VerticalAlignment="Center" IsChecked="{Binding NysNameEverySummon, Mode=TwoWay}"/>
-                                            <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="Every summon (ignore the type filter below)"/>
+                                            <TextBlock Style="{StaticResource DetailedListText}" VerticalAlignment="Center" Margin="12,0,0,0" Text="{Binding Source='h1001de43g7420g49dcgb75eg897f553d3061', Converter={StaticResource TranslatedStringConverter}}"/>
                                         </StackPanel>
                                         <ItemsControl ItemsSource="{Binding NysTypeToggles}" Margin="0,4,0,0">
                                             <ItemsControl.ItemTemplate>
@@ -559,7 +559,7 @@
 
                                     <!-- ===== Multi-summon mode (vanilla options-menu dropdown) ===== -->
                                     <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,16,0,0"
-                                               Text="When one spell summons several creatures at once:"/>
+                                               Text="{Binding Source='h5637f68dg2990g4632gbe15gc9c95288184e', Converter={StaticResource TranslatedStringConverter}}"/>
                                     <Grid HorizontalAlignment="Left" Width="520" Height="80" Margin="0,8,0,0">
                                         <ls:LSToggleButton x:Name="NYS_ModeToggle" SoundID="UI_HUD_Options_ComboBox"
                                                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -599,13 +599,13 @@
                                                    Foreground="{StaticResource LS_accent100TxtColor}" FontSize="{StaticResource ScaledDefaultFontSize}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Do not name them"/>
+                                                    <Setter Property="Text" Value="{Binding Source='ha7a476a3g0aeeg4ec6g9171gee80d2f7934f', Converter={StaticResource TranslatedStringConverter}}"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding NysModeValue}" Value="shared">
-                                                            <Setter Property="Text" Value="Share one name"/>
+                                                            <Setter Property="Text" Value="{Binding Source='h1b66496bgf669g4495g92d4gac7984e3018f', Converter={StaticResource TranslatedStringConverter}}"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding NysModeValue}" Value="unique">
-                                                            <Setter Property="Text" Value="Name each individually"/>
+                                                            <Setter Property="Text" Value="{Binding Source='hde012cb1gaf00g4898gae58gb1ac51fefe21', Converter={StaticResource TranslatedStringConverter}}"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -619,15 +619,15 @@
                                                 <StackPanel Orientation="Vertical">
                                                     <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
                                                             Command="{Binding NysSelectSkipCommand}">
-                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Do not name them"/>
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="{Binding Source='ha7a476a3g0aeeg4ec6g9171gee80d2f7934f', Converter={StaticResource TranslatedStringConverter}}"/>
                                                     </Button>
                                                     <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
                                                             Command="{Binding NysSelectSharedCommand}">
-                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Share one name"/>
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="{Binding Source='h1b66496bgf669g4495g92d4gac7984e3018f', Converter={StaticResource TranslatedStringConverter}}"/>
                                                     </Button>
                                                     <Button Template="{StaticResource NYS_FlyoutItemTemplate}" HorizontalContentAlignment="Stretch"
                                                             Command="{Binding NysSelectUniqueCommand}">
-                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="Name each individually"/>
+                                                        <TextBlock Style="{StaticResource NYS_FlyoutItemText}" Text="{Binding Source='hde012cb1gaf00g4898gae58gb1ac51fefe21', Converter={StaticResource TranslatedStringConverter}}"/>
                                                     </Button>
                                                 </StackPanel>
                                             </ls:LSNineSliceImage>
@@ -636,9 +636,9 @@
 
                                     <!-- ===== Saved names ===== -->
                                     <ContentControl Style="{StaticResource BaseTitleStyle}" Margin="0,20,0,0">
-                                        <TextBlock Text="Saved names"/>
+                                        <TextBlock Text="{Binding Source='h6700b693g1816g4bd5gb6dcg7edebe82a937', Converter={StaticResource TranslatedStringConverter}}"/>
                                     </ContentControl>
-                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No saved names yet."
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding Source='hf5a8ed82g5228g4af8g9678g4fe7a22e38a2', Converter={StaticResource TranslatedStringConverter}}"
                                                Visibility="{Binding NysHasSavedNames, Converter={StaticResource BoolToCollapsedConverter}}"/>
                                     <ItemsControl ItemsSource="{Binding NysSavedNames}">
                                         <ItemsControl.ItemTemplate>
@@ -667,7 +667,7 @@
                             </ScrollViewer>
 
                             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
-                                <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="Refresh" Command="{Binding NysRefreshCommand}"/>
+                                <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="{Binding Source='hcdcbe581g0a56g4bf8g89fcgbea014f6d95a', Converter={StaticResource TranslatedStringConverter}}" Command="{Binding NysRefreshCommand}"/>
                             </StackPanel>
                         </Grid>
                     </ls:LSNineSliceImage>

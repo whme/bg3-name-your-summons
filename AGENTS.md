@@ -203,6 +203,24 @@ the game.
   elements (a shared re-layout) which silently kills our `Subscribe`d handlers - so already-open
   panels are re-wired after any panel opens (`rewireStale`, EXCLUDING the just-opened one, so a
   single panel / single-player is never disturbed).
+- **Localization** (`Shared/LocaKeys.lua` + `Localization/<Language>/NameYourSummons.loca.xml`):
+  every user-facing UI string (NOT console commands) is a fixed loca handle, resolved
+  by the GAME to the active language - Script Extender exposes no language getter, so the
+  game must choose. `LocaKeys.Strings` maps a semantic key to `{ handle, en }`; the same
+  handles are the `contentuid`s in the per-language `.loca.xml` tables AND appear inline in
+  the XAML. XAML resolves a handle via `{Binding Source='<handle>', Converter={StaticResource
+  TranslatedStringConverter}}`; Lua reads it with `LocaKeys.L(key)` (`Ext.Loca.GetTranslatedString`,
+  falling back to the English `en`). The `.loca.xml` sources live at the pak ROOT (sibling of
+  `Mods/`); `make.ps1 build` compiles each to a binary `.loca` in the temp stage via
+  `divine --action convert-loca` and drops the `.xml` (never committed - `*.loca` is gitignored).
+  Handles are UUID-style (`h` + a UUID with `-` as `g`), disjoint from the FNV summon-NAME
+  handles (a different resolver). To add or change a string, edit all three in lockstep -
+  `LocaKeys.Strings`, every `.loca.xml`, and the inline XAML handle; a spec asserts the Lua
+  table's uniqueness, English fallbacks, and parity with `SummonClassifier.CATEGORIES`.
+  User-facing text is composed CLIENT-side so the viewing player's language applies (the server
+  resolves in the host's language): the saved-name row's type label comes from a language-neutral
+  token (`SummonClassifier.DescribeKey` -> `{ Creature, Familiar }`, stored/sent, localized in
+  `NativeConfigUI`), and the template-name "Summon" fallback is applied client-side too.
 - **Closing Examine from Lua** (`closeExaminePanel`): the panel's close runs the
   `CloseWidget` state event (action `<ls:RemoveState/>`) through the widget's own
   `CustomEvent` command. Its parameter must be a BOXED Noesis string, which SE cannot mint,
@@ -325,6 +343,7 @@ NameYourSummons/                     <- pak this folder
           Channels.lua               net channels, created in both states
           NameWriter.lua             the two writes that do the renaming
           SummonClassifier.lua       pure tag-name -> creature-type category + per-type setting keys
+          LocaKeys.lua               UI localisation handles: semantic key -> { handle, en } + L(key)
           Util.lua                   uuid / sanitising / key / loca-handle helpers
         Server/
           Store.lua                  ModVar persistence
@@ -340,6 +359,8 @@ NameYourSummons/                     <- pak this folder
       Pages/Examine_c.xaml           controller Examine override: the same controls injected into the game's controller Examine layout, controller-navigable via ls:MoveFocus.Focusable
       StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
       StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml
+  Localization/<Language>/           UI string tables (pak root, sibling of Mods/); one folder per language
+    NameYourSummons.loca.xml         .loca.xml source (committed); make.ps1 build compiles it to binary .loca
 ```
 
 ## Reference docs
@@ -385,7 +406,10 @@ mod's semantic version (`-Clean` wipes `build/` first). The Modder's Multitool
 *Create Package* does the same thing by hand. Trap: divine
 excludes any file whose ABSOLUTE path contains a dot-segment (e.g. a `.paseo`
 worktree), silently emitting an empty pak - `make.ps1 build` stages the mod into
-a dot-free temp dir to dodge this. For iteration the folder is symlinked into the
+a dot-free temp dir to dodge this. In that stage it also compiles every
+`Localization/**/*.loca.xml` into the binary `.loca` the game loads (via
+`divine --action convert-loca`) and drops the `.xml`, so only compiled tables ship.
+For iteration the folder is symlinked into the
 game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
 
 Releasing: the mod version is a packed `Version64` int64 in `meta.lsx` (the

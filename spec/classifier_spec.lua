@@ -69,22 +69,22 @@ function TestClassifierMetadata:testEveryCategoryHasADefault()
 	end
 end
 
-TestClassifierDescribe = {}
+TestClassifierDescribeKey = {}
 
-function TestClassifierDescribe:testCreatureTypeAndFamiliar()
-	-- A Find Familiar imp is FIEND+FIND_FAMILIAR; both are shown.
-	lu.assertEquals(Classifier.Describe({ "FIEND", "FIND_FAMILIAR" }), "Fiend, Familiar")
+function TestClassifierDescribeKey:testCreatureTypeAndFamiliar()
+	-- A Find Familiar imp is FIEND+FIND_FAMILIAR; both are reported.
+	lu.assertEquals(Classifier.DescribeKey({ "FIEND", "FIND_FAMILIAR" }), { Creature = "Fiend", Familiar = true })
 end
 
-function TestClassifierDescribe:testFamiliarWithoutCreatureType()
-	lu.assertEquals(Classifier.Describe({ "FIND_FAMILIAR" }), "Familiar")
+function TestClassifierDescribeKey:testFamiliarWithoutCreatureType()
+	lu.assertEquals(Classifier.DescribeKey({ "FIND_FAMILIAR" }), { Creature = nil, Familiar = true })
 end
 
-function TestClassifierDescribe:testCreatureTypeOnly()
-	lu.assertEquals(Classifier.Describe({ "BEAST" }), "Beast")
+function TestClassifierDescribeKey:testCreatureTypeOnly()
+	lu.assertEquals(Classifier.DescribeKey({ "BEAST" }), { Creature = "Beast", Familiar = false })
 end
 
-function TestClassifierDescribe:testOtherWhenUntagged()
-	lu.assertEquals(Classifier.Describe({ "SUMMON" }), "Other")
-	lu.assertEquals(Classifier.Describe({}), "Other")
+function TestClassifierDescribeKey:testOtherWhenUntagged()
+	lu.assertEquals(Classifier.DescribeKey({ "SUMMON" }), { Creature = nil, Familiar = false })
+	lu.assertEquals(Classifier.DescribeKey({}), { Creature = nil, Familiar = false })
 end
