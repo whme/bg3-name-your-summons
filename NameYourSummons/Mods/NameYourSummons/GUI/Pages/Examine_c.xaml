@@ -692,15 +692,10 @@
                                                Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
                                     </ls:LSButton>
                                 </StackPanel>
-                                <!-- GH #80 / #51: Confirm (first row) commits the current name and advances the
-                                     multi-summon queue - the controller has no Enter and a navigation blur must
-                                     not commit while a next summon is queued, so this explicit button replaces the
-                                     removed blur-as-Enter (GH #80). Skip (second row) skips this summon in a group.
-                                     Both use the game's focusable style so a controller can reach them (see the
-                                     gear above, GH #6); their DataContexts are small VMs set from Lua.
-                                     NysShowConfirm and NysShowSkip share the same condition (#examineQueue > 0), so
-                                     both hide for single summons and on the LAST of a group - where naming commits
-                                     on blur instead. -->
+                                <!-- GH #80 / #51: the controller has no Enter and a navigation blur must not commit
+                                     while a next summon is queued, so Confirm commits + advances; Skip skips this summon.
+                                     Focusable style so a controller can reach them (GH #6). VMs set from Lua; both share
+                                     NysShow* (#examineQueue > 0), hidden for single summons and on the last of a group. -->
                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
                                              HorizontalAlignment="Center" MinWidth="200"
                                              Command="{Binding NysConfirmCommand}"

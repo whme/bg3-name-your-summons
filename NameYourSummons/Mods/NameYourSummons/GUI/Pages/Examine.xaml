@@ -125,13 +125,9 @@
                                                         </ls:LSButton.Template>
                                                     </ls:LSButton>
                                                 </StackPanel>
-                                                <!-- GH #80 / #51: Confirm (first row) commits the current name and advances
-                                                     the multi-summon queue - an explicit alternative to Enter, and the parity
-                                                     control for the controller layout's Confirm (GH #80). Skip (second row)
-                                                     skips this summon in a group. Below the input so they do not squeeze the
-                                                     name/settings row. Their DataContexts are small VMs set from Lua;
-                                                     NysShowConfirm and NysShowSkip share the same condition (#examineQueue > 0),
-                                                     so both hide for single summons and on the last summon of a group. -->
+                                                <!-- GH #80 / #51: Confirm commits + advances the queue (an Enter alternative);
+                                                     Skip skips this summon. VMs set from Lua; both share NysShow* (#examineQueue > 0),
+                                                     so both hide for single summons and on the last of a group. -->
                                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
                                                              Content="Confirm" Command="{Binding NysConfirmCommand}"
