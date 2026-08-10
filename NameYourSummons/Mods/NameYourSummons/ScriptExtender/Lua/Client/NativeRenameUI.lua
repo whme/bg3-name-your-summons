@@ -53,6 +53,14 @@ local GEAR_VM = "NYS_GearVM"
 -- multi-summon group). Set as the Skip button's nested DataContext (GH #51).
 local SKIP_VM = "NYS_SkipVM"
 
+-- The Confirm button viewmodel (GH #80): a Command (commit the current name + advance
+-- the queue) plus a Bool visibility flag with the SAME visibility as Skip (#examineQueue > 0
+-- - shown only while a next summon is queued, so it is hidden for single summons and on the
+-- last of a group). Set as the Confirm button's nested DataContext. While shown it is the
+-- controller's commit trigger (its blur no longer commits then) and a keyboard alternative to
+-- Enter; when hidden (single summon or last of a group) naming commits on blur/Enter as usual.
+local CONFIRM_VM = "NYS_ConfirmVM"
+
 -- After opening or swapping the panel, ignore input for SETTLE_MS while the swapped-in
 -- field element and its DataContext appear, then wire the fresh field and set its text.
 -- Empirical.
@@ -468,16 +476,36 @@ local function onFieldEnter()
 	showNext()
 end
 
---- Per-element focus-loss on the name field. Enter is not delivered as KeyDown here, it
---- arrives as a focus loss, so a blur with no preceding click is an Enter commit (save +
---- advance via onFieldEnter). A blur right after a click is click-driven: during an active
---- session it does NOT save (the clicked control - Skip / gear / close - acts, and Skip and
---- close must be free to abort), while a plain Examine rename (no session) still saves on
---- blur. Both LostFocus and LostKeyboardFocus fire per blur; the second is deduped
---- (commitField) or gated (awaitingOpen after an advance).
+--- Commit the current summon's name and advance the queue (GH #80). Bound to the Confirm
+--- button's NysConfirmCommand (shown only while a next summon is queued): an explicit accept
+--- that reuses onFieldEnter (answer over SubmitName / idempotent rename, then swap to the
+--- next). While shown it is the controller's commit trigger (its blur no longer commits then)
+--- and a keyboard alternative to Enter.
+local function confirmCurrent()
+	if not current or awaitingOpen then
+		return
+	end
+	log("confirmCurrent:", current.SummonUuid)
+	onFieldEnter()
+end
+
+--- Per-element focus-loss on the name field. While a next summon is queued (Confirm shown) on
+--- the CONTROLLER layout a blur never commits or advances: a controller cannot tell a
+--- navigation blur (field -> Confirm / Skip / gear) from an accept, so the explicit Confirm
+--- button drives the commit (GH #80). The last summon of a group and a single summon (queue
+--- empty, no Confirm) on controller, and every case on the KEYBOARD layout, keep the blur
+--- commit: Enter is not delivered as KeyDown here, it arrives as a focus loss, so a blur with
+--- no preceding click is an Enter commit (save + advance via onFieldEnter). A blur right after
+--- a click is click-driven: during an active session it does NOT save (the clicked control -
+--- Confirm / Skip / gear / close - acts, and Skip and close must be free to abort), while a
+--- plain Examine rename (no session) still saves on blur. Both LostFocus and LostKeyboardFocus
+--- fire per blur; the second is deduped (commitField) or gated (awaitingOpen after an advance).
 ---@param evName string
 local function onFieldBlur(evName)
 	log("field blur event:", evName, "recentClick =", tostring(recentClick), uiState())
+	if current ~= nil and #examineQueue > 0 and isControllerPanel() then
+		return
+	end
 	if recentClick then
 		if current == nil then
 			commitLiveField()
@@ -498,6 +526,21 @@ local function refreshSkipVisibility()
 	if vm then
 		pcall(function()
 			vm.NysShowSkip = #examineQueue > 0
+		end)
+	end
+end
+
+--- Show the Confirm button on the same condition as Skip: only while a next summon is queued
+--- (hidden for single summons and on the last of a group, where naming commits on blur/Enter
+--- instead, GH #80). Update the live button; a Noesis handle does not survive.
+local function refreshConfirmVisibility()
+	local confirm = findNamed("NYS_ConfirmButton")
+	local vm = confirm and safe(function()
+		return confirm.DataContext
+	end)
+	if vm then
+		pcall(function()
+			vm.NysShowConfirm = #examineQueue > 0
 		end)
 	end
 end
@@ -633,6 +676,27 @@ local function wirePanel()
 			end)
 			pcall(function()
 				skip.DataContext = vm
+			end)
+		end
+	end
+
+	-- Confirm (GH #80): nested DataContext = a fresh NYS_ConfirmVM; NysShowConfirm reveals it on
+	-- the same condition as Skip (#examineQueue > 0 - hidden for single summons and on the last
+	-- of a group). Page-agnostic - the node exists on both the keyboard and controller pages.
+	local confirm = findNamed("NYS_ConfirmButton")
+	if confirm then
+		local vm = safe(function()
+			return Ext.UI.Instantiate(CONFIRM_VM)
+		end)
+		if vm then
+			pcall(function()
+				vm.NysConfirmCommand:SetHandler(confirmCurrent)
+			end)
+			pcall(function()
+				vm.NysShowConfirm = #examineQueue > 0
+			end)
+			pcall(function()
+				confirm.DataContext = vm
 			end)
 		end
 	end
@@ -983,6 +1047,12 @@ function NativeRenameUI.Register()
 	pcall(function()
 		Ext.UI.RegisterType(SKIP_VM, { NysSkipCommand = { Type = "Command" }, NysShowSkip = { Type = "Bool" } })
 	end)
+	pcall(function()
+		Ext.UI.RegisterType(
+			CONFIRM_VM,
+			{ NysConfirmCommand = { Type = "Command" }, NysShowConfirm = { Type = "Bool" } }
+		)
+	end)
 
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
@@ -1054,9 +1124,10 @@ function NativeRenameUI.Register()
 		if current == nil and not awaitingOpen then
 			showNext()
 		else
-			-- A sibling arrived while a session is active: there is now a next to skip to,
-			-- so reveal the Skip button on the panel already showing.
+			-- A sibling arrived while a session is active: there is now a next summon to swap
+			-- to, so reveal the Skip and Confirm buttons on the panel already showing (GH #80).
 			refreshSkipVisibility()
+			refreshConfirmVisibility()
 		end
 	end)
 

@@ -197,9 +197,16 @@ the game.
 - **Multi-summon = ONE panel that swaps through the queue, closed once at the end
   (GH #51).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
   already-open panel SWAPS its content rather than being ignored (GH #50 finding C4), so a
-  group is named in one panel: name a creature with Enter (answers over `SubmitName`,
+  group is named in one panel: commit a creature's name (answers over `SubmitName`,
   decrements the server's pending count) and the panel swaps to the next queued summon;
-  repeat until the queue drains; the player closes the panel once at the end. `showNext`
+  repeat until the queue drains; the player closes the panel once at the end. Committing is
+  the `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`), shown via a `Bool
+  NysShowConfirm` on its `NYS_ConfirmVM` with the SAME condition as Skip (`#examineQueue > 0`),
+  so it is hidden for single summons and on the LAST creature of a group (GH #80). On keyboard
+  the button is an alternative to Enter (which still commits + advances via the blur path); on
+  the controller it is the commit trigger while shown (the controller's blur no longer commits
+  while a next summon is queued - see the controller paragraph). Where Confirm is hidden (a
+  single summon, or the last of a group) naming commits on blur/Enter as usual. `showNext`
   Executes Examine on the next request (open, or content-swap if a panel is up); the
   outgoing `current` is always already resolved (answered, skipped, or retracted), so
   `showNext` never aborts it. Because the field's `Text` binding is OneWay and does NOT
@@ -211,8 +218,8 @@ the game.
   not even for character keys), so Enter arrives as a focus loss: a field blur with no left
   click in the last `CLICK_BLUR_WINDOW_MS` is an Enter commit (save + swap via
   `onFieldEnter`), while a blur just after a click is click-driven and does NOT save during a
-  session - the clicked control (Skip / gear / close) acts, so Skip and close are free to
-  abort (a plain Examine rename with no session still saves on blur). Closing the panel
+  session - the clicked control (Confirm / Skip / gear / close) acts, so Skip and close are
+  free to abort (a plain Examine rename with no session still saves on blur). Closing the panel
   mid-queue skips ALL that is left (`abortRemaining` aborts `current` if unnamed and every
   still-queued request), so the pending count still clears and the pause lifts; a retract of
   the on-screen summon swaps to the next or, if the queue is empty, closes the panel via
@@ -261,13 +268,22 @@ the game.
   present) tells the layouts apart; a global `Ext.Events.ControllerButtonInput` hook
   (`onControllerButton`) is the controller counterpart of the mouse hook -
   `MouseButtonInput` never fires on a controller and there is no panel-open event. It
-  only reconciles lifecycle (never sets `recentClick`, so a field blur is always an
-  Enter commit) and, unlike the mouse hook, ALWAYS schedules one post-settle re-poll:
+  only reconciles lifecycle (never sets `recentClick`) and, unlike the mouse hook, ALWAYS
+  schedules one post-settle re-poll:
   the button that OPENS Examine fires the hook while the panel is still mid-open, and a
   player who then navigates with the left STICK (no further button events) would
   otherwise never get the panel wired - so we do NOT poll the stick axis (that would
   scan on every stick movement during normal play). `wirePanel` auto-enables editing for
   a renamable manually-examined summon on controller (there is no click to start it).
+  **Naming a queued multi-summon is an explicit Confirm button on the controller (GH #80).** A
+  controller has no Enter and cannot tell a navigation blur (field -> Confirm / Skip / gear)
+  from an accept, so while a next summon is queued (`#examineQueue > 0`, i.e. Confirm/Skip
+  shown) `onFieldBlur` no longer commits or advances on the controller layout (gated by
+  `#examineQueue > 0 and isControllerPanel`); the `NYS_ConfirmButton` (`confirmCurrent` ->
+  `onFieldEnter`) is the commit trigger, stacked above Skip and focusable via
+  `FocusableButtonStyleMinimal`. Where Confirm is hidden - a single summon, the LAST creature
+  of a group, or a manual examine - the blur commits as usual. The keyboard layout carries the
+  same button (same visibility) but keeps Enter (its blur path is unchanged).
   Verified in game: the on-summon prompt, rename, native keyboard, gear activation, and
   the field's navigate-highlight / accept-edit all work. The settings overlay
   (`NYS_SettingsPanel`) jumps focus in on open (`ls:SetMoveFocusAction` on an
