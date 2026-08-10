@@ -31,6 +31,8 @@
 local Util = Ext.Require("Shared/Util.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
+local Loca = Ext.Require("Shared/LocaKeys.lua")
+local L = Loca.L
 
 local NativeConfigUI = {}
 
@@ -148,7 +150,26 @@ local function ownerLabel(entry)
 	if type(entry.OwnerName) == "string" and entry.OwnerName ~= "" then
 		return entry.OwnerName
 	end
-	return "Unknown summoner (" .. tostring(entry.Owner):sub(1, 8) .. ")"
+	return (L("UnknownSummoner"):gsub("%[1%]", tostring(entry.Owner):sub(1, 8)))
+end
+
+--- The localised, composed type label from a DescribeKey token (or a legacy
+--- English string stored before this became a token). nil when no type is known.
+local function typeLabel(t)
+	if type(t) == "table" then
+		local creature = t.Creature and L("Creature" .. t.Creature)
+		if creature and t.Familiar then
+			return (L("TypeAndFamiliar"):gsub("%[1%]", creature))
+		end
+		if t.Familiar then
+			return L("TypeFamiliar")
+		end
+		return creature or L("TypeOther")
+	end
+	if type(t) == "string" and t ~= "" then
+		return t
+	end
+	return nil
 end
 
 --- A stable per-row id. A unique set has several rows under one key, so the slot
@@ -161,12 +182,13 @@ local function stageId(entry)
 end
 
 local function rowLabel(entry)
-	local name = entry.TemplateName or "Summon"
+	local name = entry.TemplateName or L("SummonFallback")
 	if entry.Slot then
-		name = name .. " #" .. tostring(entry.Slot)
+		name = name .. " " .. L("RowSlot"):gsub("%[1%]", tostring(entry.Slot))
 	end
-	if type(entry.Type) == "string" and entry.Type ~= "" then
-		name = name .. " (" .. entry.Type .. ")"
+	local typed = typeLabel(entry.Type)
+	if typed then
+		name = name .. " (" .. typed .. ")"
 	end
 	return name
 end
@@ -318,11 +340,11 @@ local function toggleForget(id, rowId)
 	local row = findLiveRow(id, "NysSavedNames", rowId)
 	if session.pendingForgets[rowId] then
 		session.pendingForgets[rowId] = nil
-		set(row, "NysForgetLabel", "Forget")
+		set(row, "NysForgetLabel", L("ForgetLabel"))
 		set(row, "NysNameEnabled", true)
 	else
 		session.pendingForgets[rowId] = true
-		set(row, "NysForgetLabel", "Undo")
+		set(row, "NysForgetLabel", L("UndoLabel"))
 		set(row, "NysNameEnabled", false)
 	end
 end
@@ -396,7 +418,7 @@ local function refreshNames(id, gen)
 				set(row, "NysOwnerLabel", ownerLabel(entry))
 				set(row, "NysRowLabel", rowLabel(entry))
 				set(row, "NysNameText", entry.Name)
-				set(row, "NysForgetLabel", "Forget")
+				set(row, "NysForgetLabel", L("ForgetLabel"))
 				set(row, "NysNameEnabled", true)
 				pcall(function()
 					row.NysForgetCommand:SetHandler(function()
@@ -521,7 +543,7 @@ local function buildViewModel(id)
 		local toggle = instantiate(TOGGLE_VM)
 		if toggle then
 			set(toggle, "NysViewport", tostring(id))
-			set(toggle, "NysLabel", cat.label)
+			set(toggle, "NysLabel", L("Cat" .. cat.key))
 			set(toggle, "NysChecked", false)
 			set(toggle, "NysEnabled", true)
 			-- Controller accept-toggle: re-fetch the live row by its fixed index (the

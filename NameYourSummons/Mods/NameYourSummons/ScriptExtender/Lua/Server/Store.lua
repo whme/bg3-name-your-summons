@@ -182,29 +182,34 @@ function Store.ForgetSlot(key, slot)
 	v[VAR_NAMES] = t
 end
 
--- The type label (e.g. "Fiend, Familiar") last seen for a key, so the saved-name
--- list can show a type even when no instance is alive to read tags from.
+-- The language-neutral type token (Classifier.DescribeKey: { Creature, Familiar })
+-- last seen for a key, so the saved-name list can show a type even when no instance
+-- is alive to read tags from. The client localises it in the viewer's language.
 
----@return table<string,string>
+---@return table<string, NysTypeDescription|string>
 function Store.AllTypes()
 	return vars()[VAR_TYPES] or {}
 end
 
 ---@param key string
----@return string|nil
+---@return NysTypeDescription|string|nil
 function Store.GetType(key)
 	return Store.AllTypes()[key]
 end
 
+--- Store the type token for a key. DescribeKey mints a fresh table each call, so
+--- the no-op guard compares fields, not identity, to avoid dirtying the ModVar on
+--- every summon observation (and to upgrade a legacy English string once).
 ---@param key string
----@param label string
-function Store.SetType(key, label)
+---@param token NysTypeDescription
+function Store.SetType(key, token)
 	local v = vars()
 	local t = v[VAR_TYPES] or {}
-	if t[key] == label then
+	local prev = t[key]
+	if type(prev) == "table" and prev.Creature == token.Creature and prev.Familiar == token.Familiar then
 		return
 	end
-	t[key] = label
+	t[key] = token
 	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
 	v[VAR_TYPES] = t
 end

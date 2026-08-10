@@ -15,3 +15,7 @@ build/
 
 # lua-language-server --check output.
 luals-log/
+
+# Compiled localization binaries. The .loca.xml sources are committed; the binary
+# .loca the game loads is produced only in the temp build stage (make.ps1 build).
+*.loca

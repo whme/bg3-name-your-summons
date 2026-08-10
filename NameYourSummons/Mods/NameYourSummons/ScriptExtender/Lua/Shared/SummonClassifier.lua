@@ -96,20 +96,21 @@ function Classifier.Classify(tagNames)
 	return creatureType(present) or "Untagged"
 end
 
---- A human-readable type label for the saved-name list. Type and familiar status
---- are independent, so both show: "Fiend, Familiar", "Beast", "Familiar", "Other".
+--- A language-neutral description of a summon's type for the saved-name list.
+--- Type and familiar status are independent; the client localises and composes
+--- these into a label ("Fiend, Familiar", "Beast", "Familiar", "Other"). Kept pure
+--- (no engine calls) so the viewing player's language, not the server's, applies.
+---@class NysTypeDescription
+---@field Creature string|nil  a TYPE_ORDER key, or nil when no creature-type tag
+---@field Familiar boolean
 ---@param tagNames string[]
----@return string
-function Classifier.Describe(tagNames)
+---@return NysTypeDescription
+function Classifier.DescribeKey(tagNames)
 	local present = tagSet(tagNames)
-	local category = creatureType(present)
-	if category and present[FAMILIAR_TAG] then
-		return category .. ", Familiar"
-	end
-	if present[FAMILIAR_TAG] then
-		return "Familiar"
-	end
-	return category or "Other"
+	return {
+		Creature = creatureType(present),
+		Familiar = present[FAMILIAR_TAG] == true,
+	}
 end
 
 --- Whether a summon of these tags may be prompted, given the current settings.

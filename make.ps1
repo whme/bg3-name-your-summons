@@ -389,6 +389,23 @@ function Read-Prompt([string]$Message) {
     return (Read-Host -Prompt $Message).Trim()
 }
 
+# Compile every Localization/**/*.loca.xml in the stage into a sibling binary
+# .loca (what the game loads) and drop the .xml so it does not ship. Runs on the
+# STAGE copy, so no binaries are produced in the source tree.
+function Convert-StageLoca($Divine, $Stage) {
+    $locaRoot = Join-Path $Stage "Localization"
+    if (-not (Test-Path $locaRoot)) { return }
+    $xmls = Get-ChildItem -Path $locaRoot -Filter "*.loca.xml" -Recurse -ErrorAction SilentlyContinue
+    foreach ($xml in $xmls) {
+        $out = $xml.FullName -replace '\.loca\.xml$', '.loca'
+        & $Divine --game bg3 --action convert-loca --source $xml.FullName --destination $out --loglevel warn
+        if ($LASTEXITCODE -ne 0) {
+            throw "divine convert-loca failed for $($xml.FullName) (exit $LASTEXITCODE)"
+        }
+        Remove-Item $xml.FullName -Force
+    }
+}
+
 # Pack the mod into build/ via divine.exe, exactly like the Modder's Multitool
 # Create Package. Pass -Clean (via `./make.ps1 build -Clean`) to wipe build/ first.
 function Cmd-Build {
@@ -422,6 +439,7 @@ function Cmd-Build {
     try {
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item -Path (Join-Path $sourceDir "*") -Destination $stage -Recurse -Force
+        Convert-StageLoca $divine $stage
         & $divine --game bg3 --action create-package --source $stage --destination $pak --loglevel warn
         if ($LASTEXITCODE -ne 0) {
             throw "divine.exe failed with exit code $LASTEXITCODE. If it complained about a missing runtime, install the .NET 8 Desktop Runtime: https://dotnet.microsoft.com/download/dotnet/8.0"

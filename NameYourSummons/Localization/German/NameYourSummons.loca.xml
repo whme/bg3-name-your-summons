@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<contentList>
+	<content contentuid="h9e870cd5g805bg467dgb6b6gb12d4c9d8028" version="1">Bestätigen</content>
+	<content contentuid="h2e1c64c5g940ag4327g9c16g82dfb467d903" version="1">Überspringen</content>
+	<content contentuid="hf22514a5g1077g4b9eg8b09g329d3d6cc37f" version="1">Benenne deine Beschwörungen</content>
+	<content contentuid="h0397207dg538dg4a9fga9b9ga9532038ca92" version="1">Abfrage</content>
+	<content contentuid="h6700b693g1816g4bd5gb6dcg7edebe82a937" version="1">Gespeicherte Namen</content>
+	<content contentuid="heee8452fg89d7g47dfgb6dfg67e334190cdf" version="1">Beschwörungstypen zum Benennen...</content>
+	<content contentuid="hcdcbe581g0a56g4bf8g89fcgbea014f6d95a" version="1">Aktualisieren</content>
+	<content contentuid="h0ca636b6gfbc1g43e8gaa90ga7d4c161319c" version="1">Mich fragen, neue Beschwörungen zu benennen</content>
+	<content contentuid="h97b2a47agdec6g413fg9a9dgfdf7232a441c" version="1">Auch erneut fragen bei bereits benannten Beschwörungen</content>
+	<content contentuid="hd5911703g4eefg4918ga4b4g9e5c6f7910cf" version="1">Das Spiel pausieren (rundenbasierter Modus), während ich eine Beschwörung benenne</content>
+	<content contentuid="h093552b9gd8d8g48e6gb4afg4f958d58c0e0" version="1">Umbenennen von handlungsgebundenen Beschwörungen erlauben (z. B. 'Us')</content>
+	<content contentuid="h1001de43g7420g49dcgb75eg897f553d3061" version="1">Jede Beschwörung (den Typfilter unten ignorieren)</content>
+	<content contentuid="ha1d27f83g8cafg4f0ag9ac0g0207d25296dd" version="1">Welche Beschwörungen abgefragt werden, nach dem Kreaturentyp aus ihren Tags. Vertraute zählen als 'Vertraute', unabhängig von ihrem Typ, daher gelten die Kreaturentypen unten nur für nicht vertraute Beschwörungen.</content>
+	<content contentuid="h5637f68dg2990g4632gbe15gc9c95288184e" version="1">Wenn ein Zauber mehrere Kreaturen auf einmal beschwört:</content>
+	<content contentuid="hf5a8ed82g5228g4af8g9678g4fe7a22e38a2" version="1">Noch keine gespeicherten Namen.</content>
+	<content contentuid="ha7a476a3g0aeeg4ec6g9171gee80d2f7934f" version="1">Nicht benennen</content>
+	<content contentuid="h1b66496bgf669g4495g92d4gac7984e3018f" version="1">Einen Namen teilen</content>
+	<content contentuid="hde012cb1gaf00g4898gae58gb1ac51fefe21" version="1">Jede einzeln benennen</content>
+	<content contentuid="h9c0401d0g357bg4656g89b8g94088b9d8146" version="1">Vergessen</content>
+	<content contentuid="h2801322fg6396g48e6g98a1g0d8ea9fece94" version="1">Rückgängig</content>
+	<content contentuid="h4b093a8ag9906g4482g8ba5g8c9a5663050f" version="1">Unbekannter Beschwörer ([1])</content>
+	<content contentuid="h2d7459c4g1c1dg45a9g8468g06b6842ae32e" version="1">Beschwörung</content>
+	<content contentuid="he0fa7c66gd744g4d05ga9afg12d8560804b5" version="1">#[1]</content>
+	<content contentuid="hfb1e5302gd90eg4ab5g8a87g212cbd9f8419" version="1">[1], Vertrauter</content>
+	<content contentuid="hd58d85cdg9711g497agae17ga5b2ad541843" version="1">Vertrauter</content>
+	<content contentuid="h9d5e9597ga02ag4bdagb90dg98d071321320" version="1">Andere</content>
+	<content contentuid="h2661453cg97ebg45d7ga203gcb7b912f0297" version="1">Vertraute (alle, unabhängig vom Kreaturentyp)</content>
+	<content contentuid="hcbc4a509g2a96g40a5gb947gac194c86aea9" version="1">Tiere</content>
+	<content contentuid="h525725b7g11c3g446bgb7f3g9e4093b9372f" version="1">Untote</content>
+	<content contentuid="h1a33fffdgedbbg426fgba17g20636c273cc1" version="1">Elementare</content>
+	<content contentuid="h02eaf7e8g99cbg4946gb851g5756ccaea9a0" version="1">Feenwesen</content>
+	<content contentuid="hfef6a04cgf234g440fgb055g3d11cf4769dc" version="1">Unholde</content>
+	<content contentuid="h5b550b28g829eg493eg9f23g308ff696e219" version="1">Himmlische</content>
+	<content contentuid="h7b2cd3f0g838dg415eg9cc0g230ded7bf5bc" version="1">Konstrukte</content>
+	<content contentuid="hfd3868d7ga271g4d78gb1fag0c7e5f10894b" version="1">Drachen</content>
+	<content contentuid="h618b5b57g0caag463ag8319g02481c164f93" version="1">Riesen</content>
+	<content contentuid="h5754841fg25c2g44c1g9e72ge65d16be1ea4" version="1">Humanoide</content>
+	<content contentuid="ha8c79924gf8deg4c28gaffagd05b68a0d8b1" version="1">Monstrositäten</content>
+	<content contentuid="hcf132aa6g33a8g4069ga311gd69b6a89b7c2" version="1">Schlicke</content>
+	<content contentuid="hbf52e12eg09b3g4f3cgb838g812c2ea86e64" version="1">Pflanzen</content>
+	<content contentuid="h9b7c9011gd422g4ce3g918eg383be079ec1b" version="1">Aberrationen</content>
+	<content contentuid="hdd1091a0gc91bg4c2egb504gc101c5d2f11a" version="1">Andere / Beschwörungen ohne Tag</content>
+	<content contentuid="h99ab8f35g3456g4f6ag81fdg6607d7b697a3" version="1">Untoter</content>
+	<content contentuid="hb10beeafgca4ag433fga60dg04a490a80c8d" version="1">Unhold</content>
+	<content contentuid="hd6e0be15g2879g47f5gb4cagf2e7081c5523" version="1">Himmlischer</content>
+	<content contentuid="h7304e75ag96bdg49d1g9b92g38d5525528bc" version="1">Feenwesen</content>
+	<content contentuid="h9b31492egd90fg4e39g8d5dg3f67a14e78d7" version="1">Elementar</content>
+	<content contentuid="h51a89768g1f65g48b2ga662gbf2a8b906a65" version="1">Drache</content>
+	<content contentuid="h6f1d5bc0gd568g4795g81e8g35505ac3097c" version="1">Aberration</content>
+	<content contentuid="h11ae9306g1833g4412g918dg4dae0f1c86e2" version="1">Monstrosität</content>
+	<content contentuid="h312baa53gca58g4427g939agf578b071ddd3" version="1">Konstrukt</content>
+	<content contentuid="h578d1ef6ga2bbg47e6g8345ga9118513ab95" version="1">Schlick</content>
+	<content contentuid="h82ca6104ged46g41edgb1aag013ba69f8108" version="1">Pflanze</content>
+	<content contentuid="h153d1e87g6ba4g4f35ga8b2g79d38fa35980" version="1">Riese</content>
+	<content contentuid="h6e21bfe4g3c09g4493gb152gd454dfc25951" version="1">Tier</content>
+	<content contentuid="hfb760cf5g34adg4df3g8b79g43e533abb6dd" version="1">Humanoid</content>
+</contentList>

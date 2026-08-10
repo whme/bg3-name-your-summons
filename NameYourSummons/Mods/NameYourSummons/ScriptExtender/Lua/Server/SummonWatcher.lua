@@ -81,13 +81,15 @@ local function currentCharOfUser(user)
 end
 
 --- A readable label for a root template (e.g. "Cat"), for the saved-name list.
---- Falls back to the template's dev name and finally "Summon"; never a uuid.
+--- The template DisplayName is a game loca handle, resolved here in the server's
+--- language. Returns nil when unreadable; the client then shows its own localised
+--- "Summon" fallback.
 ---@param templateId string
----@return string
+---@return string|nil
 local function templateLabel(templateId)
 	local ok, template = pcall(Ext.Template.GetTemplate, templateId)
 	if not (ok and template) then
-		return "Summon"
+		return nil
 	end
 	local displayName = template.DisplayName
 	local handle = displayName and displayName.Handle and displayName.Handle.Handle
@@ -100,7 +102,7 @@ local function templateLabel(templateId)
 	if type(template.Name) == "string" and template.Name ~= "" then
 		return template.Name
 	end
-	return "Summon"
+	return nil
 end
 
 --- Run `action(summon, template)` for every live summon whose owner+template maps to `key`.
@@ -121,7 +123,7 @@ end
 ---@param key string
 ---@param summonRef string|EntityHandle
 local function rememberType(key, summonRef)
-	Store.SetType(key, Classifier.Describe(Naming.TagNamesOf(summonRef)))
+	Store.SetType(key, Classifier.DescribeKey(Naming.TagNamesOf(summonRef)))
 end
 
 ---@param key string
