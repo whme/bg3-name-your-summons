@@ -24,6 +24,12 @@ Install both parts in order.
 
 Want to build from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Controller / gamepad support
+
+**Full controller support.**<br>
+<sub>Typing uses the on-screen keyboard that only Steam Input provides, so it needs [Steam Big Picture mode](https://help.steampowered.com/en/faqs/view/6BD3-BF97-2B7C-4C7B) (or Steam Input enabled for BG3) - the same limit applies to the game's own text fields.<br>
+Without Big Picture, use a physical keyboard to type.</sub>
+
 <h1 align="center">Using it</h3>
 <p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-rename.png" width="1000" alt="Examine screen"></img></a></p>
 
