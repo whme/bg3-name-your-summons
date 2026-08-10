@@ -316,6 +316,7 @@ the game.
 NameYourSummons/                     <- pak this folder
   Mods/NameYourSummons/
     meta.lsx                         mod manifest (UUID, name, version)
+    mod_publish_logo.png             mod-manager thumbnail (16:9 PNG; found by filename, not referenced in meta.lsx) - see "Mod-manager thumbnail" below
     ScriptExtender/
       Config.json                    RequiredVersion, ModTable, feature flags
       Lua/
@@ -341,6 +342,32 @@ NameYourSummons/                     <- pak this folder
       StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
       StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml
 ```
+
+### Mod-manager thumbnail (known limitation)
+
+`mod_publish_logo.png` sits next to `meta.lsx` by convention (the same path
+every Larian-toolkit-published mod uses; it is discovered by filename and is not
+referenced in `meta.lsx`). `make.ps1 build` packs the whole `NameYourSummons/`
+folder, so the file ships automatically - no build change needed. The source
+image is `assets/mod-thumbnail.png` (1920x1080, 16:9); update both if you replace
+it.
+
+**It does NOT render in the in-game mod manager for our mod, and cannot.** The
+manager reads a mod's description AND thumbnail fresh from the pak at game
+startup (neither is cached to disk - confirmed: the description updates on a full
+relaunch, nothing in `%LOCALAPPDATA%\...\Baldur's Gate 3` stores it). The
+description shows, but the thumbnail stays the grey placeholder: the engine only
+populates the card image (`VMModPreview.MainScreenshot.Screenshot`, with a
+`HasScreenshotTexture` fallback - see `Mods/ModBrowser/GUI/...` in `Game.pak`)
+for mods it downloaded from mod.io, not for a locally-installed `.pak`. Because
+Name Your Summons requires the Script Extender it can never be published to
+mod.io, so there is no path to an in-game thumbnail. The file is kept anyway: it
+is zero-cost, correct by convention, and would light up if the mod were ever
+distributed through mod.io.
+
+Note: the mod manager only re-scans a mod's metadata on a full game restart, and
+description/thumbnail changes to an already-installed pak may need an uninstall +
+reinstall of the pak to take effect - an SE `reset` reloads Lua only.
 
 ## Reference docs
 
