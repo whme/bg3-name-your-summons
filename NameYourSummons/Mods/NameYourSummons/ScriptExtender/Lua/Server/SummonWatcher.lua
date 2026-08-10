@@ -658,7 +658,8 @@ function Watcher.RegisterNet()
 		-- character (a viewport's SelectedCharacter); resolve both it and each owner to a
 		-- UserID and compare. A missing/unresolvable viewer shows all (never an empty list).
 		local viewerUser = reservedUser(type(data) == "table" and data.ViewerCharacter or nil)
-		local hostUser = reservedUser(Osi.GetHostCharacter())
+		local hostOk, host = pcall(Osi.GetHostCharacter)
+		local hostUser = reservedUser(hostOk and host or nil)
 		local ownerUserCache = {}
 		local function isVisible(owner)
 			if ownerUserCache[owner] == nil then
