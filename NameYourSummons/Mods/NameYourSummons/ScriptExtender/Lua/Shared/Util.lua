@@ -3,8 +3,7 @@ local Util = {}
 
 Util.MAX_NAME_LENGTH = 40
 
---- Osiris hands back GUIDSTRINGs that are often "SomeName_<uuid>".
---- We only ever want the bare uuid so that our storage keys are stable.
+--- Extract the bare, lowercased uuid from a GUIDSTRING ("SomeName_<uuid>").
 ---@param guidstring string|nil
 ---@return string|nil
 function Util.ToUuid(guidstring)
@@ -22,9 +21,9 @@ function Util.Sanitise(raw)
 	if type(raw) ~= "string" then
 		return ""
 	end
-	local s = raw:gsub("%c", " ") -- control chars -> space
-	s = s:gsub("%s+", " ") -- collapse runs of whitespace
-	s = s:gsub("^%s*(.-)%s*$", "%1") -- trim
+	local s = raw:gsub("%c", " ")
+	s = s:gsub("%s+", " ")
+	s = s:gsub("^%s*(.-)%s*$", "%1")
 	if #s > Util.MAX_NAME_LENGTH then
 		s = s:sub(1, Util.MAX_NAME_LENGTH)
 		s = s:gsub("%s+$", "")
@@ -32,11 +31,8 @@ function Util.Sanitise(raw)
 	return s
 end
 
---- Storage key: one saved name per (owner, root template) pair.
---- This is what makes "re-summon keeps its name" work: the summon's own UUID
---- changes every time it is conjured, but the owner and the template do not.
---- Both halves are normalised to a bare uuid so the GUIDSTRING template seen on
---- summon ("S_Wolf_<uuid>") matches the bare-uuid template seen on reapply.
+--- Storage key "<owner>|<template>", both normalised to bare uuids. Stable across
+--- re-summons: the summon's own uuid changes each conjure, owner and template do not.
 ---@param ownerUuid string
 ---@param rootTemplate string
 ---@return string
@@ -44,11 +40,9 @@ function Util.MakeKey(ownerUuid, rootTemplate)
 	return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
 end
 
---- Whether a saved name is visible to the viewing player (GH #86). A name is
---- visible when its summon's owner is currently controlled by the same user that
---- is viewing. `nil` viewerUser (the viewer could not be resolved) shows all, so
---- the list never regresses to empty; an owner with no resolvable user (not
---- loaded) is shown only to the host, so orphaned names are not lost.
+--- Whether a saved name is visible to the viewing player: its owner is currently
+--- controlled by the same user. A nil viewer shows all (never an empty list); an
+--- owner with no resolvable user (not loaded) is shown only to the host.
 ---@param ownerUser integer|nil  the UserID reserving the summon's owner
 ---@param viewerUser integer|nil  the UserID viewing the settings panel
 ---@param hostUser integer|nil  the host's UserID
@@ -63,9 +57,8 @@ function Util.IsNameVisible(ownerUser, viewerUser, hostUser)
 	return ownerUser == viewerUser
 end
 
--- Named story creatures the game classifies as summons but that the player
--- should not be prompted to rename (e.g. the intellect devourer "Us"). Keyed by
--- root-template uuid; verify each in game with !nys_diag.
+-- Story creatures the game classifies as summons but should not be prompted to
+-- rename (e.g. "Us"). Keyed by root-template uuid; verify each with !nys_diag.
 local STORY_SUMMON_TEMPLATES = {
 	["27b9089b-9aef-44e9-aaf7-100e3e320823"] = true, -- Us
 	["b5deaa14-03b5-41c6-8372-7a9d758b4dfb"] = true, -- Scratch (familiar)
@@ -81,11 +74,9 @@ function Util.IsStorySummon(rootTemplate)
 	return STORY_SUMMON_TEMPLATES[Util.ToUuid(rootTemplate)] == true
 end
 
---- Assign a set of names to a set of uuids by sorted-uuid order: the i-th uuid
---- (sorted ascending) gets names[i]. Uuids beyond #names are left unassigned
---- (an upcast summoned more creatures than there are saved names). Deterministic
---- and independent of call order, so distributing a unique set converges as the
---- creatures trickle in one by one, without any per-creature identity.
+--- Assign names to uuids by sorted-uuid order: the i-th uuid (ascending) gets
+--- names[i]. Uuids beyond #names are left unassigned. Deterministic regardless of
+--- call order, so it converges as a unique set's creatures trickle in one by one.
 ---@param uuids string[]
 ---@param names string[]
 ---@return table<string,string>  uuid -> name
@@ -107,9 +98,8 @@ end
 -- A bare or trailing uuid, matching Util.ToUuid's accepted shape.
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 
---- Validate a client "rename this summon" request: a table carrying a uuid-shaped
---- SummonUuid and a name that survives sanitising non-empty. Client input is
---- trusted but sanitised (AGENTS.md), so the caller still confirms Osi.IsSummon.
+--- Validate a client "rename this summon" request: a uuid-shaped SummonUuid and a
+--- name non-empty after sanitising. The caller still confirms Osi.IsSummon.
 ---@param payload any
 ---@return boolean
 function Util.IsRenameRequestValid(payload)
@@ -134,16 +124,15 @@ function Util.Hash32(s)
 	return h
 end
 
---- A localisation handle derived from the text, so the same name always maps to
---- the same handle: reproducible after a save/load, and one handle per name.
+--- A localisation handle derived from the text, so the same name maps to the same
+--- handle: reproducible after a save/load, one handle per name.
 ---@param text string
 ---@return string
 function Util.LocaHandleFor(text)
 	return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
--- Prefix every line with Ext.Timer.ClockTime() (sub-second wall clock) so a
--- single pasted log shows event ordering and inter-event gaps.
+-- Prefix each line with a sub-second wall clock so pasted logs show event timing.
 function Util.Log(...)
 	Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
 end

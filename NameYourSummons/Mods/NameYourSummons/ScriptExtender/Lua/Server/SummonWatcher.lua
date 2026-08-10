@@ -7,38 +7,31 @@ local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 
 local Watcher = {}
 
--- Keys we have already asked about this session, so a player who dismissed the
--- prompt is not nagged every single time they re-cast the spell.
+-- Keys already asked about this session, so a dismissed prompt is not re-shown on
+-- every re-cast.
 local askedThisSession = {}
 
--- Keys we are currently waiting on a name for: key -> count of open prompts. A
--- unique multi-summon has one open prompt per creature, so this is a count, not
--- a single uuid, and the world stays paused until every one is answered.
+-- Keys awaiting a name: key -> count of open prompts. A unique multi-summon has one
+-- prompt per creature, so this is a count; the world stays paused until all answer.
 local pending = {}
 
--- Summon uuids we have already prompted in "unique" mode. Guarding per-uuid
--- (rather than per-key) is what lets each creature of a group get its own prompt.
+-- Summon uuids already prompted in "unique" mode. Guarding per-uuid (not per-key)
+-- lets each creature of a group get its own prompt.
 local askedUnique = {}
 
--- Debounce generation per key for resolving a cast's saved-name reapply. Bumping
--- it invalidates any timer from an earlier sibling so the cast resolves just once.
+-- Debounce generation per key for resolving a cast's reapply. Bumping it invalidates
+-- an earlier sibling's timer so the cast resolves just once.
 local resolveGen = {}
 
--- The summon uuids that arrived for a key in the current cast: key -> uuid[].
--- Naming is scoped to THIS batch, not every living summon of the type, so older
--- summons of the same type that are still out keep their own names.
+-- The summon uuids that arrived for a key in the current cast: key -> uuid[]. Naming
+-- is scoped to this batch, so older summons of the same type keep their own names.
 local resolveBatch = {}
 
 -- True while a naming prompt holds the world in forced turn-based mode.
 local paused = false
 
--- Forward declaration: sendPrompt pauses at send time, but pauseFor is defined
--- further down (it depends on partyMembers).
+-- Forward declaration: sendPrompt pauses at send time; pauseFor is defined below.
 local pauseFor
-
----------------------------------------------------------------------------
--- Helpers
----------------------------------------------------------------------------
 
 ---@param guid string
 ---@return boolean
@@ -56,9 +49,8 @@ local function ownerIsPlayer(ownerUuid)
 end
 
 --- The BG3SE UserID currently reserving/controlling a character, or nil. In local
---- split-screen each player has a distinct UserID (e.g. 65537 host, 65538 P2) even
---- though they share one client; when a player leaves, their character's reserved
---- user flips to the host (GH #86). Bare uuids are accepted by Osi.
+--- split-screen each player has a distinct UserID (e.g. 65537 host, 65538 P2); when a
+--- player leaves, their character's reserved user flips to the host.
 ---@param character string|nil
 ---@return integer|nil
 local function reservedUser(character)
@@ -72,9 +64,9 @@ local function reservedUser(character)
 	return nil
 end
 
---- The character a user currently controls (its viewport's SelectedCharacter on the
---- client), as a bare uuid, or nil. This is the client<->server bridge for targeting a
---- split-screen viewport: it equals CurrentPlayer.SelectedCharacter.EntityUUID client-side.
+--- The character a user currently controls, as a bare uuid, or nil. The client<->server
+--- bridge for targeting a split-screen viewport: equals CurrentPlayer.SelectedCharacter.
+--- EntityUUID client-side.
 ---@param user integer|nil
 ---@return string|nil
 local function currentCharOfUser(user)
@@ -124,9 +116,8 @@ local function forLiveSummons(key, action)
 	end
 end
 
---- Record a key's type label from a live summon's tags, for the saved-name list
---- (GH #47). Tags are only readable off a live instance, so capture it
---- opportunistically whenever a summon is seen.
+--- Record a key's type label from a live summon's tags, for the saved-name list.
+--- Tags are only readable off a live instance, so capture it whenever one is seen.
 ---@param key string
 ---@param summonRef string|EntityHandle
 local function rememberType(key, summonRef)
@@ -207,9 +198,9 @@ local function retract(key, ownerRaw)
 end
 
 --- Ask the owner's client to name a summon. Deferred so the summon has finished
---- spawning and the default name we show is the real one. Aborts if the prompt
---- was retracted during the delay (pending cleared); pausing only here means a
---- retracted skip-mode group never freezes the world.
+--- spawning and the default name shown is the real one. Aborts if the prompt was
+--- retracted during the delay (pending cleared); pausing only here means a retracted
+--- skip-mode group never freezes the world.
 ---@param key string
 ---@param summonGuid string
 ---@param rootTemplate string
@@ -224,10 +215,8 @@ local function sendPrompt(key, summonGuid, rootTemplate, ownerUuid, ownerRaw, sc
 			return
 		end
 		pauseFor(ownerUuid)
-		-- ViewportChar tells the (single, shared) split-screen client which viewport to
-		-- open Examine in: it is the summoner's user's current character, which equals that
-		-- viewport's CurrentPlayer.SelectedCharacter.EntityUUID client-side (GH #86). Falls
-		-- back to the owner uuid when the user/char cannot be resolved.
+		-- ViewportChar tells the split-screen client which viewport to open Examine in;
+		-- falls back to the owner uuid when the user/char cannot be resolved.
 		local viewportChar = currentCharOfUser(reservedUser(ownerRaw)) or ownerUuid
 		Channels.AskName:SendToClient({
 			Key = key,
@@ -243,10 +232,9 @@ local function sendPrompt(key, summonGuid, rootTemplate, ownerUuid, ownerRaw, sc
 end
 
 --- Reapply a key's saved name(s) to the creatures a cast just produced, and with
---- PromptForNamed on, re-ask. Honours the CURRENT MultiSummonMode - so a set
---- saved under "unique" collapses to one shared name once the player switches to
---- "shared" - rather than the stored value's shape. Scoped to this cast's batch,
---- so older summons of the same type keep their own names.
+--- PromptForNamed on, re-ask. Honours the CURRENT MultiSummonMode (a set saved under
+--- "unique" collapses to one shared name after switching to "shared"), not the stored
+--- value's shape. Scoped to this cast's batch.
 ---@param key string
 ---@param batch string[]  the uuids that arrived in this cast
 ---@param ownerUuid string
@@ -259,8 +247,7 @@ local function resolveGroup(key, batch, ownerUuid, ownerRaw, rootTemplate)
 	end
 	local settings = Store.Settings()
 	local mode = settings.MultiSummonMode
-	-- A story summon whose opt-in is off is never re-prompted, matching HandleSummon's gate
-	-- (GH #48); its saved name still reapplies below.
+	-- A story summon whose opt-in is off is never re-prompted; its saved name still reapplies.
 	local storyForbidden = Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons
 	local reAsk = settings.PromptOnSummon
 		and settings.PromptForNamed
@@ -309,10 +296,9 @@ local function resolveGroup(key, batch, ownerUuid, ownerRaw, rootTemplate)
 	end
 end
 
---- Debounce resolving a cast's saved-name reapply: creatures enter over several
---- ticks, so collect the cast's uuids and restart the timer on each arrival,
---- acting once when they settle. The batch is what scopes naming to this cast
---- rather than every living summon of the type.
+--- Debounce resolving a cast's reapply: creatures enter over several ticks, so
+--- collect the cast's uuids and restart the timer on each arrival, acting once they
+--- settle. The batch scopes naming to this cast, not every living summon of the type.
 ---@param key string
 ---@param summonUuid string
 ---@param ownerUuid string
@@ -338,9 +324,9 @@ local function scheduleResolve(key, summonUuid, ownerUuid, ownerRaw, rootTemplat
 	end)
 end
 
---- Clear a detected skip-mode group's asked mark once its siblings have all been
---- suppressed (500ms), so a later cast re-prompts under the mode set by then (GH #57).
---- Clearing on the spot would let the very next sibling re-prompt, hence the delay.
+--- Clear a skip-mode group's asked mark once its siblings have all been suppressed
+--- (500ms), so a later cast re-prompts under the mode set by then. Clearing on the
+--- spot would let the very next sibling re-prompt, hence the delay.
 ---@param key string
 local function scheduleMultiSkipReset(key)
 	Ext.Timer.WaitFor(500, function()
@@ -367,9 +353,9 @@ local function partyMembers()
 	return out
 end
 
---- Freeze the world while a naming prompt is up, via solo turn-based mode (what
---- community pause mods use out of combat). Skip in real combat, and skip if the
---- player already forced turn-based mode - that pause is theirs to lift, not ours.
+--- Freeze the world while a naming prompt is up, via solo turn-based mode. Skip in
+--- real combat, and skip if the player already forced turn-based mode - that pause
+--- is theirs to lift, not ours.
 ---@param ownerUuid string
 function pauseFor(ownerUuid)
 	if paused then
@@ -395,9 +381,9 @@ function pauseFor(ownerUuid)
 	end
 end
 
---- Lift the pause once nothing is waiting on a name. A summon the party controls
---- is also a participant in the shared turn-based session and holds it open, so
---- release EVERY FTB participant, exactly like the "Leave Turn-Based Mode" button.
+--- Lift the pause once nothing is waiting on a name. A summon the party controls is
+--- also a participant in the shared turn-based session and holds it open, so release
+--- EVERY FTB participant, like the "Leave Turn-Based Mode" button.
 local function unpauseIfIdle()
 	if not paused then
 		return
@@ -432,15 +418,9 @@ local function describeKey(key)
 		-- Empty when the summoner is not loaded; the client shows the uuid.
 		OwnerName = owner and Naming.GetCurrentName(owner) or "",
 		TemplateName = templateLabel(template or key),
-		-- The summon's type label (GH #47), recorded from a live instance's tags
-		-- when last seen. Absent for names saved before this existed.
 		Type = Store.GetType(key),
 	}
 end
-
----------------------------------------------------------------------------
--- Core
----------------------------------------------------------------------------
 
 ---@param summonGuid string
 ---@param rootTemplate string
@@ -453,7 +433,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	local ownerRaw = Osi.CharacterGetOwner(summonGuid)
 	if not ownerRaw or ownerRaw == "" then
-		-- The owner link isn't wired up yet on some summon paths; retry briefly.
+		-- The owner link is not wired up yet on some summon paths; retry briefly.
 		if attempt < 5 then
 			Ext.Timer.WaitFor(200, function()
 				Watcher.HandleSummon(summonGuid, rootTemplate, attempt + 1)
@@ -470,9 +450,8 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	local settings = Store.Settings()
 	local saved = Store.Get(key)
 
-	-- An already-named summon: reapply the saved name(s) and, with PromptForNamed
-	-- on, re-ask - resolveGroup honours the current mode, so a mode change takes
-	-- effect on the next summon rather than being locked to how it was named.
+	-- An already-named summon: reapply the saved name(s) and, with PromptForNamed on,
+	-- re-ask. resolveGroup honours the current mode, so a mode change applies next summon.
 	if saved ~= nil then
 		rememberType(key, summonGuid)
 		scheduleResolve(key, Util.ToUuid(summonGuid), ownerUuid, ownerRaw, rootTemplate)
@@ -482,25 +461,23 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	if not ownerIsPlayer(ownerUuid) then
 		return
 	end
-	-- Record the type for the saved-name and skipped lists regardless of the
-	-- prompt settings, so a summon skipped or later named via Examine still shows
-	-- its type (GH #47).
+	-- Record the type regardless of prompt settings, so a summon skipped or later
+	-- named via Examine still shows its type in the list.
 	rememberType(key, summonGuid)
 
 	if not settings.PromptOnSummon then
 		return
 	end
 
-	-- Story summons are gated by their own opt-in, and an opted-in one then bypasses the
-	-- per-creature-type filter below: its type (e.g. Aberration for "Us") is rarely one the
-	-- player enabled, so requiring both would make the opt-in look broken (GH #48).
+	-- Story summons are gated by their own opt-in; an opted-in one then bypasses the
+	-- per-creature-type filter below (its type is rarely one the player enabled, so
+	-- requiring both would make the opt-in look broken).
 	local isStory = Util.IsStorySummon(rootTemplate)
 	if isStory and not settings.AllowStorySummons then
 		return
 	end
 
-	-- Only prompt for summon types the player has enabled (GH #14); opted-in story summons
-	-- bypass this (see above).
+	-- Only prompt for enabled summon types; opted-in story summons bypass this.
 	if not isStory and not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
 		return
 	end
@@ -522,11 +499,10 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 
 	-- Single, shared, and skip all ask once per key.
 	if askedThisSession[key] then
-		-- A sibling arriving while the first prompt is still pending (pending > 0)
-		-- reveals a multi-summon; a plain re-cast finds pending == 0 and is left alone,
-		-- so an explicit single-summon skip still persists. Retract/abort the prompt and
-		-- leave the group unnamed WITHOUT storing a skip, so a mode change re-prompts it
-		-- next cast (GH #57).
+		-- A sibling arriving while the first prompt is still pending (pending > 0) reveals
+		-- a multi-summon; a plain re-cast finds pending == 0 and is left alone. Retract the
+		-- prompt and leave the group unnamed WITHOUT storing a skip, so a mode change
+		-- re-prompts it next cast.
 		if mode == "skip" and (pending[key] or 0) > 0 then
 			pending[key] = nil
 			retract(key, ownerRaw)
@@ -541,36 +517,27 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	sendPrompt(key, summonGuid, rootTemplate, ownerUuid, ownerRaw, mode == "shared" and "shared" or "single", nil)
 end
 
----------------------------------------------------------------------------
--- Osiris hook
---
--- There is no "summon created" Osiris event in BG3. EnteredLevel fires for
--- every object that spawns into a level, and it conveniently hands us the
--- root template, which is the stable half of our storage key.
----------------------------------------------------------------------------
-
+-- There is no "summon created" Osiris event; EnteredLevel fires for every object
+-- spawning into a level and hands us the root template (the stable half of the key).
 function Watcher.Register()
 	Ext.Osiris.RegisterListener("EnteredLevel", 3, "after", function(objectGuid, rootTemplate, _level)
 		if not isSummon(objectGuid) then
 			return
 		end
-		-- Defer: on the tick a summon enters the level its owner link and
-		-- display name are not reliably populated yet.
+		-- Defer: a summon's owner link and display name are not populated on the tick
+		-- it enters the level.
 		Ext.Timer.WaitFor(100, function()
 			Watcher.HandleSummon(objectGuid, rootTemplate)
 		end)
 	end)
 end
 
----------------------------------------------------------------------------
--- Re-apply names to summons that are already alive (e.g. after loading a save)
----------------------------------------------------------------------------
-
+-- Re-apply names to summons already alive (e.g. after loading a save).
 function Watcher.ReapplyExisting()
 	Naming.SeedLoca(Store.All())
 
 	-- Reapplying names on load is opt-out, but the type refresh always runs so the
-	-- saved-name list can show a type for summons that were alive at load (GH #47).
+	-- list can show a type for summons that were alive at load.
 	local applyNames = Store.Settings().ApplyToExisting
 	local summons = Naming.AllSummons()
 	local applied = 0
@@ -600,10 +567,6 @@ function Watcher.ReapplyExisting()
 	Util.Log(("Reapply: named %d of %d live summon(s)."):format(applied, #summons))
 end
 
----------------------------------------------------------------------------
--- Net handlers
----------------------------------------------------------------------------
-
 function Watcher.RegisterNet()
 	Channels.SubmitName:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.Key) ~= "string" then
@@ -615,8 +578,7 @@ function Watcher.RegisterNet()
 		local name = Util.Sanitise(data.Name)
 		if name == "" then
 			if data.Abort then
-				-- Aborted via the X/Skip: clear the "already asked" marks so a
-				-- re-summon prompts again.
+				-- Aborted via Skip: clear the asked marks so a re-summon prompts again.
 				askedThisSession[key] = nil
 				if data.SummonUuid then
 					askedUnique[data.SummonUuid] = nil
@@ -653,10 +615,8 @@ function Watcher.RegisterNet()
 	end)
 
 	Channels.ListNames:SetRequestHandler(function(data, _user)
-		-- Scope the list to the viewing player (GH #86): show only summons whose owner
-		-- that player currently controls. The client sends the viewer's controlled
-		-- character (a viewport's SelectedCharacter); resolve both it and each owner to a
-		-- UserID and compare. A missing/unresolvable viewer shows all (never an empty list).
+		-- Scope the list to the viewing player: resolve the viewer's character and each
+		-- owner to a UserID and compare. A missing viewer shows all (never an empty list).
 		local viewerUser = reservedUser(type(data) == "table" and data.ViewerCharacter or nil)
 		local hostOk, host = pcall(Osi.GetHostCharacter)
 		local hostUser = reservedUser(hostOk and host or nil)
@@ -747,9 +707,6 @@ function Watcher.RegisterNet()
 	end)
 
 	-- Rename one specific live summon, addressed by uuid (from a native UI control).
-	-- The uuid is resolved to the stable owner|template key; in unique mode the
-	-- creature's slot (its sorted position among live siblings) is renamed so the
-	-- others keep their names, otherwise the whole key shares the new name.
 	Channels.RenameSummon:SetHandler(function(data, _user)
 		if not Util.IsRenameRequestValid(data) then
 			return
@@ -769,18 +726,17 @@ function Watcher.RegisterNet()
 		end
 
 		local key = Util.MakeKey(owner, template)
-		-- Record the type here too: an Examine rename can create a saved name for a
-		-- summon that was alive at load and so never passed through HandleSummon (GH #47).
+		-- Record the type here too: an Examine rename can create a saved name for a summon
+		-- that was alive at load and so never passed through HandleSummon.
 		rememberType(key, uuid)
 		local name = Util.Sanitise(data.Name)
 
-		-- Follow the CURRENT MultiSummonMode, like resolveGroup: a leftover unique
-		-- set must not force unique behaviour after the player switches to shared or
-		-- skip, and a shared/skip rename collapses any leftover set to one name.
+		-- Follow the CURRENT MultiSummonMode, like resolveGroup: a leftover unique set
+		-- must not force unique behaviour after switching to shared/skip, which collapses
+		-- any leftover set to one name.
 		if Store.Settings().MultiSummonMode == "unique" then
-			-- Rename just this creature's slot - its 1-based position among the key's
-			-- live siblings in sorted-uuid order (matching Util.AssignByOrder) - so the
-			-- others keep their names.
+			-- Rename just this creature's slot (its sorted position among live siblings, per
+			-- Util.AssignByOrder) so the others keep their names.
 			local siblings = {}
 			forLiveSummons(key, function(summon)
 				local sid = summon.Uuid and tostring(summon.Uuid.EntityUuid)
@@ -790,9 +746,8 @@ function Watcher.RegisterNet()
 			end)
 			table.sort(siblings)
 
-			-- Seed a dense set aligned to the live siblings, then overwrite the target
-			-- slot. SetSlot/AppendUnique cannot: they no-op when the saved set is
-			-- shorter than the target slot (absent on the first Examine rename).
+			-- Seed a dense set aligned to the live siblings, then overwrite the target slot.
+			-- SetSlot/AppendUnique no-op when the saved set is shorter than the target slot.
 			local saved = Store.Get(key)
 			local names = {}
 			if type(saved) == "table" then
@@ -839,18 +794,15 @@ function Watcher.RegisterNet()
 		for key, value in pairs(data) do
 			Store.SetSetting(key, value)
 		end
-		-- Push the new settings to clients so a locally cached copy (the story-summon
-		-- rename gate in NativeRenameUI) updates at once, not on the next re-summon.
+		-- Push to clients so a locally cached copy (the story-summon rename gate in
+		-- NativeRenameUI) updates at once, not on the next re-summon.
 		pcall(function()
 			Channels.SettingsChanged:Broadcast(Store.Settings())
 		end)
 	end)
 end
 
----------------------------------------------------------------------------
--- Console commands (server context)
----------------------------------------------------------------------------
-
+-- Console commands (server context).
 function Watcher.RegisterConsole()
 	Ext.RegisterConsoleCommand("nys_diag", function()
 		local summons = Naming.HostSummons()

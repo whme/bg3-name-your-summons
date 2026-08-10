@@ -2,8 +2,7 @@
 
 The tools a Baldur's Gate 3 mod depends on and where each one's authoritative
 docs live, so an agent knows its stack and where to look instead of guessing an
-API shape. Most of this was learned the hard way during the native-UI work on
-issue #9.
+API shape.
 
 ## The stack
 
@@ -36,9 +35,9 @@ markup, plain text); `.lsx` (Larian XML, plain text) with binary equivalents
 
 **Caveat: the IDE helpers and wikis drift behind the installed build.** When a
 documented field/event returns `nil` or a `Subscribe` never fires, suspect a
-rename and confirm against the extender source. (In #9 the live client event was
+rename and confirm against the extender source. (e.g. the live client event is
 `Ext.Events.MouseButtonInput`, not the helper's stale `EclLuaMouseButton`; since
-`Ext.Events` is not enumerable, only the source had it.)
+`Ext.Events` is not enumerable, only the source has it.)
 
 ## NoesisGUI: what is not obvious from WPF alone
 
@@ -106,8 +105,8 @@ Install MCM (plus its own requirements), load it before KEN, and restart.
   game's `ui::DeferredCommand`s (`ExamineCommand`, `ShowProfileCommand`, ...) as
   `Noesis::BaseCommand` objects - plus platform flags. It is NOT on `ContentRoot`'s
   own DataContext; it is inherited onto HUD nodes, so read it off an always-present
-  one - e.g. the `HudIndicator` node under `ContentRoot` (verified GH #50) - rather
-  than assuming the literal root. Invoke the commands with the technique above.
+  one - e.g. the `HudIndicator` node under `ContentRoot` - rather than assuming the
+  literal root. Invoke the commands with the technique above.
 - Per-entity view-models expose `EntityUUID`, `CharacterType`, and a Noesis
   `EntityHandle`; that `EntityHandle` is the object entity-commands take as their
   `CommandParameter` (confirmed against the game's XAML). `CurrentPlayer` exposes
@@ -118,8 +117,8 @@ Install MCM (plus its own requirements), load it before KEN, and restart.
 - **Read the dynamic property bag, not `GetProperty`, when scanning.** For a runtime
   DataContext property (`EntityUUID`, `CharacterType`, ...), read `GetAllProperties()`
   and index the result; `dc:GetProperty(key)` logs a Noesis warning for every object
-  lacking the key, and falling back to it while walking the tree cost 238-510 ms to
-  open Examine (GH #50). Use the direct getter only for a single known object (e.g.
+  lacking the key, and falling back to it while walking the tree costs 238-510 ms to
+  open Examine. Use the direct getter only for a single known object (e.g.
   `dc:GetProperty("EntityHandle")` on the one matched view-model, where you need the
   live object rather than a bag copy).
 - **Anchor tree scans; never walk the whole root.** Find `ContentRoot` (near the

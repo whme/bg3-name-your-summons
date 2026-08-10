@@ -138,7 +138,7 @@ Useful when hunting for a live object to reuse:
   empty for it. This is why route 2 exists - the game's own boxed
   `CommandParameter` lives here, out of reach.
 
-## Worked example: closing the Examine panel (GH #54)
+## Worked example: closing the Examine panel
 
 The Examine panel's close button runs, after its animation,
 `CustomEvent("CloseWidget")` - a state event whose action is `<ls:RemoveState/>`

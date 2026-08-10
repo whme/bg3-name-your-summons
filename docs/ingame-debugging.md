@@ -62,9 +62,9 @@ silence and strip it before shipping.
 ## Isolate a failure with a verbatim variant
 
 When a subsystem fails and you cannot tell if the cause is your edits or the
-mechanism, ship the **minimal / byte-for-byte variant** to bisect. In #9 the
-Examine override would not load; shipping an unmodified copy of Larian's own page
-loaded fine, proving the override mechanism worked and the fault was in the added
+mechanism, ship the **minimal / byte-for-byte variant** to bisect. For example,
+when an Examine override will not load, shipping an unmodified copy of Larian's
+own page proves whether the mechanism works and isolates the fault to the added
 controls. One decisive experiment beats another speculative edit.
 
 ## Confirm engine facts from source, not stale helpers
@@ -72,15 +72,15 @@ controls. One decisive experiment beats another speculative edit.
 The BG3SE IDE helpers (`ExtIdeHelpers.lua`) and wikis lag the installed build.
 When a `Subscribe`/field read returns nothing and you suspect a rename, confirm
 the real name from the extender source (code-search `bg3se` for the
-`ThrowEvent("...")` site). In #9 the live client event was
+`ThrowEvent("...")` site). e.g. the live client event is
 `Ext.Events.MouseButtonInput`, not the helper's stale `EclLuaMouseButton`; since
-`Ext.Events` is not enumerable, only the source had it.
+`Ext.Events` is not enumerable, only the source has it.
 
 ## Watch performance
 
-You cannot feel frame hitches. In #9 a loop that walked the Examine visual tree
-every 500ms (each walk ~2s) hung the game; the fix did the expensive lookup once,
-on click. Keep diagnostics cheap, early-return when the relevant panel is closed,
+You cannot feel frame hitches. For example, a loop that walked the Examine visual
+tree every 500ms (each walk ~2s) hung the game; do the expensive lookup once, on
+click. Keep diagnostics cheap, early-return when the relevant panel is closed,
 and prefer an event subscription over a poll. If the user reports sluggishness,
 suspect your instrumentation first.
 

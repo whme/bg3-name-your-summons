@@ -13,10 +13,9 @@
              ls:TooltipExtender.Owner="{Binding CurrentPlayer.UIData.ExamineTarget}">
 
     <ls:UIWidget.Resources>
-    <!-- Name Your Summons (GH #54): a boxed Noesis string the client reads back with
-         element:Resource("NYS_CloseWidget") to close this panel from Lua. CustomEvent's
-         "CloseWidget" parameter must be a boxed Noesis value, not a Lua string, and SE
-         cannot mint one - so we plant it here. Do not remove; NativeRenameUI depends on it. -->
+    <!-- A boxed Noesis string the client reads back with element:Resource("NYS_CloseWidget")
+         to close this panel from Lua: CustomEvent's "CloseWidget" parameter must be a boxed
+         Noesis value, which SE cannot mint. Do not remove; NativeRenameUI depends on it. -->
     <System:String x:Key="NYS_CloseWidget">CloseWidget</System:String>
     <ControlTemplate x:Key="CharSheetTabController" TargetType="Control">
         <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
@@ -91,10 +90,9 @@
                                             <!-- Name Your Summons: the summon's name + settings gear (summons only).
                                                  The name box defaults to read-only/Focusable/IsHitTestVisible all off - the
                                                  native plain-name look, correct for a forbidden summon; NativeRenameUI flips
-                                                 those input-checked flags on for a renamable one (GH #48).
-                                                 OpenVirtualKeyboardOnFocus=False on the text fields: this page loads only in
-                                                 keyboard mode, but with Steam Input active (Big Picture) the default (True)
-                                                 pops Steam's on-screen keyboard on focus - off here keeps it gamepad-only (GH #87). -->
+                                                 those input-checked flags on for a renamable one.
+                                                 OpenVirtualKeyboardOnFocus=False: with Steam Input active (Big Picture) the
+                                                 default (True) pops Steam's on-screen keyboard on focus. -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
@@ -108,8 +106,8 @@
                                                 </StackPanel.Style>
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                                     <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" OpenVirtualKeyboardOnFocus="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
-                                                    <!-- GH #50: an LSButton with a Command binding (a Grid has no Click/command).
-                                                         Its DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
+                                                    <!-- An LSButton with a Command binding (a Grid has no Click/command). Its
+                                                         DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
                                                     <ls:LSButton x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center"
                                                                  Background="Transparent" Command="{Binding NysGearCommand}">
                                                         <ls:LSButton.Template>
@@ -128,9 +126,9 @@
                                                         </ls:LSButton.Template>
                                                     </ls:LSButton>
                                                 </StackPanel>
-                                                <!-- GH #80 / #51: Confirm commits + advances the queue (an Enter alternative);
-                                                     Skip skips this summon. VMs set from Lua; both share NysShow* (#examineQueue > 0),
-                                                     so both hide for single summons and on the last of a group. -->
+                                                <!-- Confirm commits + advances the queue; Skip skips this summon. VMs set from
+                                                     Lua; both share NysShow* (#examineQueue > 0), so both hide for single summons
+                                                     and on the last of a group. -->
                                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
                                                              Content="Confirm" Command="{Binding NysConfirmCommand}"
@@ -492,7 +490,7 @@
                     </ls:LSNineSliceImage>
                 </Grid>
 
-                <!-- ===== Name Your Summons: native settings overlay (GH #20) =====
+                <!-- ===== Name Your Summons: native settings overlay =====
                      DataContext is an SE viewmodel set from Lua (NativeConfigUI) when
                      the panel opens; the gear toggles IsOpen. FallbackValue keeps it
                      collapsed before the DataContext is bound. -->

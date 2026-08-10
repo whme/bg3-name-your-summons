@@ -13,7 +13,7 @@ Watcher.RegisterConsole()
 
 Ext.Events.SessionLoaded:Subscribe(function()
 	Watcher.Register()
-	-- Summons that survived a save/load need their names put back on.
+	-- Delay so summons already alive on load are fully assembled before reapply.
 	Ext.Timer.WaitFor(1500, function()
 		local ok, err = pcall(Watcher.ReapplyExisting)
 		if not ok then

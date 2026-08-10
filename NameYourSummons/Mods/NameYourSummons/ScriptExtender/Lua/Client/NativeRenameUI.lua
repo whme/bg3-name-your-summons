@@ -1,30 +1,25 @@
 -- SPDX-License-Identifier: MIT
 --[[
-    Client side of the native "rename this summon" control (GH #9, #19, #50, #51, #86).
+    Client side of the native "rename this summon" control. The examined creature's
+    uuid is read from the Examine panel's Noesis DataContext (EntityUUID +
+    CharacterType) and a rename is sent to the server.
 
-    The examined creature's uuid is read from the Examine panel's Noesis
-    DataContext (EntityUUID + CharacterType) and a rename is sent to the server.
-
-    Per-viewport (GH #86): local split-screen has ONE shared client Lua state but
-    up to one Examine panel PER viewport open at once. Each panel carries its own
-    CurrentPlayer (a distinct PlayerId 1/2 and the viewer's SelectedCharacter), so
-    all panel state - wiring, the rename field, the gear, and the on-summon naming
-    queue - is keyed by PlayerId (`panels[id]`). Every node lookup is scoped to a
-    given panel (`examineNodeById`, `findNamedIn`, `liveFieldIn`) so two players can
-    examine, name, and open settings independently. The server routes an on-summon
-    prompt to a viewport by sending ViewportChar (the summoner's controlled
-    character); the client matches it to a panel via CurrentPlayer.SelectedCharacter.
+    Per-viewport: local split-screen has ONE shared client Lua state but up to one
+    Examine panel per viewport open at once. Each panel carries its own CurrentPlayer
+    (a distinct PlayerId and the viewer's SelectedCharacter), so all panel state is
+    keyed by PlayerId (`panels[id]`) and every node lookup is scoped to a given panel
+    (`examineNodeById`, `findNamedIn`, `liveFieldIn`). The server routes an on-summon
+    prompt to a viewport via ViewportChar, matched to a panel by SelectedCharacter.
 
     Native-UI approach (see docs/bg3-modding-toolchain.md and AGENTS.md):
-    - Controls WE add to the Examine panel are driven by per-element MVVM, not by
-      global mouse hit-testing: the gear is an `ls:LSButton` whose `Command` binds to
-      a small viewmodel we set as its nested DataContext; the name field commits via
-      its own per-element key/focus subscriptions.
-    - There is no panel-open event (Ext.UI.GetStateMachine() is nil), so ONE global
-      mouse hook (and one controller-button hook) remain as the sole lifecycle
-      detectors (panels present in the tree = open).
-    - Close a panel from Lua with closeExaminePanel (GH #54): drive its CustomEvent
-      command with a boxed string planted as a XAML resource.
+    - Controls we add are driven by per-element MVVM, not global mouse hit-testing:
+      the gear's Command binds to a viewmodel on its nested DataContext; the field
+      commits via its own per-element subscriptions.
+    - There is no panel-open event (Ext.UI.GetStateMachine() is nil), so one global
+      mouse hook and one controller-button hook are the sole lifecycle detectors
+      (panels present in the tree = open).
+    - Close a panel from Lua with closeExaminePanel: drive its CustomEvent command
+      with a boxed string planted as a XAML resource.
     - Never compare a Noesis object with `== nil` (its __eq crashes on an expired
       object) and never cache one across ticks; fetch fresh and test truthiness.
 ]]
@@ -34,14 +29,12 @@ local Channels = Ext.Require("Shared/Channels.lua")
 
 local NativeRenameUI = {}
 
--- Set by BootstrapClient so this module (which owns Examine-panel detection) can
--- drive the native settings overlay without a circular require. Both take the
--- PlayerId of the panel the gear/close happened on (GH #86).
+-- Set by BootstrapClient so this module (which owns Examine-panel detection) can drive
+-- the settings overlay without a circular require. Both take the panel's PlayerId.
 local onGearClickHandler -- fun(id) - called when a panel's gear is clicked
 local panelCloseHandler -- fun(id) - called when a panel closes (commit its staged config edits)
 
--- Verbose tracing of the Examine gear/field/naming flow; off by default, toggle at
--- runtime from the client console with `!nys_uidebug`.
+-- Verbose tracing of the gear/field/naming flow; toggle with `!nys_uidebug`.
 local diagEnabled = false
 local function log(...)
 	if diagEnabled then
@@ -51,28 +44,26 @@ end
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 
--- Recursion safety only. Every search below is ANCHORED at ContentRoot/Examine, so
--- it never walks the whole tree; this bound just stops a pathological cycle.
+-- Recursion safety only; every search is anchored at ContentRoot/Examine.
 local SEARCH_DEPTH_LIMIT = 80
 
 -- Registered viewmodel type names for our added controls (nested DataContexts).
 local GEAR_VM = "NYS_GearVM"
 local SKIP_VM = "NYS_SkipVM"
--- The Confirm button viewmodel (GH #80): a Command + a Bool visibility flag shared with Skip
--- (#queue > 0). It is the sole commit-and-advance trigger for a multi-summon queue - the field's
--- focus-loss blur was removed as an advance path (unreliable on controller; GH #86).
+-- The Confirm button viewmodel: a Command + a Bool visibility flag shared with Skip
+-- (#queue > 0). The sole commit-and-advance trigger for a multi-summon queue.
 local CONFIRM_VM = "NYS_ConfirmVM"
 
--- The global command surface (ExamineCommand + ~200 other game commands) is inherited
--- onto the always-present "HudIndicator" node; one per viewport in split-screen (GH #50, #86).
+-- The global command surface (ExamineCommand + ~200 other game commands) is inherited onto
+-- the always-present "HudIndicator" node; one per viewport in split-screen.
 local COMMAND_SURFACE_NODE = "HudIndicator"
 
--- After opening or swapping a panel, ignore input for SETTLE_MS while the swapped-in
--- field element and its DataContext appear, then wire the fresh field and set its text.
+-- After opening or swapping a panel, ignore input for this long while the swapped-in field
+-- element and its DataContext appear, then wire the fresh field and set its text.
 local EXAMINE_SETTLE_MS = 400
 
--- Debounce for the live name save: commit only once text changes settle (this long after the
--- last TextChanged), so rapid typing saves once, not per keystroke (GH #86).
+-- Debounce for the live name save: commit only once text changes settle, so rapid typing
+-- saves once, not per keystroke.
 local TEXT_COMMIT_DEBOUNCE_MS = 20
 
 local function safe(fn, ...)
@@ -83,8 +74,7 @@ local function safe(fn, ...)
 	return nil
 end
 
--- Hoisted out of the per-node walk so it does not allocate a closure per access.
--- VisualChild is 1-based (bg3se GetVisualChild).
+-- Hoisted out of the per-node walk to avoid a closure per access. VisualChild is 1-based.
 local function readName(node)
 	return node.Name
 end
@@ -109,9 +99,8 @@ local function visualChildCount(node)
 	return type(count) == "number" and count or 0
 end
 
---- Depth-first search of the visual tree for the first node (incl. `node`)
---- satisfying `predicate`. Callers ANCHOR the search by passing ContentRoot or an
---- Examine node as `node`, so it only ever walks that subtree.
+--- Depth-first search of the visual tree for the first node (incl. `node`) satisfying
+--- `predicate`. Callers anchor by passing ContentRoot or an Examine node.
 ---@param node any
 ---@param depth integer
 ---@param predicate fun(node:any):boolean
@@ -145,15 +134,15 @@ local function findFrom(root, name)
 	end)
 end
 
---- The composition root (`ContentRoot`), the cheap anchor for every scan. Fetched
---- fresh (a stale Noesis handle crashes on use); the search is shallow.
+--- The composition root (`ContentRoot`), the anchor for every scan. Fetched fresh (a
+--- stale Noesis handle crashes on use).
 ---@return any|nil
 local function contentRoot()
 	return findFrom(safe(Ext.UI.GetRoot), "ContentRoot")
 end
 
---- Read a runtime property from a view model's dynamic property bag (bag only:
---- dc:GetProperty warns per missing key and is slow while scanning, GH #50).
+--- Read a runtime property from a viewmodel's dynamic property bag (bag only:
+--- dc:GetProperty warns per missing key and is slow while scanning).
 ---@param dc any
 ---@param key string
 ---@return any
@@ -167,9 +156,7 @@ local function dcProp(dc, key)
 	return nil
 end
 
----------------------------------------------------------------------------
--- Per-viewport identity (GH #86)
----------------------------------------------------------------------------
+-- Per-viewport identity.
 
 --- The CurrentPlayer view model on a node's DataContext (each viewport has its own).
 ---@param node any
@@ -195,8 +182,8 @@ local function playerIdOf(node)
 end
 
 --- The character a viewport currently controls (CurrentPlayer.SelectedCharacter.
---- EntityUUID), as a bare uuid, or nil. This is the client<->server bridge: it equals
---- the server's Osi.GetCurrentCharacter(reservedUser) for that player (GH #86).
+--- EntityUUID), as a bare uuid, or nil. The client<->server bridge: it equals the
+--- server's Osi.GetCurrentCharacter(reservedUser) for that player.
 ---@param node any
 ---@return string|nil
 local function selectedCharOf(node)
@@ -233,8 +220,8 @@ local function isExamineName(name)
 	return name == "Examine" or name == "Examine_c"
 end
 
---- Visit every open Examine/Examine_c node under ContentRoot (there is one per
---- viewport with a panel open). Never stops early.
+--- Visit every open Examine/Examine_c node under ContentRoot (one per viewport with a
+--- panel open). Never stops early.
 ---@param fn fun(node:any)
 local function forEachExamineNode(fn)
 	findNode(contentRoot(), 0, function(node)
@@ -315,17 +302,12 @@ local function nodeText(node)
 	return type(t) == "string" and t or ""
 end
 
----------------------------------------------------------------------------
--- Per-viewport state
----------------------------------------------------------------------------
---
--- Each viewport with a panel has an entry here, keyed by PlayerId. Naming answers over
--- SubmitName (server clears its pending count and lifts the world-pause); a later edit
--- renames idempotently over RenameSummon.
+-- Per-viewport state, keyed by PlayerId. Naming answers over SubmitName (server clears
+-- its pending count and lifts the world-pause); a later edit renames over RenameSummon.
 local panels = {} -- id -> state
 local openIds = {} -- id -> true, the set of panels currently open (for close detection)
 
--- AllowStorySummons cached client-side so the forbidden check is synchronous (GH #48).
+-- AllowStorySummons cached client-side so the forbidden check is synchronous.
 local cachedAllowStory = false
 
 ---@param id integer
@@ -429,7 +411,7 @@ local function clientTemplateOf(uuid)
 end
 
 --- Whether the summon may not be renamed: a story-bound template with the opt-in off,
---- mirroring the server's HandleSummon gate (GH #48).
+--- mirroring the server's HandleSummon gate.
 ---@param uuid string
 ---@return boolean
 local function isForbiddenSummon(uuid)
@@ -490,7 +472,7 @@ local function beginCurrent(st)
 end
 
 --- Skip a viewport's current summon (if unnamed) and everything still queued for it, then
---- clear the batch. Called when its panel closes: closing means "skip the rest".
+--- clear the batch. Called when its panel closes.
 ---@param st table
 local function abortRemaining(st)
 	if not st.current and #st.queue == 0 then
@@ -509,7 +491,7 @@ local function abortRemaining(st)
 end
 
 --- Set viewport `id`'s field text from Lua. The field's Text binding is OneWay and does
---- NOT follow an Examine content swap (GH #51), so on each swap we write it in directly.
+--- NOT follow an Examine content swap, so on each swap we write it in directly.
 ---@param id integer
 ---@param text string
 local function setFieldTextIn(id, text)
@@ -527,9 +509,8 @@ local function setFieldTextIn(id, text)
 end
 
 --- Rename viewport `id`'s examined summon to `field`'s current text. Deduped via
---- st.lastSent. During an active on-summon session the first answer goes over SubmitName
---- (decrements the server's pending count once); a later edit falls through to the
---- idempotent RenameSummon path.
+--- st.lastSent. During an on-summon session the first answer goes over SubmitName
+--- (decrements the pending count once); a later edit falls through to RenameSummon.
 ---@param id integer
 ---@param field any
 local function commitField(id, field)
@@ -562,12 +543,10 @@ local function commitField(id, field)
 	end
 end
 
---- Commit the name the player typed, WITHOUT depending on a focus-loss event. The field's
---- blur (LostFocus/LostKeyboardFocus) is not reliably delivered on controller, so a rename
---- must not hinge on it (GH #86): TextChanged is reliable, so we track the latest text in
---- st.liveText and flush it here at definitive exits - the gear opening or the panel closing.
---- Reads the live field if still present (gear open), else the tracked text (panel closed).
---- Deduped via st.lastSent; a first on-summon answer goes over SubmitName, a later edit renames.
+--- Commit the name the player typed, WITHOUT depending on a focus-loss event (the field's
+--- blur is not reliably delivered on controller). TextChanged tracks the latest text in
+--- st.liveText; this flushes it at definitive exits - the gear opening or the panel
+--- closing. Reads the live field if present (gear open), else the tracked text (closed).
 ---@param id integer
 local function flushName(id)
 	local st = panels[id]
@@ -598,11 +577,10 @@ local function flushName(id)
 	end
 end
 
---- Commit viewport `id`'s current summon and advance to the next queued one. This is the
---- multi-summon advance, driven ONLY by the Confirm button (confirmCurrent) - the field's blur
---- is no longer an advance path (unreliable on controller; GH #80, #86). The name itself is
---- saved live on TextChanged; this also flushes a not-yet-answered name (first answer over
---- SubmitName so the server's pending count clears, later edits rename), then swaps.
+--- Commit viewport `id`'s current summon and advance to the next queued one - the
+--- multi-summon advance, driven only by the Confirm button. The name itself is saved live
+--- on TextChanged; this also flushes a not-yet-answered name (first answer over SubmitName
+--- so the pending count clears, later edits rename), then swaps.
 ---@param id integer
 local function onFieldEnter(id)
 	local st = panels[id]
@@ -634,10 +612,9 @@ local function onFieldEnter(id)
 	showNext(id)
 end
 
---- The Confirm button handler (GH #80): commit the current summon and advance. Shown only while
---- a next summon is queued, so it is the multi-summon advance trigger; a keyboard player uses
---- the same button. Single summons, the last of a group, and manual examines have no Confirm and
---- rely on the live TextChanged save (GH #86).
+--- The Confirm button handler: commit the current summon and advance. Shown only while a
+--- next summon is queued. Single summons, the last of a group, and manual examines have no
+--- Confirm and rely on the live TextChanged save.
 ---@param id integer
 local function confirmCurrent(id)
 	onFieldEnter(id)
@@ -657,9 +634,8 @@ local function skipCurrent(id)
 	end
 end
 
---- Open the native settings overlay for viewport `id` (bound to its gear's NysGearCommand).
---- Opening the gear leaves the name field, so commit any typed name first - the field's own
---- blur may not fire on controller (GH #86).
+--- Open the settings overlay for viewport `id` (bound to its gear's NysGearCommand).
+--- Opening the gear leaves the field, so commit any typed name first.
 ---@param id integer
 local function onGearClick(id)
 	log("onGearClick -> settings overlay for viewport", id)
@@ -669,8 +645,8 @@ local function onGearClick(id)
 	end
 end
 
---- Show viewport `id`'s Skip and Confirm buttons only while a next summon is queued (GH #80).
---- Refresh both live on every queue mutation; fetch fresh, a Noesis handle does not survive.
+--- Show viewport `id`'s Skip and Confirm buttons only while a next summon is queued.
+--- Refresh both on every queue mutation; fetch fresh, a Noesis handle does not survive.
 ---@param id integer
 local function refreshQueueButtons(id)
 	local st = panels[id]
@@ -715,20 +691,16 @@ local function wirePanel(id)
 			st.fieldSubs[#st.fieldSubs + 1] = { field = field, handle = handle }
 		end
 	end
-	-- Save the name on every text change - this is the ONE commit path (GH #86). The field's
-	-- focus-loss blur is not reliably delivered (esp. on controller), so a rename must not
-	-- hinge on it; TextChanged is reliable. Saving does NOT advance a multi-summon queue -
-	-- commitField never calls showNext, so the next creature still needs the explicit button.
+	-- Save the name on every text change - the one commit path, since the field's blur is
+	-- not reliably delivered (esp. on controller). Saving does NOT advance a multi-summon
+	-- queue (commitField never calls showNext), so the next creature still needs the button.
 	sub("TextChanged", function()
 		local pst = panels[id]
 		if not pst then
 			return
 		end
 		pst.liveText = nodeText(field)
-		-- Debounce: commit once typing settles (TEXT_COMMIT_DEBOUNCE_MS after the last change),
-		-- so rapid typing saves once, not per keystroke. Saving never advances a multi-summon
-		-- queue - commitField does not call showNext, so the next creature still needs the
-		-- explicit button (GH #86).
+		-- Debounce so rapid typing saves once, not per keystroke.
 		pst.textGen = pst.textGen + 1
 		local gen = pst.textGen
 		Ext.Timer.WaitForRealtime(TEXT_COMMIT_DEBOUNCE_MS, function()
@@ -783,7 +755,7 @@ local function wirePanel(id)
 	end
 
 	-- Confirm: nested DataContext = a fresh NYS_ConfirmVM; the multi-summon advance trigger,
-	-- revealed on the same condition as Skip (a next summon is queued) (GH #80).
+	-- revealed on the same condition as Skip (a next summon is queued).
 	local confirm = findNamedIn(id, "NYS_ConfirmButton")
 	if confirm then
 		local vm = safe(function()
@@ -808,8 +780,8 @@ local function wirePanel(id)
 	log("wirePanel: wired", #st.fieldSubs, "field subs", uiState(id))
 
 	-- An on-summon prompt (current ~= nil) is the server asking for a name, so enable editing
-	-- now; a manually examined summon stays plain text until a click, except on the controller
-	-- layout where there is no click (GH #6).
+	-- now; a manually examined summon stays plain text until a click, except on controller
+	-- where there is no click.
 	local summonUuid = examinedSummonUuidIn(id)
 	st.forbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
 	if st.current ~= nil or (not st.forbidden and st.controller) then
@@ -836,12 +808,11 @@ local function unwirePanel(id)
 	st.forbidden = false
 end
 
---- Re-wire the ALREADY-open panels after another panel opened. Opening/swapping one
---- Examine panel rebuilds the OTHER open panels' field elements in split-screen (a shared
---- re-layout), silently killing our field subscriptions on them; re-attaching restores
---- their rename commit (GH #86). `exclude` is the set of freshly-wired panels to leave
---- ALONE - critically the just-opened panel itself, so single-player (its sole panel is
---- always the new one) is never disturbed. A panel mid-open is skipped too.
+--- Re-wire the already-open panels after another panel opened. Opening one Examine panel
+--- rebuilds the OTHER open panels' field elements in split-screen (a shared re-layout),
+--- silently killing our field subscriptions; re-attaching restores their rename commit.
+--- `exclude` is the set of freshly-wired panels to leave alone - critically the just-opened
+--- panel itself, so single-player (its sole panel is always the new one) is never disturbed.
 ---@param exclude table|nil  set of panel ids (id -> true) to skip
 local function rewireStale(exclude)
 	for id in pairs(openIds) do
@@ -863,8 +834,8 @@ local function closePanel(id)
 		return
 	end
 	log("closePanel:", id, uiState(id))
-	-- Closing the panel is a definitive "done": commit a typed-but-unblurred name (the field
-	-- is gone now, so this uses the text tracked via TextChanged) before aborting the rest (GH #86).
+	-- Closing is a definitive "done": commit a typed-but-unblurred name (the field is gone,
+	-- so this uses the text tracked via TextChanged) before aborting the rest.
 	flushName(id)
 	unwirePanel(id)
 	abortRemaining(st)
@@ -901,11 +872,9 @@ local function pollLifecycle()
 		end
 	end
 	openIds = present
-	-- A newly-appeared panel rebuilds the OTHER open panels' field elements (shared
-	-- split-screen re-layout), so re-wire the already-open panels once it settles - EXCLUDING
-	-- the new ones (the just-appeared panel is freshly wired; in single-player it is the only
-	-- panel, which must be left untouched or its own rename breaks). Covers a manually opened
-	-- second panel, where there is no on-summon settle to re-attach the first (GH #86).
+	-- A newly-appeared panel rebuilds the OTHER open panels' field elements, so re-wire the
+	-- already-open panels once it settles - excluding the new ones (leaving single-player's
+	-- sole panel untouched). Covers a manually opened second panel.
 	if newIds then
 		local exclude = newIds
 		Ext.Timer.WaitForRealtime(EXAMINE_SETTLE_MS, function()
@@ -916,9 +885,8 @@ local function pollLifecycle()
 end
 
 --- Global left-click hook - a lifecycle detector only (there is no panel-open event; it
---- does NOT hit-test the gear/close/field, which are per-element bindings). The mouse
---- cannot say which viewport was clicked, so a click that starts editing enables it on
---- every open renamable manual panel (harmless; the focus lands on the clicked one).
+--- does NOT hit-test the per-element gear/close/field bindings). The mouse cannot say which
+--- viewport was clicked, so starting editing enables it on every open renamable manual panel.
 ---@param e any
 local function onMouseButton(e)
 	local pressed = safe(function()
@@ -944,12 +912,10 @@ local function onMouseButton(e)
 	end
 end
 
---- Global controller-button hook - the controller-layout counterpart of onMouseButton
---- (MouseButtonInput never fires on a controller and there is no panel-open event). It
---- reconciles the tree; wirePanel enables editing for a renamable manual summon on
---- controller. It ALWAYS re-polls after a settle because the button that OPENS Examine fires
---- this while the panel is still mid-open and a stick-only navigation produces no further
---- events.
+--- Global controller-button hook - the controller counterpart of onMouseButton
+--- (MouseButtonInput never fires on a controller). It ALWAYS re-polls after a settle because
+--- the button that OPENS Examine fires this while the panel is still mid-open, and a
+--- stick-only navigation produces no further events.
 ---@param e any
 local function onControllerButton(e)
 	local pressed = safe(function()
@@ -962,14 +928,11 @@ local function onControllerButton(e)
 	Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
 end
 
----------------------------------------------------------------------------
--- Opening Examine on a specific creature and viewport (GH #19, #50, #51, #86)
----------------------------------------------------------------------------
+-- Opening Examine on a specific creature and viewport.
 
---- The game's ExamineCommand off a HUD command surface, returned fresh (never cached).
---- In split-screen there is one HudIndicator per viewport; `matchChar` (the summoner's
---- controlled character) selects that player's surface so Examine opens on the right side
---- (GH #86). Falls back to the first surface for single-player / no match.
+--- The game's ExamineCommand off a HUD command surface, returned fresh (never cached). In
+--- split-screen there is one HudIndicator per viewport; `matchChar` selects that player's
+--- surface. Falls back to the first surface for single-player / no match.
 ---@param matchChar string|nil
 ---@return any|nil
 function getExamineCommand(matchChar)
@@ -1024,7 +987,7 @@ function entityHandleFor(uuid)
 end
 
 --- The PlayerId of the viewport currently controlling `char` (its SelectedCharacter), or
---- nil. Scans the always-present HUD surfaces plus any open Examine panels (GH #86).
+--- nil. Scans the always-present HUD surfaces plus any open Examine panels.
 ---@param char string|nil
 ---@return integer|nil
 local function viewportIdForChar(char)
@@ -1048,7 +1011,7 @@ local function viewportIdForChar(char)
 end
 
 --- Answer a session over SubmitName so the server saves the name (and clears its pending
---- count, lifting the pause), or (empty name + abort) re-asks next summon. pcall success.
+--- count, lifting the pause), or (empty name + abort) re-asks next summon.
 ---@param req table
 ---@param name string
 ---@param abort boolean|nil
@@ -1066,9 +1029,8 @@ function answerSession(req, name, abort)
 	end)
 end
 
---- Execute Examine on `req`'s summon and viewport: opens the panel or SWAPS its content
---- (C4). Returns whether it opened; the caller skips the summon otherwise so the pause
---- never hangs.
+--- Execute Examine on `req`'s summon and viewport: opens the panel or swaps its content.
+--- Returns whether it opened; the caller skips the summon otherwise so the pause never hangs.
 ---@param req table
 ---@return boolean
 function openExamine(req)
@@ -1079,7 +1041,7 @@ function openExamine(req)
 	local opened = command
 		and handle
 		and pcall(function()
-			-- A disabled command Executes as a silent no-op, hanging the pause; CanExecute guards it.
+			-- A disabled command Executes as a silent no-op, hanging the pause; guard with CanExecute.
 			canExec = command:CanExecute(handle)
 			assert(canExec)
 			command:Execute(handle)
@@ -1109,7 +1071,7 @@ function showNext(id)
 		return
 	end
 	beginCurrent(st)
-	-- Execute on an already-open panel swaps in a fresh field element (C4); drop the prior
+	-- Execute on an already-open panel swaps in a fresh field element; drop the prior
 	-- wiring, the settle below re-wires the new field.
 	unwirePanel(id)
 	st.openGen = st.openGen + 1
@@ -1138,8 +1100,7 @@ function showNext(id)
 		-- pollLifecycle may notice the panel closed and clear the batch, so re-check current.
 		pollLifecycle()
 		-- Opening this viewport's panel rebuilt the OTHER open panels' field elements, so
-		-- re-attach their subscriptions or their rename would never commit; never touch this
-		-- panel itself (GH #86).
+		-- re-attach their subscriptions or their rename would never commit; never touch this one.
 		rewireStale({ [id] = true })
 		if st.current then
 			setFieldTextIn(id, st.current.DefaultName)
@@ -1147,10 +1108,10 @@ function showNext(id)
 	end)
 end
 
--- Closing Examine from Lua (GH #54): its close runs the "CloseWidget" state event through
--- the widget's CustomEvent command, whose parameter must be a BOXED Noesis string - we
--- plant a <System:String x:Key="NYS_CloseWidget"> resource in the Examine.xaml override and
--- read it back live via element:Resource(). See AGENTS.md.
+-- Closing Examine from Lua: its close runs the "CloseWidget" state event through the widget's
+-- CustomEvent command, whose parameter must be a BOXED Noesis string - we plant a
+-- <System:String x:Key="NYS_CloseWidget"> resource in Examine.xaml and read it back live via
+-- element:Resource(). See AGENTS.md.
 local CLOSE_WIDGET_RESOURCE = "NYS_CloseWidget"
 
 --- Close viewport `id`'s open Examine panel; true if the close command was issued.
@@ -1176,12 +1137,9 @@ local function closeExaminePanel(id)
 	end) == true
 end
 
----------------------------------------------------------------------------
--- Public interface (NativeConfigUI owns the settings overlay; wired in BootstrapClient)
----------------------------------------------------------------------------
+-- Public interface (NativeConfigUI owns the settings overlay; wired in BootstrapClient).
 
---- Find a live node by x:Name within viewport `id`'s Examine subtree (so NativeConfigUI
---- resolves its overlay fresh at the moment it binds it, scoped to the opening panel).
+--- Find a live node by x:Name within viewport `id`'s Examine subtree.
 ---@param id integer
 ---@param name string
 ---@return any|nil
@@ -1189,8 +1147,8 @@ function NativeRenameUI.FindNamedIn(id, name)
 	return findNamedIn(id, name)
 end
 
---- The character the viewer of viewport `id` controls, for scoping its saved-name list
---- to that player (GH #86). nil when unresolvable (the server then shows all).
+--- The character the viewer of viewport `id` controls, for scoping its saved-name list to
+--- that player. nil when unresolvable (the server then shows all).
 ---@param id integer
 ---@return string|nil
 function NativeRenameUI.ViewerOf(id)
@@ -1228,21 +1186,20 @@ function NativeRenameUI.Register()
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
 	end)
-	-- Controller-layout lifecycle detector (GH #6); wrapped so a wrong event name cannot tear
-	-- down the module.
+	-- Controller-layout lifecycle detector; wrapped so a wrong event name cannot tear down the module.
 	pcall(function()
 		Ext.Events.ControllerButtonInput:Subscribe(onControllerButton)
 	end)
 
-	-- Seed cachedAllowStory (GH #48): a fresh boot has not loaded persisted ModVars at Register,
-	-- so SessionLoaded honours a saved opt-in; the immediate call covers a Lua `reset` reload.
+	-- Seed cachedAllowStory: a fresh boot has not loaded persisted ModVars at Register, so
+	-- SessionLoaded honours a saved opt-in; the immediate call covers a Lua `reset` reload.
 	refreshSettingsCache()
 	pcall(function()
 		Ext.Events.SessionLoaded:Subscribe(refreshSettingsCache)
 	end)
 
-	-- The setting changed (config UI); refresh the cache and re-evaluate every open panel so a
-	-- summon that just became forbidden reverts to plain text at once (GH #48).
+	-- The setting changed; refresh the cache and re-evaluate every open panel so a summon
+	-- that just became forbidden reverts to plain text at once.
 	Channels.SettingsChanged:SetHandler(function(data, _user)
 		if type(data) ~= "table" then
 			return
@@ -1259,9 +1216,8 @@ function NativeRenameUI.Register()
 		end
 	end)
 
-	-- A summon renamed from elsewhere (the settings panel) will not repaint on a manually-opened
-	-- panel, so write the new text into the on-screen field ourselves (GH #76). An active session
-	-- manages its own field.
+	-- A summon renamed from elsewhere will not repaint on a manually-opened panel, so write the
+	-- new text into the on-screen field ourselves. An active session manages its own field.
 	Channels.SummonRenamed:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.SummonUuid) ~= "string" or type(data.Name) ~= "string" then
 			return
@@ -1278,7 +1234,7 @@ function NativeRenameUI.Register()
 	end)
 
 	-- The server asks the summoner's client to name a summon; route it to that viewport's queue
-	-- and open Examine on it (GH #86).
+	-- and open Examine on it.
 	Channels.AskName:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.Key) ~= "string" or type(data.SummonUuid) ~= "string" then
 			return
@@ -1290,14 +1246,14 @@ function NativeRenameUI.Register()
 		if st.current == nil and not st.awaitingOpen then
 			showNext(id)
 		else
-			-- A sibling arrived while a session is active: reveal Skip and Confirm (GH #80).
+			-- A sibling arrived while a session is active: reveal Skip and Confirm.
 			refreshQueueButtons(id)
 		end
 	end)
 
-	-- The server retracted a prompt (a skip-mode sibling revealed a group it already resolved):
+	-- The server retracted a prompt (a skip-mode sibling revealed an already-resolved group):
 	-- its pending is cleared, so answer nothing. Drop it from whichever viewport's queue holds it;
-	-- if it is on-screen, swap to the next or close that panel (GH #54). Do NOT abort it.
+	-- if it is on-screen, swap to the next or close that panel. Do NOT abort it.
 	Channels.RetractPrompt:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.Key) ~= "string" then
 			return
