@@ -1021,6 +1021,24 @@ function NativeRenameUI.Register()
 		end
 	end)
 
+	-- A summon was renamed from elsewhere (the settings panel): if it is the one on the
+	-- open Examine screen, write the new text into the field, since a manually-opened panel
+	-- will not repaint the game's name binding on its own (GH #76). Skipped during an active
+	-- on-summon session (current ~= nil), which manages the field itself.
+	Channels.SummonRenamed:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.SummonUuid) ~= "string" or type(data.Name) ~= "string" then
+			return
+		end
+		if not panelOpen or awaitingOpen or current ~= nil then
+			return
+		end
+		local examined = examinedSummonUuid()
+		if examined ~= nil and Util.ToUuid(examined) == Util.ToUuid(data.SummonUuid) then
+			log("SummonRenamed: refreshing field to", data.Name)
+			setFieldText(data.Name)
+		end
+	end)
+
 	-- Toggle the verbose UI tracing above from the client console: `!nys_uidebug`.
 	Ext.RegisterConsoleCommand("nys_uidebug", function()
 		diagEnabled = not diagEnabled
