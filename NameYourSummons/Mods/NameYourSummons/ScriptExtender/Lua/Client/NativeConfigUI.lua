@@ -471,11 +471,19 @@ local function registerTypes()
 			NysRefreshCommand = { Type = "Command" },
 			NysCloseCommand = { Type = "Command" },
 			NysToggleTypesCommand = { Type = "Command" },
+			-- Controller-only: on a gamepad a checkbox is a focusable button toggled by accept
+			-- (there is no mouse click on the TickBox), one command per boolean (GH #6).
+			NysTogglePromptOnSummonCommand = { Type = "Command" },
+			NysTogglePromptForNamedCommand = { Type = "Command" },
+			NysTogglePauseOnPromptCommand = { Type = "Command" },
+			NysToggleAllowStoryCommand = { Type = "Command" },
+			NysToggleNameEveryCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(TOGGLE_VM, {
 			NysLabel = { Type = "String" },
 			NysChecked = { Type = "Bool", Notify = true },
 			NysEnabled = { Type = "Bool", Notify = true },
+			NysToggleCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(NAME_ROW_VM, {
 			NysRowId = { Type = "String" },
@@ -508,12 +516,24 @@ local function buildViewModel()
 	end
 	suppressWrite = true
 	local toggles = get(vm, "NysTypeToggles")
-	for _, cat in ipairs(Classifier.CATEGORIES) do
+	for index, cat in ipairs(Classifier.CATEGORIES) do
 		local toggle = instantiate(TOGGLE_VM)
 		if toggle then
 			set(toggle, "NysLabel", cat.label)
 			set(toggle, "NysChecked", false)
 			set(toggle, "NysEnabled", true)
+			-- Controller accept-toggle (GH #6): re-fetch the live row by its fixed index (the
+			-- item handle does not survive), and only toggle when the row is enabled.
+			pcall(function()
+				toggle.NysToggleCommand:SetHandler(function()
+					local v = liveVm()
+					local list = v and get(v, "NysTypeToggles")
+					local item = list and list[index]
+					if item and get(item, "NysEnabled") == true then
+						set(item, "NysChecked", get(item, "NysChecked") ~= true)
+					end
+				end)
+			end)
 			appendItem(toggles, toggle)
 		end
 	end
@@ -560,6 +580,25 @@ local function buildViewModel()
 			end
 		end)
 	end)
+	-- Controller accept-toggle for each boolean setting (GH #6): flip the live value and
+	-- recompute the enabled/greyed dependents, exactly as the mouse WriteCallback does.
+	for field, command in pairs({
+		NysPromptOnSummon = "NysTogglePromptOnSummonCommand",
+		NysPromptForNamed = "NysTogglePromptForNamedCommand",
+		NysPauseOnPrompt = "NysTogglePauseOnPromptCommand",
+		NysAllowStorySummons = "NysToggleAllowStoryCommand",
+		NysNameEverySummon = "NysToggleNameEveryCommand",
+	}) do
+		pcall(function()
+			vm[command]:SetHandler(function()
+				local v = liveVm()
+				if v then
+					set(v, field, get(v, field) ~= true)
+					recomputeEnabled(v)
+				end
+			end)
+		end)
+	end
 	suppressWrite = false
 	return vm
 end

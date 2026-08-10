@@ -1,0 +1,1456 @@
+<ls:UIWidget x:Name="Examine_c"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:b="http://schemas.microsoft.com/xaml/behaviors"
+             xmlns:ls="clr-namespace:ls;assembly=Code"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:noesis="clr-namespace:NoesisGUIExtensions;assembly=Noesis.GUI.Extensions"
+             xmlns:System="clr-namespace:System;assembly=mscorlib"
+             mc:Ignorable="d"
+             d:DesignWidth="3840" d:DesignHeight="2160"
+             ls:UIWidget.Focusable="False"
+             ls:UIWidget.ContextName="Examine" d:DataContext="{d:DesignInstance {x:Type ls:DCExamine}, IsDesignTimeCreatable=True}"
+             ls:TooltipExtender.Owner="{Binding CurrentPlayer.UIData.ExamineTarget}"
+             FocusDown="UIDown" FocusLeft="UILeft" FocusRight="UIRight" FocusUp="UIUp" ls:MoveFocus.FocusMovementMode="Closest" CanCacheFocusSurroundingElements="False">
+
+    <ls:UIWidget.Resources>
+        <ResourceDictionary>
+            <!-- Name Your Summons (GH #54): a boxed Noesis string the client reads back with
+                 element:Resource("NYS_CloseWidget") to close this panel from Lua. CustomEvent's
+                 "CloseWidget" parameter must be a boxed Noesis value, not a Lua string, and SE
+                 cannot mint one - so we plant it here. Do not remove; NativeRenameUI depends on it. -->
+            <System:String x:Key="NYS_CloseWidget">CloseWidget</System:String>
+
+            <!-- Name Your Summons (GH #6): compact checkbox row for the controller settings panel.
+                 A small box (filled when checked) + the label as content, centered. Tag carries the
+                 bound bool. Replaces the game TickBox carousel here, which is a fixed 500px wide and
+                 overflowed the panel. -->
+            <ControlTemplate x:Key="NYS_CheckContent" TargetType="ContentControl">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Border Width="40" Height="40" VerticalAlignment="Center" BorderThickness="3" BorderBrush="{StaticResource LS_accent75TxtColor}">
+                        <Rectangle Margin="8" Fill="{StaticResource LS_accent100TxtColor}"
+                                   Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BoolToVisibleConverter}}"/>
+                    </Border>
+                    <ContentPresenter VerticalAlignment="Center" Margin="16,0,0,0"/>
+                </StackPanel>
+            </ControlTemplate>
+
+            <!-- Name Your Summons (GH #6): decorated section header for the controller settings
+                 panel. The controller BaseTitleStyle is a plain TextBlock style (and our titles are
+                 ContentControls, so it does not even apply), so replicate the keyboard's decorated
+                 header - a centered title flanked by the game's own decor_header.png (a Core asset,
+                 so no cross-layout dependency). -->
+            <Style x:Key="NYS_SectionTitle" TargetType="ContentControl">
+                <Style.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="FontSize" Value="{DynamicResource ScaledMediumFontSize}"/>
+                        <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                    </Style>
+                </Style.Resources>
+                <Setter Property="Margin" Value="0,20,0,10"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContentControl">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <StackPanel.Resources>
+                                    <BitmapImage x:Key="NYS_DecorHeader">pack://application:,,,/Core;component/Assets/CC/decor_header.png</BitmapImage>
+                                </StackPanel.Resources>
+                                <Image Source="{StaticResource NYS_DecorHeader}" Stretch="None" VerticalAlignment="Center"/>
+                                <ContentPresenter Margin="30,0,30,0" VerticalAlignment="Center"/>
+                                <Image Source="{StaticResource NYS_DecorHeader}" Stretch="None" VerticalAlignment="Center">
+                                    <Image.RenderTransform>
+                                        <ScaleTransform ScaleX="-1" CenterX="42"/>
+                                    </Image.RenderTransform>
+                                </Image>
+                            </StackPanel>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <ImageSource x:Key="NoResistanceIcon">pack://application:,,,/Core;component/Assets/CharacterPanel/resistance_none_bg.png</ImageSource>
+            <BitmapImage x:Key="SpellBookBackground" UriSource="pack://application:,,,/Core;component/Assets/Options/opaqueBG.png"/>
+            
+            <System:Double x:Key="ExaminePanelWidth">2200</System:Double>
+            <System:Double x:Key="ExaminePanelWidthSplit">1920</System:Double>
+            <System:Double x:Key="CSInnerHeight">1480</System:Double>
+            <System:Double x:Key="EXDollWidth">1400</System:Double>
+            <System:Double x:Key="CSInfoHeight">1600</System:Double>
+            <System:Double x:Key="CSInfoWidth">800</System:Double>
+
+            <Thickness x:Key="PaperDollMargin">0,-60,0,60</Thickness>
+            <Thickness x:Key="PaperDollOffsetLeftMargin">-400,-300,0,0</Thickness>
+            <Thickness x:Key="PaperDollOffsetRightMargin">0,-300,-400,0</Thickness>
+            <Thickness x:Key="PaperDollOffScreenLeftMargin">-1200,-300,0,0</Thickness>
+            <Thickness x:Key="PaperDollOffScreenRightMargin">0,-300,-1200,0</Thickness>
+            <Thickness x:Key="ContentPanelMargin">80,160,80,280</Thickness>
+            <Thickness x:Key="ContentPanelOffScreenLeftMargin">-780,0,780,0</Thickness>
+            <Thickness x:Key="ContentPanelOffScreenRightMargin">780,0,-780,0</Thickness>
+            <Thickness x:Key="ContentPanelOffsetLeftMargin">0,0,0,0</Thickness>
+            <Thickness x:Key="ContentPanelOffsetRightMargin">0,0,0,0</Thickness>
+
+            <!--Forces the row height to set the cursor selector-->
+            <System:Double x:Key="GenericRowHeight">72</System:Double>
+            <System:Double x:Key="GenericIconHeight">60</System:Double>
+            
+            <!-- Animations-->
+
+            <Storyboard x:Key="ShowPaperDoll">
+                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Storyboard.TargetName="ExaminePaperdollHolder">
+                    <EasingDoubleKeyFrame KeyTime="0:0:0" Value="0" />
+                    <EasingDoubleKeyFrame KeyTime="0:0:0.1899" Value="0" />
+                    <EasingDoubleKeyFrame KeyTime="0:0:0.19" Value="1" />
+                </DoubleAnimationUsingKeyFrames>
+            </Storyboard>
+
+            <Storyboard x:Key="RevealPaperDollLeft" FillBehavior="Stop">
+                <ThicknessAnimation Storyboard.TargetName="Panel" Storyboard.TargetProperty="Margin" Duration="0:0:0.24" From="{StaticResource ContentPanelOffScreenLeftMargin}" To="{StaticResource ContentPanelOffsetLeftMargin}">
+                    <ThicknessAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut"/>
+                    </ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+                <DoubleAnimation Storyboard.TargetName="BackgroundImage" Storyboard.TargetProperty="Opacity" Duration="0:0:0.24" From="0.6" To="1" />
+                <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility" Storyboard.TargetName="ExaminePaperdoll">
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0" Value="{x:Static Visibility.Collapsed}"/>
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0.01" Value="{x:Static Visibility.Visible}"/>
+                </ObjectAnimationUsingKeyFrames>
+            </Storyboard>
+
+            <Storyboard x:Key="RevealPaperDollRight" FillBehavior="Stop">
+                <ThicknessAnimation Storyboard.TargetName="Panel" Storyboard.TargetProperty="Margin" Duration="0:0:0.34" From="{StaticResource ContentPanelOffScreenRightMargin}" To="{StaticResource ContentPanelOffsetRightMargin}">
+                    <ThicknessAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut"/>
+                    </ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+                <DoubleAnimation Storyboard.TargetName="BackgroundImage" Storyboard.TargetProperty="Opacity" Duration="0:0:0.24" From="0.6" To="1" />
+                <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility" Storyboard.TargetName="ExaminePaperdoll">
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0" Value="{x:Static Visibility.Collapsed}"/>
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0.01" Value="{x:Static Visibility.Visible}"/>
+                </ObjectAnimationUsingKeyFrames>
+            </Storyboard>
+
+            <Storyboard x:Key="HidePaperDollLeft" FillBehavior="Stop">
+                <ThicknessAnimation Storyboard.TargetName="Panel" Storyboard.TargetProperty="Margin" Duration="0:0:0.34" From="{StaticResource ContentPanelOffsetLeftMargin}" To="{StaticResource ContentPanelOffScreenLeftMargin}">
+                    <ThicknessAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut"/>
+                    </ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+                <DoubleAnimation Storyboard.TargetName="BackgroundImage" Storyboard.TargetProperty="Opacity" Duration="0:0:0.24" From="1" To="0.6" />
+                <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility" Storyboard.TargetName="ExaminePaperdoll">
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0" Value="{x:Static Visibility.Visible}"/>
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0.64" Value="{x:Static Visibility.Collapsed}"/>
+                </ObjectAnimationUsingKeyFrames>
+            </Storyboard>
+
+            <Storyboard x:Key="HidePaperDollRight" FillBehavior="Stop">
+                <ThicknessAnimation Storyboard.TargetName="Panel" Storyboard.TargetProperty="Margin" Duration="0:0:0.34" From="{StaticResource ContentPanelOffsetRightMargin}" To="{StaticResource ContentPanelOffScreenRightMargin}">
+                    <ThicknessAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut"/>
+                    </ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+                <DoubleAnimation Storyboard.TargetName="BackgroundImage" Storyboard.TargetProperty="Opacity" Duration="0:0:0.24" From="1" To="0.6" />
+                <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility" Storyboard.TargetName="ExaminePaperdoll">
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0" Value="{x:Static Visibility.Visible}"/>
+                    <DiscreteObjectKeyFrame KeyTime="0:0:0.64" Value="{x:Static Visibility.Collapsed}"/>
+                </ObjectAnimationUsingKeyFrames>
+            </Storyboard>
+
+            <!--STYLES FOR TEXT & ICONS -->
+            <Style x:Key="SummaryRoundIcons" TargetType="Rectangle">
+                <Setter Property="Width" Value="{StaticResource GenericIconHeight}"/>
+                <Setter Property="Height" Value="{StaticResource GenericIconHeight}"/>
+                <Setter Property="RadiusX" Value="30"/>
+                <Setter Property="RadiusY" Value="30"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="DetailedListText_c" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="{StaticResource ScaledMediumFontSize}"/>
+                <Setter Property="Foreground" Value="{StaticResource LS_accent75TxtColor}"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="FontWeight" Value="DemiBold" />
+                <Setter Property="noesis:Text.Stroke" Value="{StaticResource LS_textStrokeColor}"/>
+                <Setter Property="noesis:Text.StrokeThickness" Value="4"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{StaticResource LS_selectedTextPad}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SummaryListText_c" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="{StaticResource ScaledDefaultFontSize}"/>
+                <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="FontWeight" Value="DemiBold" />
+                <Setter Property="noesis:Text.Stroke" Value="{StaticResource LS_textStrokeColor}"/>
+                <Setter Property="noesis:Text.StrokeThickness" Value="4"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{StaticResource LS_selectedTextPad}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ListLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource DetailedListText_c}">
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="TextWrapping" Value="Wrap"/>
+                <Setter Property="DockPanel.Dock" Value="Left"/>
+                <Setter Property="Margin" Value="20,0,0,0"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{StaticResource LS_selectedTextPad}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ListLabelCntrlStyle" TargetType="Control" >
+                <Style.Resources>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource ListLabelStyle}"/>
+                </Style.Resources>
+                <Setter Property="FontSize" Value="{StaticResource ScaledMediumFontSize}"/>
+                <Setter Property="Foreground" Value="{StaticResource LS_accent75TxtColor}"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="DockPanel.Dock" Value="Left"/>
+                <Setter Property="FontWeight" Value="DemiBold" />
+                <Setter Property="noesis:Text.Stroke" Value="{StaticResource LS_textStrokeColor}"/>
+                <Setter Property="noesis:Text.StrokeThickness" Value="4"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{StaticResource LS_selectedTextPad}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ListValueStyle" TargetType="TextBlock" BasedOn="{StaticResource DetailedListText_c}">
+                <Setter Property="ToolTipService.Placement" Value="Right"/>
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Setter Property="DockPanel.Dock" Value="Right"/>
+                <Setter Property="Margin" Value="0,0,20,0"/>
+                <Setter Property="Foreground" Value="{StaticResource LS_extraspecialTxtColor}"/>
+                <Setter Property="FontWeight" Value="DemiBold" />
+                <Setter Property="noesis:Text.Stroke" Value="{StaticResource LS_textStrokeColor}"/>
+                <Setter Property="noesis:Text.StrokeThickness" Value="4"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{StaticResource LS_selectedTextPad}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- HEADER LABEL (FROM SPELLBOOK)-->
+            <Style x:Key="ListTitleBgStyle" TargetType="ls:LSNineSliceImage" BasedOn="{StaticResource {x:Type ls:LSNineSliceImage}}">
+                <Style.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="FontSize" Value="{StaticResource ScaledDefaultFontSize}"/>
+                        <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                        <Setter Property="TextAlignment" Value="Center"/>
+                        <Setter Property="TextWrapping" Value="Wrap"/>
+                    </Style>
+                </Style.Resources>
+                <Setter Property="ImageSource" Value="pack://application:,,,/Core;component/Assets/Shared_c/c_listItem_titleBG_d.png"/>
+                <Setter Property="Slices" Value="230,40"/>
+                <Setter Property="IconWidth" Value="40"/>
+                <Setter Property="Padding" Value="24"/>
+                <Setter Property="Margin" Value="0,0,0,-32"/>
+                <Setter Property="Focusable" Value="True"/>
+                <Setter Property="ls:MoveFocus.Focusable" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="ls:MoveFocus.IsFocused" Value="True">
+                        <Setter Property="ImageSource" Value="pack://application:,,,/Core;component/Assets/Shared_c/c_listItem_titleBG_h.png"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!--CONTROL TO APPLY CURSOR-->
+            <ControlTemplate x:Key="DetailedEntry">
+                <ControlTemplate.Resources>
+                    <Style TargetType="{x:Type DockPanel}">
+                        <Setter Property="MinWidth" Value="{StaticResource CSInfoWidth}"/>
+                    </Style>
+                </ControlTemplate.Resources>
+                <ls:LSNineSliceImage x:Name="Bg" ImageSource="{x:Null}" Slices="24,40,24,24" MinHeight="72">
+                    <Grid x:Name="Content" IsEnabled="True" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+                        <ContentPresenter x:Name="Presenter" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <Control x:Name="Frame" Style="{StaticResource FocusableBorderStyle}" Visibility="Collapsed"/>
+                    </Grid>
+                </ls:LSNineSliceImage>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="ls:MoveFocus.IsFocused" Value="True">
+                        <Setter TargetName="Bg" Property="ImageSource" Value="{StaticResource ButtonBg_h}"/>
+                        <Setter TargetName="Content" Property="IsEnabled" Value="False"/>
+                        <Setter TargetName="Frame" Property="Visibility" Value="Visible"/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+
+            <!--SPLITSCREEN TRIGGERS-->
+            <Style x:Key="SplitScreenOverride" TargetType="Grid">
+                <Setter Property="Width" Value="{StaticResource ExaminePanelWidth}"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Right">
+                        <Setter Property="Width" Value="{StaticResource ExaminePanelWidthSplit}"/>
+                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Left">
+                        <Setter Property="Width" Value="{StaticResource ExaminePanelWidthSplit}"/>
+                        <Setter Property="HorizontalAlignment" Value="Left"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SplitScreenOverrideDoll" TargetType="Grid">
+                <Setter Property="Margin" Value="8,0,32,0"/>
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Right">
+                        <Setter Property="Margin" Value="-288,0,288,0"/>
+                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Left">
+                        <Setter Property="Margin" Value="288,0,-288,0"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SplitScreenOverrideColumn" TargetType="Grid">
+                <Setter Property="Margin" Value="80,180,80,260"/>
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Right">
+                        <Setter Property="HorizontalAlignment" Value="Left"/>
+                        <Setter Property="Margin" Value="280,180,-280,260"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Left">
+                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                        <Setter Property="Margin" Value="-280,180,280,260"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+
+            <!-- ===== ABILITIES ROW TEMPLATE =====-->
+            <DataTemplate x:Key="StatsAbilitiesEntryTemplate" DataType="{x:Type ls:VMAbility}">
+                <ls:LSButton x:Name="EntryRoot" Margin="2,0" Width="120" ToolTip="{StaticResource ManagedTooltip}" ToolTipService.Placement="Right" ToolTipService.PlacementTarget="{Binding (ToolTipService.PlacementTarget), RelativeSource={RelativeSource TemplatedParent}}"
+								 Style="{StaticResource FocusableButtonStyleMinimal}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Control x:Name="attrName" Template="{StaticResource AbilityShortDisplayName}" Foreground="{StaticResource LS_baseTxtColor}" FontWeight="Bold"  FontSize="{StaticResource ScaledMiniFontSize}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding Value}" FontSize="{StaticResource ScaledDefaultFontSize}" FontWeight="DemiBold" Foreground="{StaticResource LS_extraspecialTxtColor}" HorizontalAlignment="Center" Margin="0,-20,0,0"/>
+                    </StackPanel>
+                </ls:LSButton>
+                <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.Layout, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" Value="Right" >
+                        <Setter TargetName="EntryRoot" Property="ToolTipService.Placement" Value="Left" />
+                    </DataTrigger>
+                </DataTemplate.Triggers>
+            </DataTemplate>
+            
+            
+            <!-- ===== SAVING THROW TEMPLATE =====-->
+                      
+            
+            <DataTemplate x:Key="SavingthrowTemplate" DataType="{x:Type ls:VMAbility}" >
+                <ls:LSButton x:Name="EntryRoot" Margin="2,0" Width="120" ToolTip="{StaticResource ManagedTooltip}" ToolTipService.Placement="Right" ToolTipService.PlacementTarget="{Binding (ToolTipService.PlacementTarget), RelativeSource={RelativeSource TemplatedParent}}"
+								 Style="{StaticResource FocusableButtonStyleMinimal}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        
+                        <Control x:Name="attrName" Template="{StaticResource AbilityShortDisplayName}" Foreground="{StaticResource LS_baseTxtColor}" FontWeight="Bold"  FontSize="{StaticResource ScaledMiniFontSize}" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="value" Text="{Binding SavingThrow.AdditionalValue, StringFormat={}{0: +#; -#; 0}}" FontSize="{StaticResource ScaledDefaultFontSize}" HorizontalAlignment="Center" Margin="0,-20,0,0"/>
+                    </StackPanel>
+                </ls:LSButton>
+            </DataTemplate>
+
+            <!-- ===== CONDITIONS LIST TEMPLATE =====-->
+            <DataTemplate x:Key="StatusListItemTemplate" DataType="{x:Type ls:VMStatus}">
+                <DataTemplate.Resources>
+                    <BitmapImage x:Key="statusBG" UriSource="pack://application:,,,/Core;component/Assets/TargetInfo/statusBG.png"/>
+                    <BitmapImage x:Key="statusBG_fill" UriSource="pack://application:,,,/Core;component/Assets/TargetInfo/statusBG_fill.png"/>
+                </DataTemplate.Resources>
+                <ContentControl x:Name="ConditionsListTemplate" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" ToolTip="{StaticResource ManagedTooltip}" HorizontalAlignment="Left" ToolTipService.HorizontalOffset="40" Height="{StaticResource GenericRowHeight}">
+                    <Grid Width="{StaticResource CSInfoWidth}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid Margin="12,0,12,0" Grid.Column="0" HorizontalAlignment="Left">
+                            <Image Source="{StaticResource statusBG}" Stretch="Uniform" VerticalAlignment="Center"/>
+
+                            <ls:LSPie Value="{Binding RemainingPercentage}" SweepDirection="Clockwise">
+                                <Image Source="{StaticResource statusBG_fill}" Stretch="Uniform"/>
+                            </ls:LSPie>
+
+                            <Rectangle Style="{StaticResource SummaryRoundIcons}" Fill="{Binding Icon}" MaxHeight="{StaticResource GenericIconHeight}"/>
+
+                            <TextBlock Text="{Binding Duration}" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,-12" Foreground="{StaticResource LS_PrimaryColor}"
+                               noesis:Text.Stroke="{StaticResource LS_PrimaryColorOutlineColor}" noesis:Text.StrokeThickness="6" Style="{StaticResource NarrowTooltipModifierText}"
+                               Visibility="{Binding Duration, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=0}" FontSize="{StaticResource ScaledDefaultFontSize}"/>
+                        </Grid>
+                        <TextBlock x:Name="NameLabel" Grid.Column="1" Text="{Binding Name}" Style="{StaticResource DetailedListText_c}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"/>
+                    </Grid>
+                </ContentControl>
+            </DataTemplate>
+
+            <!-- ===== RESISTANCES ICONS=====-->
+            <ControlTemplate x:Key="ResistanceIcon" TargetType="Control">
+                <Image x:Name="Icon" Stretch="None" Source="{x:Null}"/>
+                <ControlTemplate.Triggers>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Slashing">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_slashing.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Piercing">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_piercing.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Bludgeoning">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_blunt.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Acid">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_acid.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Thunder">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_thunder.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Necrotic">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_necrotic.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Fire">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_fire.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Lightning">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_lightning.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Cold">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_cold.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Psychic">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_psychic.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Poison">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_poison.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Radiant">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_radiant.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Force">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_force.png"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DamageType}" Value="Spell">
+                        <Setter TargetName="Icon" Property="Source" Value="pack://application:,,,/Core;component/Assets/Shared/ico_resistance_spell.png"/>
+                    </DataTrigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+
+            <!-- ===== RESISTANCES LIST TEMPLATE=====-->
+            <ControlTemplate x:Key="ResistanceListTemplate">
+                <Grid d:DataContext="{d:DesignInstance {x:Type ls:Character}, IsDesignTimeCreatable=True}">
+                    <Grid Name="ResistanceIcoList"  Visibility="{Binding Stats.NumActiveResistances, Converter={StaticResource CountToVisibilityConverter}}">
+                        <ItemsControl ItemsSource="{Binding FilteredItems, ElementName=ActiveResistances}" Margin="0,0">
+                            <b:Interaction.Behaviors>
+                                <ls:CollectionFilterBehavior x:Name="ActiveResistances" ItemsSource="{Binding Stats.Resistances}" Predicate="{Binding DataContext.Data.ActiveResistancesPredicate, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}"/>
+                            </b:Interaction.Behaviors>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type ls:VMResistance}">
+                                    <ContentControl x:Name="ResistanceRow" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" ToolTip="{StaticResource ManagedTooltip}" ToolTipService.HorizontalOffset="40">
+                                        <ContentControl Template="{StaticResource ResistanceLineTemplate}" Margin="10,4" Width="{StaticResource CSInfoWidth}">
+                                            <TextBlock x:Name="Name" DockPanel.Dock="Left" Style="{StaticResource DetailedListText_c}" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Left" Margin="28,0,0,0" Text="{Binding DamageTypeValue, Converter={StaticResource EnumTranslatedStringConverter}, ConverterParameter='hc3cd9b4eg4ea4g4438gbfbbg493c0abb6dd7'}" />
+                                        </ContentControl>
+                                    </ContentControl>
+                                    <DataTemplate.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding Full}" Value="None"/>
+                                                <Condition Binding="{Binding NonMagical}" Value="None"/>
+                                                <Condition Binding="{Binding Magical}" Value="None"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="ResistanceRow" Property="Visibility" Value="Collapsed"/>
+                                        </MultiDataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </Grid>
+                    <ContentControl Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" Visibility="{Binding Visibility, ElementName=ResistanceIcoList, Converter={StaticResource InvertVisibilityConverter}}" ToolTipService.HorizontalOffset="40">
+                        <Grid Name="ResistanceEmpty">
+                            <Image HorizontalAlignment="Center" Stretch="None" Source="{StaticResource NoResistanceIcon}"/>
+                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource DetailedListText_c}" Text="{Binding Source='h529efdfdgda98g4ed3g8d1eg46cbf1d0a5e3', Converter={StaticResource TranslatedStringConverter}}"/>
+                        </Grid>
+                        <ContentControl.ToolTip>
+                            <ls:LSTooltip IsHitTestVisible="False" HorizontalOffset="40">
+                                <TextBlock  Text="{Binding Source='h78e41bdfg7ae5g47d5g902cgf32ae25a53de', Converter={StaticResource TranslatedStringConverter}}" Style="{StaticResource TooltipBaseTextStyle}"/>
+                            </ls:LSTooltip>
+                        </ContentControl.ToolTip>
+                    </ContentControl>
+                </Grid>
+            </ControlTemplate>
+
+            <!-- ===== PASSIVE FEATURES TEMPLATE=====-->
+            <DataTemplate x:Key="FeaturesListItemTemplate" DataType="{x:Type ls:VMPassive}">
+                <ContentControl Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" ToolTip="{StaticResource ManagedTooltip}" Height="{StaticResource GenericRowHeight}" ToolTipService.HorizontalOffset="40">
+                    <Grid Width="{StaticResource CSInfoWidth}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Rectangle x:Name="Icon" Grid.Column="0" Fill="{Binding Icon}" Style="{StaticResource SummaryRoundIcons}" Margin="12,0,12,0"/>
+                        <TextBlock VerticalAlignment="Center" x:Name="NameLabel" Grid.Column="1" Text="{Binding Name}" Style="{StaticResource DetailedListText_c}" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </ContentControl>
+            </DataTemplate>
+
+            <!--===== PLAYER MULTICLASS TEMPLATE =====-->
+            <ControlTemplate x:Key="PlayerMultiClass">
+                <ItemsControl x:Name="Classes" ItemsSource="{Binding Stats.ClassList}" Margin="0,0,0,0" Template="{StaticResource MinimalItemsControlTemplate}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type ls:VMClass}">
+                            <ContentControl Template="{StaticResource DetailedEntry}" MinHeight="{StaticResource GenericRowHeight}" ls:MoveFocus.Focusable="True" Focusable="True">
+                                <ContentControl.ToolTip>
+                                    <ls:LSTooltip IsHitTestVisible="False" Content="{Binding Path=DataContext.ClassDescription, RelativeSource={RelativeSource TemplatedParent}}" ls:AttachedProperties.InheritedTag="{Binding Path=DataContext.ClassDisplayName, RelativeSource={RelativeSource TemplatedParent}}" ContentTemplate="{StaticResource HeaderBodyLocaStringTemplate}" HorizontalOffset="40"/>
+                                </ContentControl.ToolTip>
+                                <TextBlock TextAlignment="Center" Style="{StaticResource DetailedListText_c}" Foreground="{StaticResource LS_extraspecialTxtColor}" TextWrapping="Wrap">
+													<Run>
+														<Run.Text>
+															<MultiBinding Converter="{StaticResource ParameterizedTranslatedStringConverter}">
+																<Binding Source="h5df00b79ga6acg4d9fgb8dag23340151fba7"/>
+																<Binding Path="Level.Value"/>
+																<Binding Path="ClassDisplayName"/>
+															</MultiBinding>
+														</Run.Text>
+													</Run>
+													<Run x:Name="SubClassSeparator" Text="~"/>
+													<Run Text="{Binding SubclassDisplayName}"/>
+                                </TextBlock>
+                            </ContentControl>
+
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding SubclassDisplayName, Converter={StaticResource NullToBoolTrueConverter}, ConverterParameter='EmptyString'}" Value="True">
+                                    <Setter TargetName="SubClassSeparator" Property="Text" Value=""/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ControlTemplate>
+
+        </ResourceDictionary>
+    </ls:UIWidget.Resources>
+
+    <!-- ===== EXAMINE PANEL ===== -->
+    <ls:UIWidget.Template>
+        <ControlTemplate>
+            <Grid x:Name="bgFade" Background="{StaticResource LS_PopUpBackgroundColorMedium}" Margin="0,0,0,0">
+
+                <b:Interaction.Behaviors>
+                    <ls:RuleSetModifierValueBehavior x:Name="HideNpcHpModifier" Modifiers="{Binding Data.CurrentRuleSetModifiers}" ModifierName="HIDE_NPC_HP"/>
+                </b:Interaction.Behaviors>
+
+                <Rectangle x:Name="ScreenBGSideGradient" Opacity="0.9" Width="1220" VerticalAlignment="Stretch" Fill="{StaticResource RightSideWideShadingBrush}" Visibility="Collapsed" />
+
+                <Image x:Name="BackgroundImageFullScreen" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Source="{StaticResource SpellBookBackground}" Stretch="UniformToFill" Visibility="Collapsed" >
+                    <Image.OpacityMask>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#00FFFFFF" Offset="0"/>
+                            <GradientStop Color="#FFFFFFFF" Offset="0.2"/>
+                            <GradientStop Color="#FFFFFFFF" Offset="0.6"/>
+                            <GradientStop Color="#00FFFFFF" Offset="0.9"/>
+                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Image.OpacityMask>
+                </Image>
+
+                <!-- While the settings overlay is open, disable the whole Examine content (GH #6):
+                     controller focus navigation skips disabled elements, so this forces focus into
+                     the overlay and keeps it there (the game's Henchmen_c disables its siblings the
+                     same way - IsMoveFocusScope alone does not trap). ElementName binding, so it is
+                     independent of this grid's ExamineTarget DataContext. -->
+                <Grid x:Name="Panel"
+              IsEnabled="{Binding IsVisible, ElementName=NYS_SettingsPanel, Converter={StaticResource InvertBoolConverter}}"
+              DataContext="{Binding CurrentPlayer.UIData.ExamineTarget}" RenderTransformOrigin="0.5,0.5" Style="{StaticResource SplitScreenOverride}" VerticalAlignment="Stretch" Margin="0,0,0,0">
+
+                    <Image x:Name="BackgroundImage" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Source="{StaticResource SpellBookBackground}" Stretch="UniformToFill" Opacity="0.6" >
+                        <Image.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="0.1"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="0.5"/>
+                                <GradientStop Color="#00FFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Image.OpacityMask>
+                    </Image>
+
+                    
+
+                    <!--PAPERDOLL-->
+                    <Grid x:Name="ExaminePaperdollHolder" HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="1620" Style="{StaticResource SplitScreenOverrideDoll}" Opacity="0.5" >
+                        <Grid.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard Name="ShowCharacterPanelInChunks" Storyboard="{StaticResource ShowPaperDoll}"/>
+                            </EventTrigger>
+                        </Grid.Triggers>
+
+                        <Image x:Name="BackgroundGradient" Source="{StaticResource backgroundGradient}" Width="1620" Margin="0,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Stretch"  Stretch="Fill" Opacity="0.94"/>
+                        
+                        <ls:LSPaperdoll x:Name="ExaminePaperdoll" Width="1520" Height="2060" Margin="{StaticResource PaperDollMargin}" noesis:Element.BlendingMode="Additive" EntityRef="{Binding EntityHandle}" UseCombatPose="True" Zoom="0.18" Visibility="Collapsed" VerticalAlignment="Bottom"  RenderScale="{Binding DataContext.Data.RenderScale, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}" />
+
+                        <!--PAPERDOLL CONTROLS-->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,60">
+                            <ls:LSButton VerticalAlignment="Center" EatInput="False" BoundEvent="{Binding IEventID, Mode=OneWay}"
+                             DataContext="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}},
+                                           Converter={StaticResource FindInputEventConverter}, ConverterParameter='CharacterCreationRotateLeft'}">
+                                <b:Interaction.Triggers>
+                                        <b:EventTrigger EventName="LSButtonPressed">
+                                            <b:ChangePropertyAction PropertyName="RotationSpeed" Value="1.8" TargetName="ExaminePaperdoll" />
+                                        </b:EventTrigger>
+                                        <b:EventTrigger EventName="LSButtonReleased" >
+                                            <b:ChangePropertyAction PropertyName="RotationSpeed" Value="0" TargetName="ExaminePaperdoll" />
+                                        </b:EventTrigger>
+                                    </b:Interaction.Triggers>
+                                </ls:LSButton>
+
+                            <ls:LSButton VerticalAlignment="Center" EatInput="False" BoundEvent="{Binding IEventID, Mode=OneWay}"
+                             DataContext="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}},
+                                           Converter={StaticResource FindInputEventConverter}, ConverterParameter='CharacterCreationRotateRight'}">
+                                <b:Interaction.Triggers>
+                                        <b:EventTrigger EventName="LSButtonPressed">
+                                            <b:ChangePropertyAction PropertyName="RotationSpeed" Value="-1.8" TargetName="ExaminePaperdoll"/>
+                                        </b:EventTrigger>
+                                        <b:EventTrigger EventName="LSButtonReleased" >
+                                            <b:ChangePropertyAction PropertyName="RotationSpeed" Value="0" TargetName="ExaminePaperdoll"/>
+                                        </b:EventTrigger>
+                                    </b:Interaction.Triggers>
+                                </ls:LSButton>
+                            </StackPanel>
+                        </Grid>
+
+                        <!--FOR CHARACTERS-->
+                        <Grid x:Name="CharacterViewer" Visibility="Collapsed" Style="{StaticResource SplitScreenOverrideColumn}" MaxWidth="{StaticResource CSInfoWidth}"  VerticalAlignment="Stretch">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!--NAME & DESCRIPTION-->
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,60" Width="{StaticResource CSInfoWidth}">
+                            <TextBlock Text="{Binding Name}" HorizontalAlignment="Center" Style="{StaticResource PanelTitleStyle}" TextAlignment="Center" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource PanelTitleStyle}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CharacterType}" Value="Summon">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <!-- Name Your Summons (GH #6, controller layout): the summon's name +
+                                 settings gear + Skip (summons only). The name box defaults to
+                                 read-only/Focusable/IsHitTestVisible all off - the native plain-name
+                                 look, correct for a forbidden summon; NativeRenameUI flips those
+                                 input-checked flags (plus ls:MoveFocus.Focusable) on for a renamable
+                                 one so a controller can navigate to it (GH #48). The gear and Skip are
+                                 always controller-navigable. -->
+                            <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CharacterType}" Value="Summon">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <!-- ls:MoveFocus.Focusable stays True so the controller can navigate to the
+                                         field once it is editable; Focusable (toggled by NativeRenameUI) gates
+                                         whether nav actually stops here, so a forbidden/plain field is skipped.
+                                         OpenVirtualKeyboardOnFocus=False (as the game's own focusable text boxes,
+                                         e.g. SignUp_c) so merely NAVIGATING onto the field just highlights it -
+                                         the on-screen keyboard opens on accept (X), not on focus (GH #6). -->
+                                    <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" ls:MoveFocus.Focusable="True" OpenVirtualKeyboardOnFocus="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
+                                    <!-- GH #50: an LSButton with a Command binding. Its DataContext is a
+                                         small NYS_GearVM set from Lua (NativeRenameUI). On controller a
+                                         button is only reachable if it carries the game's focusable style
+                                         (Focusable + ls:MoveFocus + FocusVisualStyle + a focus-frame
+                                         template); the two bare MoveFocus attrs on a custom template are
+                                         NOT enough (GH #6). The gear icon is the button content and the
+                                         focus highlight is the style's, so no hover-swap template here. -->
+                                    <ls:LSButton x:Name="NYS_SettingsButton" Style="{StaticResource FocusableButtonStyleMinimal}"
+                                                 Width="80" VerticalAlignment="Center" Margin="10,0,0,0" Command="{Binding NysGearCommand}">
+                                        <Image Width="40" Height="40" Stretch="Uniform" HorizontalAlignment="Center"
+                                               Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
+                                    </ls:LSButton>
+                                </StackPanel>
+                                <!-- GH #51: skip this summon and swap to the next in a multi-summon group.
+                                     DataContext is a small NYS_SkipVM set from Lua; NysShowSkip hides it
+                                     for single summons and on the last summon of a group. Focusable style
+                                     so a controller can reach it (see the gear above, GH #6). -->
+                                <ls:LSButton x:Name="NYS_SkipButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
+                                             HorizontalAlignment="Center" MinWidth="200"
+                                             Command="{Binding NysSkipCommand}"
+                                             Visibility="{Binding NysShowSkip, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                                    <TextBlock Text="Skip" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"/>
+                                </ls:LSButton>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Title}" Style="{StaticResource DetailedListText_c}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Visibility="{Binding Title, Converter={StaticResource NullToCollapsedConverter}, ConverterParameter='EmptyString'}"/>
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <!--PORTRAIT HEALTH-->
+                                    <ContentControl x:Name="PortraitHP" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" Style="{StaticResource LargePortrait}" ToolTipService.Placement="Right" ToolTipService.HorizontalOffset="474">
+                                            <ContentControl.ToolTip>
+                                            <ls:LSTooltip IsHitTestVisible="False" Content="{Binding DataContext.Stats.Health, ElementName=PortraitHP}" />
+
+                                        </ContentControl.ToolTip>
+                                            <Grid x:Name="HealthbarPortraiterh">
+                                                <ContentPresenter x:Name="portrait" ContentTemplate="{StaticResource CharacterPortraitTemplate}" Content="{Binding}"/>
+                                                <Image x:Name="Frame" Source="{StaticResource FrameImg_d}" Stretch="Uniform" IsHitTestVisible="False"/>
+                                            </Grid>
+                                        </ContentControl>
+
+                                        <!--ARMOUR CLASS-->
+                                    <ContentControl x:Name="ACInfo" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" Width="180" Margin="20,0" VerticalAlignment="Center" VerticalContentAlignment="Center" ToolTipService.Placement="Right" ToolTipService.HorizontalOffset="274">
+                                            <ContentControl.ToolTip>
+                                            <ls:LSTooltip x:Name="ACInfoTT" Content="{Binding Path=DataContext.Stats.ArmorClass, ElementName=ACInfo}" ls:TooltipExtender.Owner="{Binding (ls:TooltipExtender.Owner), ElementName=ACInfo}" />
+                                        </ContentControl.ToolTip>
+                                            <Grid Name="root" DataContext="{Binding Stats.ArmorClass}" Background="Transparent" HorizontalAlignment="Center" VerticalAlignment="Center" Height="232">
+                                                <Grid.Resources>
+                                                    <BitmapImage x:Key="ACShield">pack://application:,,,/Core;component/Assets/CharacterPanel/EQSlots_AC.png</BitmapImage>
+                                                </Grid.Resources>
+                                                <Image Stretch="Uniform" Source="{StaticResource ACShield}">
+                                                    <Image.Effect>
+                                                        <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="1" Color="{StaticResource tint00}"/>
+                                                    </Image.Effect>
+                                                </Image>
+                                                <StackPanel VerticalAlignment="Center" Margin="0,-18,0,0">
+                                                    <TextBlock Text="{Binding Source='hc2ca2d88gc99cg4361g801fgd34ecdb85f19',Converter={StaticResource TranslatedStringConverter}}" FontSize="{StaticResource SmallFontSize}" HorizontalAlignment="Center"/>
+                                                    <TextBlock FontSize="{StaticResource ScaledTitleFontSize}" Text="{Binding Value}" HorizontalAlignment="Center" Margin="0,-16"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                        </ContentControl>
+                                    </StackPanel>
+
+                                    <!--RACE TYPE INFO-->
+                                    <!--FOR NPC-->
+                                    <StackPanel Visibility="{Binding IsPlayableCharacter, Converter={StaticResource BoolToCollapsedConverter}}">
+
+                                        <ContentControl x:Name="RaceTypeInfo" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True">
+                                        <TextBlock x:Name="NPCType" Text="{Binding Stats.Race.Type}" Style="{StaticResource DetailedListText_c}" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource LS_extraspecialTxtColor}"/>
+                                        </ContentControl>
+
+                                        <!--RACE INFO-->
+                                    <ContentControl x:Name="NPCRaceInfo" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" >
+                                        <TextBlock x:Name="NPCRace" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource  DetailedListText_c}" TextAlignment="Center" Foreground="{StaticResource LS_extraspecialTxtColor}"  TextWrapping="Wrap">
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{StaticResource ParameterizedTranslatedStringConverter}">
+                                                        <Binding Source="hd678d4eeg181fg499dg9e81g2146ab24e03a"/>
+                                                        <Binding Path="Stats.Level.Value"/>
+                                                        <Binding Path="Stats.Race.DisplayName"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <ContentControl.ToolTip>
+                                            <ls:LSTooltip IsHitTestVisible="False" Content="{Binding DataContext.Stats.Race.Description, ElementName=NPCRaceInfo}" ls:AttachedProperties.InheritedTag="{Binding DataContext.Stats.Race.DisplayName, ElementName=NPCRaceInfo}" ContentTemplate="{StaticResource HeaderBodyLocaStringTemplate}" HorizontalOffset="40" />
+                                            </ContentControl.ToolTip>
+                                        </ContentControl>
+                                    </StackPanel>
+
+                                    <!--FOR PLAYERS-->
+                                    <StackPanel Visibility="{Binding IsPlayableCharacter, Converter={StaticResource BoolToVisibleConverter}}" DataContext="{Binding}">
+
+                                        <!--RACE INFO-->
+                                    <ContentControl x:Name="PlayerRaceInfo" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" DataContext="{Binding}" >
+                                        <TextBlock x:Name="PlayerRace" Text="{Binding Stats.Race.DisplayName}" Style="{StaticResource  DetailedListText_c}" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource LS_extraspecialTxtColor}"/>
+                                            <ContentControl.ToolTip>
+                                                <ls:LSTooltip IsHitTestVisible="False" Content="{Binding DataContext.Stats.Race.Description, ElementName=PlayerRaceInfo}" ls:AttachedProperties.InheritedTag="{Binding DataContext.Stats.Race.DisplayName, ElementName=PlayerRaceInfo}" ContentTemplate="{StaticResource HeaderBodyLocaStringTemplate}" HorizontalOffset="40"/>
+                                            </ContentControl.ToolTip>
+                                        </ContentControl>
+
+                                    <Control Template="{StaticResource PlayerMultiClass}" DataContext="{Binding}" />
+                                </StackPanel>
+
+
+                                        <!--ABILITIES-->
+
+                                        <ItemsControl x:Name="AbilitiesRow" ItemsSource="{Binding Stats.Abilities}" Margin="0,12,0,0" HorizontalAlignment="Center" ItemTemplate="{StaticResource StatsAbilitiesEntryTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Style.Setters>
+                                                        <Setter Property="ToolTipService.PlacementTarget" Value="{Binding ElementName=AbilitiesRow}"/>
+                                                        <Setter Property="ToolTipService.HorizontalOffset" Value="70"/>
+                                            </Style.Setters>
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                        </ItemsControl>
+
+
+
+
+
+                                    <!--CONDITIONS-->
+                                    <StackPanel Name="ConditionsList" Visibility="{Binding StatusEffects.Count, Converter={StaticResource CountToVisibilityConverter}}" >
+                                        <ls:LSNineSliceImage x:Name="ConditionsTitle" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" Focusable="False">
+                                            <TextBlock Text="{Binding Source='h3baf1fe2g7d16g4d77gbc35gc17a90fb27d6', Converter={StaticResource TranslatedStringConverter}}"/>
+                                        </ls:LSNineSliceImage>
+                                        <ItemsControl x:Name="StatusHolder" ItemsSource="{Binding StatusEffects}" ItemTemplate="{StaticResource StatusListItemTemplate}" Background="Transparent"/>
+                                    </StackPanel>
+
+                                    <!-- RESISTANCES -->
+                                    <StackPanel Name="ResistancesSection">
+                                        <ls:LSNineSliceImage x:Name="ResistancesTitle" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" Focusable="False">
+                                            <TextBlock Text="{Binding Source='h98a4ccfbg20f4g4294g9bf7g624c95711539', Converter={StaticResource TranslatedStringConverter}}"/>
+                                        </ls:LSNineSliceImage>
+                                        <Control x:Name="ResistanceContainer" HorizontalAlignment="Center" Template="{StaticResource ResistanceListTemplate}"/>
+                                    </StackPanel>
+
+                                    <!-- FEATURES -->
+                                    <StackPanel Name="FeaturesList">
+                                        <ls:LSNineSliceImage x:Name="FeaturesTitle" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" Focusable="False">
+                                            <TextBlock Text="{Binding Source='h9f9bfc7dgf4cdg4198g83e3gcb974dd2e949', Converter={StaticResource TranslatedStringConverter}}"/>
+                                        </ls:LSNineSliceImage>
+                                        <Border>
+                                            <Grid>
+                                                <b:Interaction.Behaviors>
+                                                    <ls:CollectionFilterBehavior x:Name="AllCharacterFeaturesPredicate" ItemsSource="{Binding Stats.Passives}" Predicate="{Binding DataContext.Data.AllCharacterFeaturesPredicate, ElementName=Examine_c}"/>
+                                                <ls:CollectionSortBehavior x:Name="AllCharacterFeaturesSorted" ItemsSource="{Binding FilteredItems, ElementName=AllCharacterFeaturesPredicate}" Comparer="{Binding DataContext.Data.PassivesSortComparer, ElementName=Examine_c}"/>
+                                                </b:Interaction.Behaviors>
+                                                <ItemsControl x:Name="FeaturesHolder" ItemsSource="{Binding SortedItems, ElementName=AllCharacterFeaturesSorted}" ItemTemplate="{StaticResource FeaturesListItemTemplate}" Visibility="Visible" />
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+
+
+
+
+                                    <!--DETAILS-->
+                                    <ls:LSNineSliceImage x:Name="DetailsTitle" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" Focusable="False">
+                                        <TextBlock Text="{Binding Source='h6f7a7018gd5f6g4c32g9386g6df0744d7ecd', Converter={StaticResource TranslatedStringConverter}}"/>
+                                    </ls:LSNineSliceImage>
+
+                                <ContentControl x:Name="InitiativeStat" Height="{StaticResource GenericRowHeight}" Template="{StaticResource DetailedEntry}" DataContext="{Binding Stats.Initiative}" ToolTip="{StaticResource PlacementParentDCTooltip}" ToolTipService.Placement="Right" ToolTipService.HorizontalOffset="40" ls:MoveFocus.Focusable="True" Focusable="True">
+                                        <DockPanel>
+                                            <Control Template="{StaticResource StatsDisplayName}" Style="{StaticResource ListLabelCntrlStyle}"/>
+                                            <TextBlock Text="{Binding Value, StringFormat={}{0:+#;-#;+0}}" Style="{StaticResource ListValueStyle}"/>
+                                        </DockPanel>
+                                    </ContentControl>
+
+                                <ContentControl x:Name="MovementStat" Height="{StaticResource GenericRowHeight}" Template="{StaticResource DetailedEntry}" DataContext="{Binding Stats.MovementResource}" ToolTip="{StaticResource PlacementParentDCTooltip}" ToolTipService.HorizontalOffset="40" ls:MoveFocus.Focusable="True" Focusable="True">
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource ListLabelStyle}"/>
+                                            <TextBlock Text="{Binding MaxValue, Converter={StaticResource UnitConverter}, ConverterParameter='Distance Short'}" Style="{StaticResource ListValueStyle}"/>
+                                        </DockPanel>
+                                    </ContentControl>
+
+                                <ContentControl x:Name="DarkVisionStat" Height="{StaticResource GenericRowHeight}" Template="{StaticResource DetailedEntry}" Visibility="{Binding IsPlayableCharacter, Converter={StaticResource BoolToVisibleConverter}}" ToolTipService.HorizontalOffset="40" ls:MoveFocus.Focusable="True" Focusable="True">
+                                        <DockPanel>
+                                            <Control x:Name="DarkVisionRangeName" Template="{StaticResource StatsDisplayName}" DataContext="{Binding Stats.DarkVisionRange}" Style="{StaticResource ListLabelCntrlStyle}"/>
+                                            <TextBlock Text="{Binding Stats.DarkVisionRange.Value, Converter={StaticResource UnitConverter}, ConverterParameter='Distance Short'}" Style="{StaticResource ListValueStyle}"/>
+                                        </DockPanel>
+                                    </ContentControl>
+
+                                <ContentControl x:Name="SizeStat" Height="{StaticResource GenericRowHeight}" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True" ToolTipService.HorizontalOffset="40">
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding Source='hfc7ce51bga5d6g4711g8e19g3fcebf236de0', Converter={StaticResource TranslatedStringConverter}}" Style="{StaticResource ListLabelStyle}"/>
+                                            <Control Template="{StaticResource ObjectSizeTextTemplate}">
+                                                <Control.Resources>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ListValueStyle}"/>
+                                                </Control.Resources>
+                                            </Control>
+                                        </DockPanel>
+                                    </ContentControl>
+
+                                <ContentControl Height="{StaticResource GenericRowHeight}" x:Name="weightStat" Template="{StaticResource DetailedEntry}" DataContext="{Binding Stats.Weight}" ls:MoveFocus.Focusable="True" Focusable="True">
+                                        <ContentControl.ToolTip>
+                                            <ls:LSTooltip Content="{Binding ElementName=weightStat,Path=DataContext}" HorizontalOffset="40"/>
+                                        </ContentControl.ToolTip>
+                                        <DockPanel>
+                                            <Control Template="{StaticResource StatsDisplayName}" Style="{StaticResource ListLabelCntrlStyle}"/>
+                                            <TextBlock Text="{Binding Value, Converter={StaticResource UnitConverter}, ConverterParameter='Weight Short'}" Style="{StaticResource ListValueStyle}"/>
+                                        </DockPanel>
+                                    </ContentControl>
+
+                                        <ContentControl Height="{StaticResource GenericRowHeight}" Template="{StaticResource DetailedEntry}" ls:MoveFocus.Focusable="True" Focusable="True">
+                                            <ContentControl.ToolTip>
+                                                <ls:LSTooltip Content="{Binding Source='h97226633g565ag44c0gbd64g89e70c886cba',Converter={StaticResource TranslatedStringConverter}}"/>
+                                            </ContentControl.ToolTip>
+                                            <DockPanel>
+                                                <TextBlock Text="{Binding Source='h3faf5e3cg719dg4b1cgb21egf2afeafb0eea', Converter={StaticResource TranslatedStringConverter}}" Style="{StaticResource ListLabelStyle}"/>
+                                                <TextBlock Text="{Binding EncumbranceStats.WeightMaximum, Converter={StaticResource UnitConverter}, ConverterParameter='Weight Short'}" Style="{StaticResource ListValueStyle}"/>
+                                            </DockPanel>
+                                        </ContentControl>
+
+
+                                        <!-- Saving Throw Proficiencies -->
+
+                                        <ls:LSNineSliceImage x:Name="ProficienciesTitle" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" ls:MoveFocus.Focusable="True" Focusable="True">
+                                            <TextBlock Text="{Binding Source='h20f2c1b6g2815g402ag8549gd6042c56c6db', Converter={StaticResource TranslatedStringConverter}}"/>
+                                            <ls:LSNineSliceImage.ToolTip>
+                                                <ls:LSTooltip Content="{Binding Source='hb4ebc93egdb2dg4489g9386ga0b39c71b536',Converter={StaticResource TranslatedStringConverter}}"/>
+                                            </ls:LSNineSliceImage.ToolTip>
+                                        </ls:LSNineSliceImage>
+
+                                        <ItemsControl x:Name="SavingThrowRow" ItemsSource="{Binding Stats.Abilities}" Margin="0,12,0,0" HorizontalAlignment="Center" ItemTemplate="{StaticResource SavingthrowTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Style.Setters>
+                                                        <Setter Property="ToolTipService.PlacementTarget" Value="{Binding ElementName=SavingThrowRow}"/>
+                                                        <Setter Property="ToolTipService.HorizontalOffset" Value="70"/>
+                                                    </Style.Setters>
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                        </ItemsControl>
+                                        
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+
+                        <!--FOR ITEMS-->
+                    <Grid x:Name="ItemViewer" Visibility="Collapsed" Style="{StaticResource SplitScreenOverrideColumn}">
+                        <ls:LSScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" VerticalAlignment="Top" BoundScrollUpEvent="UIScrollUp" BoundScrollDownEvent="UIScrollDown" >
+                            <StackPanel MaxWidth="960">
+                                <Border Margin="0,0,0,20">
+                                    <ContentControl x:Name="ItemTooltip" VerticalAlignment="Top" Style="{StaticResource FocusableContentControlNoBG}" FocusVisualStyle="{x:Null}"  Width="750">
+                                        <Grid>
+                                            <Control x:Name="HLTooltip"
+                                                         Width="{Binding ActualWidth, ElementName=ItemTooltip}"
+                                                         Height="{Binding ActualHeight, ElementName=ItemTooltip}"
+                                                         Style="{StaticResource FocusableBorderStyle}"
+                                                         Visibility="{Binding (ls:MoveFocus.IsFocused), ElementName=ItemTooltip, Converter={StaticResource BoolToVisibleConverter}}"/>
+                                            <ContentControl ls:TooltipExtender.Owner="{Binding DataContext.CurrentPlayer.SelectedCharacter, ElementName=Examine_c}" 
+                                                                Content="{Binding .}" 
+                                                                DataContext="{Binding .}" 
+                                                                Template="{StaticResource BaseTooltipTemplate}" 
+                                                                ls:TooltipExtender.IsOpen="True" ls:TooltipExtender.Content="{Binding .}"
+                                                                ls:TooltipExtender.PlayerId="{Binding Path=DataContext.CurrentPlayer.PlayerId, ElementName=Examine_c}"
+                                                                ls:MoveFocus.Focusable="False" Focusable="False">
+                                                <ContentControl.ToolTip>
+                                                    <!-- To be able to pin tooltips, you need to have a tooltip open.
+                                                             The found workaround was to have a "hidden" tooltip. -->
+                                                    <ls:LSTooltip Content="{Binding Path=PlacementTarget.DataContext ,RelativeSource={RelativeSource Mode=Self}}" 
+                                                                      ls:TooltipExtender.Owner="{Binding DataContext.CurrentPlayer.SelectedCharacter, ElementName=Examine_c}" Visibility="Hidden"/>
+                                                </ContentControl.ToolTip>
+                                            </ContentControl>
+                                        </Grid>
+                                    </ContentControl>
+                                </Border>
+                                <StackPanel MaxWidth="{StaticResource CSInfoWidth}">
+                                    <!-- Health Bar -->
+                                    <ContentPresenter x:Name="ItemHealth" ContentTemplate="{StaticResource StatsValueEntryTemplate}" Content="{Binding Stats.Health}" Tag="max"
+                                                      Visibility="{Binding Value, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=-1}"/>
+                                    <!-- RESISTANCES -->
+                                    <StackPanel Name="ResistancesSectionIcons" Visibility="{Binding Stats.NumActiveResistances, Converter={StaticResource CountToVisibilityConverter}}">
+                                        <ls:LSNineSliceImage x:Name="ResistancesTitleItems" Style="{StaticResource ListTitleBgStyle}" Margin="0,0,0,8" Focusable="False">
+                                            <TextBlock Text="{Binding Source='h98a4ccfbg20f4g4294g9bf7g624c95711539', Converter={StaticResource TranslatedStringConverter}}"/>
+                                        </ls:LSNineSliceImage>
+
+                                        <Control x:Name="ResistanceContainerItems" HorizontalAlignment="Center" Template="{StaticResource ResistanceListTemplate}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </ls:LSScrollViewer>
+                    </Grid>
+                </Grid>
+                <!--BUTTON PROMPTS-->
+                <StackPanel x:Name="ControllerHints" VerticalAlignment="Bottom" Style="{StaticResource ButtonHint.Container.Center}">
+
+                    <!-- Name Your Summons (GH #6): the generic "accept routes to the focused element's
+                         Command" prompt, copied from the game's SignUp_c. The base Examine has no such
+                         router, so a focused control we add (the gear / Skip) never activated on X. The
+                         name field has no Command, so X on it falls through to its native open-keyboard. -->
+                    <ls:LSButton x:Name="NYS_AcceptPrompt"
+                                 ContentTemplate="{StaticResource ControllerButtonHint}"
+                                 VerticalAlignment="Center"
+                                 Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UIAccept'}"
+                                 BoundEvent="UIAccept"
+                                 Tag="Select"
+                                 Command="{Binding FocusedElement.Command, ElementName=Examine_c}"
+                                 CommandParameter="{Binding FocusedElement.CommandParameter, ElementName=Examine_c}"/>
+
+                    <ls:LSButton Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UIScroll'}"
+                                     ContentTemplate="{StaticResource ControllerButtonHint}"                                          
+                                     Tag="{Binding Source='h29f2b927gf6feg48e8g8bc9gdc391427b51c', Converter={StaticResource TranslatedStringConverter}}" 
+                                     BoundEvent="UIScroll"
+                                     VerticalAlignment="Center"
+                                     EatInput="False"/>
+
+                    <ls:LSToggleButton x:Name="ToggleModelButton" VerticalAlignment="Center" ls:LSToggleButton.BoundEvent="UICreate" ContentTemplate="{StaticResource ControllerButtonHint}" Content="{Binding CurrentPlayer.UIData.InputEvents, ConverterParameter=UICreate, Converter={StaticResource FindInputEventConverter}}" Tag="{Binding Source='h5e0067cfg8124g41bcga49cg7d01e6c7dbbf', Converter={StaticResource TranslatedStringConverter}}" Visibility="Collapsed"/>
+
+                    <ls:LSButton x:Name="MoreInfoPrompt"
+                                             ContentTemplate="{StaticResource ControllerButtonHint}"  
+                                             VerticalAlignment="Center"
+                                             Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UIAccept'}"
+                                             BoundEvent="UIAccept"
+                                             Tag="{Binding Source='h68d43243g2754g4fc7gb67cg8f02910c8009', Converter={StaticResource TranslatedStringConverter}}"
+                                             Command="ls:UIWidget.PinTooltipCommand"
+                                             CommandParameter="{Binding ElementName=ItemTooltip}"
+                                             Visibility="{Binding (ls:MoveFocus.IsFocused), ElementName=ItemTooltip, Converter={StaticResource BoolToVisibleConverter}}"/>
+
+                    <ls:LSButton x:Name="ToggleTooltips" 
+                                             ContentTemplate="{StaticResource ControllerButtonHint}"  
+                                             VerticalAlignment="Center"
+                                             Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UIShowInfo'}"
+                                             BoundEvent="UIShowInfo"
+                                             Tag="{Binding Source='hf8dd4c2fg97e0g4ccdgac1ag3cd1fe5060ef', Converter={StaticResource TranslatedStringConverter}}"
+                                             Command="ls:UIWidget.ToggleTooltipOnUIElementCommand"
+                                             CommandParameter="{Binding FocusedElement, ElementName=Examine_c}"/>
+
+                    <!-- Closes Examine on Circle. Hidden while the settings overlay is open so it does
+                         not fire (a Collapsed BoundEvent button does not receive the event); the overlay's
+                         own ls:LSInputBinding then handles Circle to close only the overlay (GH #6). -->
+                    <ls:LSButton ContentTemplate="{StaticResource ControllerButtonHint}"
+                                             VerticalAlignment="Center"
+                                             Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UICancel'}"
+                                             BoundEvent="UICancel"
+                                             Tag="{Binding Source='h6fefa28bg2149g4cacga071gd95b236b2d0b', Converter={StaticResource TranslatedStringConverter}}"
+                                             Visibility="{Binding IsVisible, ElementName=NYS_SettingsPanel, Converter={StaticResource BoolToCollapsedConverter}}"
+                                             Command="{Binding DataContext.CustomEvent, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}"
+                                             CommandParameter="CloseWidget"/>
+                </StackPanel>
+
+                <!-- ===== Name Your Summons: native settings overlay (GH #6, controller layout) =====
+                     Mirrors the keyboard Examine.xaml overlay. DataContext is an SE viewmodel set
+                     from Lua (NativeConfigUI) when the panel opens; the gear toggles NysIsOpen. The
+                     panel is a MoveFocus scope: opening it traps navigation here and jumps focus in,
+                     Circle closes only it (see the container triggers below). Every control uses the
+                     game's FocusableButtonStyleMinimal so a controller can reach and activate it: each
+                     checkbox is a focusable button that toggles a bool on accept, and the multi-summon
+                     mode is three choice buttons (BG3 has no drop-in focusable toggle). FallbackValue
+                     keeps the panel collapsed before the DataContext is bound. -->
+                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="100"
+                      ls:MoveFocus.IsMoveFocusScope="True"
+                      Visibility="{Binding NysIsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                    <b:Interaction.Triggers>
+                        <!-- When the panel opens, jump focus into it and (via IsMoveFocusScope) keep
+                             navigation trapped here until it closes. Pattern from the game's Henchmen_c
+                             AppearancePage (GH #6). -->
+                        <b:DataTrigger Binding="{Binding IsVisible, ElementName=NYS_SettingsPanel}" Value="True">
+                            <ls:SetMoveFocusAction TargetName="Examine_c" FocusElement="{Binding ElementName=NYS_SettingsPanel}"/>
+                        </b:DataTrigger>
+                    </b:Interaction.Triggers>
+                    <!-- Circle/UICancel closes ONLY the settings panel while it is open - enabled only
+                         then, so the footer UICancel button still closes the whole panel otherwise (the
+                         Examine state omits its own UICancel event; Henchmen_c's backFromFocusedSummary
+                         pattern). -->
+                    <ls:LSInputBinding BoundEvent="UICancel" IsEnabled="{Binding NysIsOpen, FallbackValue=False}">
+                        <b:Interaction.Triggers>
+                            <b:EventTrigger EventName="LSInputBindingReleased">
+                                <b:InvokeCommandAction Command="{Binding NysCloseCommand}"/>
+                                <ls:SetMoveFocusAction TargetName="Examine_c" FocusElement="{Binding ElementName=NYS_SettingsButton}"/>
+                            </b:EventTrigger>
+                        </b:Interaction.Triggers>
+                    </ls:LSInputBinding>
+                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1820" Margin="0,150,0,0">
+                        <Grid Margin="80,60,80,60">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <ContentControl Style="{StaticResource NYS_SectionTitle}" HorizontalAlignment="Center">
+                                    <TextBlock Text="Name Your Summons"/>
+                                </ContentControl>
+                                <ls:LSButton Style="{DynamicResource SmallCloseButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                             ls:MoveFocus.Focusable="True" Focusable="True"
+                                             SoundID="UI_Shared_Cancel" Command="{Binding NysCloseCommand}"/>
+                            </Grid>
+
+                            <!-- Plain ScrollViewer scrolled by focus-follow: navigating a focusable row
+                                 brings it into view, exactly as the base Examine_c scrolls the character
+                                 stats list (its item panel uses LSScrollViewer + a stick event instead,
+                                 but only because that holds a single non-navigable tooltip). GH #6. -->
+                            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Margin="0,20,0,20">
+                                <StackPanel>
+                                    <!-- ===== Prompt ===== -->
+                                    <ContentControl Style="{StaticResource NYS_SectionTitle}">
+                                        <TextBlock Text="Prompt"/>
+                                    </ContentControl>
+                                    <!-- Each checkbox is a focusable button toggled by accept (X); NYS_CheckContent
+                                         draws the compact box (Tag = the bound bool) + centered label (GH #6). -->
+                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" Command="{Binding NysTogglePromptOnSummonCommand}">
+                                        <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysPromptOnSummon}">
+                                            <TextBlock Style="{StaticResource DetailedListText}" Text="Ask me to name new summons"/>
+                                        </ContentControl>
+                                    </ls:LSButton>
+                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" IsEnabled="{Binding NysPromptForNamedEnabled}" Command="{Binding NysTogglePromptForNamedCommand}">
+                                        <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysPromptForNamed}">
+                                            <TextBlock Style="{StaticResource DetailedListText}" Text="Also re-ask for summons I have already named"/>
+                                        </ContentControl>
+                                    </ls:LSButton>
+                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" Command="{Binding NysTogglePauseOnPromptCommand}">
+                                        <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysPauseOnPrompt}">
+                                            <TextBlock Style="{StaticResource DetailedListText}" Text="Pause the game (turn-based mode) while I name a summon"/>
+                                        </ContentControl>
+                                    </ls:LSButton>
+                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" Command="{Binding NysToggleAllowStoryCommand}">
+                                        <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysAllowStorySummons}">
+                                            <TextBlock Style="{StaticResource DetailedListText}" Text="Allow renaming story-bound summons (e.g. 'Us')"/>
+                                        </ContentControl>
+                                    </ls:LSButton>
+
+                                    <!-- ===== Summon types to name (collapsible) ===== -->
+                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Left" Margin="0,20,0,0"
+                                                 Content="Summon types to name..." Command="{Binding NysToggleTypesCommand}"/>
+                                    <StackPanel Visibility="{Binding NysTypesExpanded, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                                        <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="Which summons to prompt for, by the creature type read from its tags. Familiars count as 'Familiars' whatever their type, so the creature types below apply to non-familiar summons only."/>
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" IsEnabled="{Binding NysNameEverySummonEnabled}" Command="{Binding NysToggleNameEveryCommand}">
+                                            <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysNameEverySummon}">
+                                                <TextBlock Style="{StaticResource DetailedListText}" Text="Every summon (ignore the type filter below)"/>
+                                            </ContentControl>
+                                        </ls:LSButton>
+                                        <ItemsControl ItemsSource="{Binding NysTypeToggles}" Margin="0,4,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" IsEnabled="{Binding NysEnabled}" Command="{Binding NysToggleCommand}">
+                                                        <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysChecked}">
+                                                            <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysLabel}"/>
+                                                        </ContentControl>
+                                                    </ls:LSButton>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <!-- ===== Multi-summon mode (vanilla options-menu dropdown) ===== -->
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,16,0,0"
+                                               Text="When one spell summons several creatures at once:"/>
+                                    <!-- Controller (GH #6): a Popup flyout is not controller-navigable, so the
+                                         mode is three focusable choice buttons instead of the mouse pill+flyout.
+                                         Accept (X) selects; the current value is bold/accent. Same NysSelectX
+                                         commands as the keyboard page. -->
+                                    <StackPanel Orientation="Vertical" HorizontalAlignment="Left" Margin="0,8,0,0">
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="520" HorizontalAlignment="Stretch" Command="{Binding NysSelectSkipCommand}">
+                                            <TextBlock Text="Do not name them" HorizontalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DetailedListText}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding NysModeValue}" Value="skip">
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                                <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </ls:LSButton>
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="520" HorizontalAlignment="Stretch" Command="{Binding NysSelectSharedCommand}">
+                                            <TextBlock Text="Share one name" HorizontalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DetailedListText}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding NysModeValue}" Value="shared">
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                                <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </ls:LSButton>
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="520" HorizontalAlignment="Stretch" Command="{Binding NysSelectUniqueCommand}">
+                                            <TextBlock Text="Name each individually" HorizontalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource DetailedListText}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding NysModeValue}" Value="unique">
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                                <Setter Property="Foreground" Value="{StaticResource LS_accent100TxtColor}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </ls:LSButton>
+                                    </StackPanel>
+
+                                    <!-- ===== Saved names ===== -->
+                                    <ContentControl Style="{StaticResource NYS_SectionTitle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Saved names"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No saved names yet."
+                                               Visibility="{Binding NysHasSavedNames, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysSavedNames}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,10">
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysRowLabel}"/>
+                                                    <!-- Field (fills the line) with Forget to its right. The field is READ-ONLY
+                                                         (not disabled) when a forget is staged, so it stays focusable and carries
+                                                         the up/down column - a disabled field is unfocusable and breaks it, letting
+                                                         down skip to Refresh. Forget is reached by going right from the field. Its
+                                                         Padding keeps the focus-highlight border from clipping the label (GH #6). -->
+                                                    <Grid Margin="0,4,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <ls:LSTextBox Grid.Column="0" MaxLines="1" TextWrapping="NoWrap" VerticalAlignment="Center"
+                                                                      ls:MoveFocus.Focusable="True" Focusable="True" OpenVirtualKeyboardOnFocus="False"
+                                                                      IsReadOnly="{Binding NysNameEnabled, Converter={StaticResource InvertBoolConverter}}" TextImmediateSourceUpdate="True"
+                                                                      Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                        <!-- Horizontal padding via the label's Margin: FocusableButtonStyleMinimal
+                                                             ignores the button's Padding, so the focus-highlight border would clip
+                                                             the text without this (GH #6). -->
+                                                        <ls:LSButton Grid.Column="1" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                                     Command="{Binding NysForgetCommand}">
+                                                            <TextBlock Margin="30,0" Text="{Binding NysForgetLabel}"/>
+                                                        </ls:LSButton>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- ===== Always skipped ===== -->
+                                    <ContentControl Style="{StaticResource NYS_SectionTitle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Always skipped"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
+                                               Text="Summons you chose never to be prompted about. Use 'Prompt again' to undo."/>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="No always-skipped summons yet."
+                                               Visibility="{Binding NysHasAlwaysSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysAlwaysSkipped}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,10">
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
+                                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Center" Margin="0,4,0,0"
+                                                                 Command="{Binding NysUndoCommand}">
+                                                        <TextBlock Margin="30,0" Text="{Binding NysUndoLabel}"/>
+                                                    </ls:LSButton>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- ===== Skipped this session ===== -->
+                                    <ContentControl Style="{StaticResource NYS_SectionTitle}" Margin="0,20,0,0">
+                                        <TextBlock Text="Skipped this session"/>
+                                    </ContentControl>
+                                    <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap"
+                                               Text="Summons you skipped since the game loaded; forgotten on reload."/>
+                                    <TextBlock Style="{StaticResource DetailedListText}" Text="Nothing skipped this session."
+                                               Visibility="{Binding NysHasSessionSkipped, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding NysSessionSkipped}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,10">
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysOwnerLabel}"/>
+                                                    <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysTemplateLabel}"/>
+                                                    <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Center" Margin="0,4,0,0"
+                                                                 Command="{Binding NysUndoCommand}">
+                                                        <TextBlock Margin="30,0" Text="{Binding NysUndoLabel}"/>
+                                                    </ls:LSButton>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Refresh/Save live at the END of the scrollable content (not a fixed
+                                         footer) so controller down-navigation reaches them only AFTER every list
+                                         row: a fixed footer is always spatially below the list, so nav jumped to
+                                         it whenever the next row was scrolled off-screen (GH #6). -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="200" Margin="20,0" Command="{Binding NysRefreshCommand}">
+                                            <TextBlock HorizontalAlignment="Center" Text="Refresh"/>
+                                        </ls:LSButton>
+                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="200" Margin="20,0" Command="{Binding NysSaveCommand}">
+                                            <TextBlock HorizontalAlignment="Center" Text="Save"/>
+                                        </ls:LSButton>
+                                    </StackPanel>
+                                    <!-- Clearance so the last row (Save) can scroll clear of the panel edge. -->
+                                    <Border Height="40"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </ls:LSNineSliceImage>
+                </Grid>
+
+            </Grid>
+
+            <!--Check what we are Examining-->
+            <ControlTemplate.Triggers>
+                <DataTrigger Binding="{Binding CurrentPlayer.UIData.ExamineTarget.Type}" Value="Item">
+                    <Setter TargetName="ItemViewer" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ExaminePaperdoll" Property="Height" Value="1600"/>
+                     <Setter TargetName="ExaminePaperdoll" Property="Zoom" Value="0.18"/>
+                    <Setter TargetName="ExaminePaperdoll" Property="Margin" Value="0,-100,0,100"/>
+                    
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CurrentPlayer.UIData.ExamineTarget.Type}" Value="Character">
+                    <Setter TargetName="CharacterViewer" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ShowUIElementTooltip, ElementName=Examine_c}" Value="True">
+                    <Setter TargetName="ToggleTooltips" Property="Tag" Value="{Binding Source='hb33ec471gd611g4ee3gbbffg699af8f79167', Converter={StaticResource TranslatedStringConverter}}"/>
+                </DataTrigger>
+
+                <!-- Hide Item HP -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding CurrentPlayer.UIData.ExamineTarget.Type}" Value="Item"/>
+                        <Condition Binding="{Binding ModifierEnabled, ElementName=HideNpcHpModifier}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.Setters>
+                        <Setter TargetName="ItemHealth" Property="Visibility" Value="Collapsed"/>
+                    </MultiDataTrigger.Setters>
+                </MultiDataTrigger>
+
+                <DataTrigger Binding="{Binding Layout}" Value="Left">
+                    <Setter TargetName="ScreenBGSideGradient" Property="Fill" Value="{StaticResource LeftSideWideShadingBrush}"/>
+                    <Setter TargetName="ScreenBGSideGradient" Property="HorizontalAlignment" Value="Left"/>
+                    <Setter TargetName="ScreenBGSideGradient" Property="Visibility" Value="Visible"/>
+                    
+                    <Setter TargetName="bgFade" Property="Background" Value="Transparent"/>
+                    <Setter TargetName="Panel" Property="Margin" Value="{StaticResource ContentPanelOffScreenLeftMargin}"/>
+                    
+                    <Setter TargetName="ToggleModelButton" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ControllerHints" Property="Style" Value="{StaticResource ButtonHint.Container.Left}"/>
+
+                    <Setter TargetName="ExaminePaperdollHolder" Property="Margin" Value="{StaticResource PaperDollOffsetLeftMargin}"/>
+                    <Setter TargetName="ExaminePaperdoll" Property="Width" Value="1420"/>
+                    <Setter TargetName="BackgroundImage" Property="OpacityMask">
+                        <Setter.Value>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="0.7"/>
+                                <GradientStop Color="#00FFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding Layout}" Value="Right">
+                    <Setter TargetName="ScreenBGSideGradient" Property="Fill" Value="{StaticResource RightSideWideShadingBrush}"/>
+                    <Setter TargetName="ScreenBGSideGradient" Property="HorizontalAlignment" Value="Right"/>
+                    <Setter TargetName="ScreenBGSideGradient" Property="Visibility" Value="Visible"/>
+
+                    <Setter TargetName="bgFade" Property="Background" Value="Transparent"/>
+                    <Setter TargetName="Panel" Property="Margin" Value="{StaticResource ContentPanelOffScreenRightMargin}"/>
+
+                    <Setter TargetName="PortraitHP" Property="ToolTipService.HorizontalOffset" Value="200"/>
+                    <Setter TargetName="PortraitHP" Property="ToolTipService.Placement" Value="Left"/>
+                    <Setter TargetName="ACInfo" Property="ToolTipService.HorizontalOffset" Value="-374"/>
+                    <Setter TargetName="ACInfo" Property="ToolTipService.Placement" Value="Left"/>
+
+                    <Setter TargetName="ExaminePaperdollHolder" Property="Margin" Value="{StaticResource PaperDollOffsetRightMargin}"/>
+                    <Setter TargetName="ExaminePaperdollHolder" Property="HorizontalAlignment" Value="Right"/>
+
+                    <Setter TargetName="ToggleModelButton" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ControllerHints" Property="Style" Value="{StaticResource ButtonHint.Container.Right}"/>
+                    <Setter TargetName="BackgroundImage" Property="OpacityMask">
+                        <Setter.Value>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="0.3"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Setter.Value>
+                    </Setter>
+
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding Layout}" Value="Common">
+                    <Setter TargetName="ExaminePaperdoll" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="BackgroundImage" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="BackgroundImageFullScreen" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition  Binding="{Binding IsChecked, ElementName=ToggleModelButton}" Value="True"/>
+                        <Condition Binding="{Binding Layout}" Value="Left" />
+                    </MultiDataTrigger.Conditions>
+
+                    <Setter TargetName="Panel" Property="Margin" Value="{StaticResource ContentPanelOffsetLeftMargin}"/>
+                    <Setter TargetName="ExaminePaperdoll" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="BackgroundImage" Property="Opacity" Value="1"/>
+
+                    <Setter TargetName="weightStat" Property="ToolTipService.Placement" Value="Left"/>
+                    <Setter TargetName="SizeStat" Property="ToolTipService.Placement" Value="Left"/>
+                    <Setter TargetName="DarkVisionStat" Property="ToolTipService.Placement" Value="Left"/>
+                    <Setter TargetName="MovementStat" Property="ToolTipService.Placement" Value="Left"/>
+                    <Setter TargetName="InitiativeStat" Property="ToolTipService.Placement" Value="Left"/>
+       
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="MovePaperDollLeftAnim" Storyboard="{StaticResource RevealPaperDollLeft}" />
+                        <StopStoryboard BeginStoryboardName="HidePaperDollLeftAnim" />
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <BeginStoryboard x:Name="HidePaperDollLeftAnim" Storyboard="{StaticResource HidePaperDollLeft}" />
+                        <StopStoryboard BeginStoryboardName="MovePaperDollLeftAnim" />
+                    </MultiDataTrigger.ExitActions>
+
+                </MultiDataTrigger>
+
+
+
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition  Binding="{Binding IsChecked, ElementName=ToggleModelButton}" Value="True"/>
+                        <Condition Binding="{Binding Layout}" Value="Right" />
+                    </MultiDataTrigger.Conditions>
+
+                    <Setter TargetName="ExaminePaperdoll" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="Panel" Property="Margin" Value="{StaticResource ContentPanelOffsetRightMargin}"/>
+                    <Setter TargetName="BackgroundImage" Property="Opacity" Value="1"/>
+
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="MovePaperDollRightAnim" Storyboard="{StaticResource RevealPaperDollRight}" />
+                        <StopStoryboard BeginStoryboardName="HidePaperDollRightAnim" />
+                    </MultiDataTrigger.EnterActions>
+
+                    <MultiDataTrigger.ExitActions>
+                        <BeginStoryboard x:Name="HidePaperDollRightAnim" Storyboard="{StaticResource HidePaperDollRight}" />
+                        <StopStoryboard BeginStoryboardName="MovePaperDollRightAnim" />
+                    </MultiDataTrigger.ExitActions>
+
+                </MultiDataTrigger>
+
+
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+    </ls:UIWidget.Template>
+    <b:Interaction.Triggers>
+        <!--Refresh Tooltips-->
+        <b:EventTrigger EventName="FocusChanged">
+            <b:InvokeCommandAction Command="{Binding ShowTooltipOnUIElementCommand, ElementName=Examine_c}" CommandParameter="{Binding Path=FocusedElement, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}}"/>
+            <ls:LSPlaySound Sound="UI_Shared_Hover"/>
+        </b:EventTrigger>
+        <b:DataTrigger Binding="{Binding HasInputEnabled, ElementName=Examine_c}" Value="True">
+            <b:InvokeCommandAction Command="{Binding ShowTooltipOnUIElementCommand, ElementName=Examine_c}" CommandParameter="{Binding FocusedElement, ElementName=Examine_c}"/>
+        </b:DataTrigger>
+        <b:EventTrigger EventName="Loaded">
+            <ls:LSPlaySound Sound="UI_HUD_Examine_Open"/>
+            <b:InvokeCommandAction Command="{Binding EnableTooltipOnUIElementCommand, ElementName=Examine_c}"/>
+            <ls:SetMoveFocusAction TargetName="Examine_c"/>
+        </b:EventTrigger>
+    </b:Interaction.Triggers>
+</ls:UIWidget>

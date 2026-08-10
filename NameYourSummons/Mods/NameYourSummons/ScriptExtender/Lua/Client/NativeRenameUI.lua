@@ -141,9 +141,20 @@ local function contentRoot()
 end
 
 --- The Examine panel node, or nil when it is not on screen. Anchored at ContentRoot.
+--- The keyboard page's root widget is named "Examine"; the controller page's is
+--- "Examine_c" (GH #6), so accept either.
 ---@return any|nil
 local function examineNode()
-	return findFrom(contentRoot(), "Examine")
+	local root = contentRoot()
+	return findFrom(root, "Examine") or findFrom(root, "Examine_c")
+end
+
+--- Whether the on-screen Examine panel is the controller layout (its root widget is named
+--- "Examine_c"; the keyboard one is "Examine"). Used to auto-enable editing on controller,
+--- where there is no click to start it (GH #6).
+---@return boolean
+local function isControllerPanel()
+	return findFrom(contentRoot(), "Examine_c") ~= nil
 end
 
 --- A live Noesis node by x:Name from WITHIN the Examine subtree, or nil. Used for
@@ -629,10 +640,12 @@ local function wirePanel()
 	log("wirePanel: wired", #fieldSubs, "field subs", uiState())
 
 	-- An on-summon prompt (current ~= nil) is the server asking for a name, so enable editing
-	-- now; a manually examined summon stays plain text until a click, if it may be renamed.
+	-- now; a manually examined summon stays plain text until a click, if it may be renamed. On
+	-- the controller layout there is no click, so a renamable manual summon is made editable (and
+	-- controller-navigable, via the field's ls:MoveFocus.Focusable) as soon as it is wired (GH #6).
 	local summonUuid = examinedSummonUuid()
 	panelForbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
-	if current ~= nil then
+	if current ~= nil or (not panelForbidden and isControllerPanel()) then
 		enableEditing()
 	end
 end
@@ -718,6 +731,32 @@ local function onMouseButton(e)
 	if present or current ~= nil then
 		Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
 	end
+end
+
+--- Global controller-button hook - the controller-layout counterpart of onMouseButton, and
+--- the only way to detect a manually-opened Examine there (MouseButtonInput never fires on a
+--- controller and there is no panel-open event). Purely a lifecycle detector: it reconciles the
+--- tree and wires the panel; wirePanel itself enables editing for a renamable manual summon on
+--- controller (isControllerPanel). It does NOT set recentClick - a controller has no click, so a
+--- field blur is always an Enter commit (onFieldBlur).
+---@param e any
+local function onControllerButton(e)
+	local pressed = safe(function()
+		return e.Pressed
+	end)
+	if pressed ~= true then
+		return
+	end
+	if awaitingOpen then
+		log("onControllerButton: ignored (awaitingOpen)")
+		return
+	end
+	pollLifecycle()
+	-- Unlike the mouse hook, ALWAYS reconcile again after a settle. The button that OPENS Examine
+	-- fires this hook while the panel is still mid-open (present is false), and a controller player
+	-- who then navigates with the left STICK produces no further button events - so without this
+	-- unconditional re-poll the panel would never get wired (its field never enabled). One-shot.
+	Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
 end
 
 ---------------------------------------------------------------------------
@@ -935,6 +974,13 @@ function NativeRenameUI.Register()
 
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
+	end)
+
+	-- Controller-layout lifecycle detector (GH #6). Real event name follows the same pattern as
+	-- MouseButtonInput (the IDE helper's EclLua* names are stale for this build); wrapped in pcall
+	-- so a wrong name cannot tear down the module - it just leaves controller detection to verify.
+	pcall(function()
+		Ext.Events.ControllerButtonInput:Subscribe(onControllerButton)
 	end)
 
 	-- Seed cachedAllowStory (GH #48). A fresh boot has not loaded the persisted ModVars at
