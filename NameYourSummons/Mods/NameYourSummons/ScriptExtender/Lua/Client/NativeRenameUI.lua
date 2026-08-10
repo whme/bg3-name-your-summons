@@ -257,10 +257,8 @@ local recentClick = false -- a left click just happened, so a blur now is click-
 local editEnabled = false
 local panelForbidden = false
 
--- The AllowStorySummons setting, cached client-side so the forbidden check is synchronous
--- (GH #48): the live value cannot be fetched without a server round-trip. Seeded on
--- SessionLoaded (once the persisted ModVars have loaded) and kept fresh by the server's
--- SettingsChanged broadcast.
+-- AllowStorySummons cached client-side so the forbidden check is synchronous (GH #48): the
+-- live value cannot be fetched without a server round-trip. Seeded/refreshed below.
 local cachedAllowStory = false
 
 --- Refresh the cached AllowStorySummons setting (async; for the NEXT open).
@@ -493,9 +491,8 @@ local function refreshSkipVisibility()
 	end
 end
 
---- The root template of a summon, read client-side (Ext.Entity is available in both
---- states) so the forbidden check is synchronous. Nil if OriginalTemplate is not
---- replicated to the client - then we fail open (treat as renamable).
+--- The root template of a summon, read client-side. Nil if OriginalTemplate is not
+--- replicated to the client (caller then fails open to renamable).
 ---@param uuid string
 ---@return string|nil
 local function clientTemplateOf(uuid)
@@ -511,9 +508,8 @@ local function clientTemplateOf(uuid)
 	return type(template) == "string" and template or nil
 end
 
---- Whether the examined summon must not offer a rename: a story-bound template (e.g.
---- "Us") while the opt-in is off (GH #48). Mirrors the server's HandleSummon story gate
---- via the shared Util.IsStorySummon and the cached setting.
+--- Whether the summon may not be renamed: a story-bound template with the opt-in off,
+--- mirroring the server's HandleSummon gate (GH #48).
 ---@param uuid string
 ---@return boolean
 local function isForbiddenSummon(uuid)
@@ -521,10 +517,9 @@ local function isForbiddenSummon(uuid)
 	return template ~= nil and Util.IsStorySummon(template) and not cachedAllowStory
 end
 
---- Flip the name field's three input-checked flags (GH #48): editable = interactive and
---- writable, else non-interactive plain text. All checked at INPUT time, not painted, so
---- the change needs no repaint - which is why a manual click can enable editing at all (a
---- Visibility change would not paint until the next click).
+--- Flip the field between editable and plain text. These flags are checked at input time,
+--- not painted, so the change needs no repaint (a manually-opened panel repaints only on a
+--- real click).
 ---@param field any
 ---@param editable boolean
 local function setFieldEditable(field, editable)
@@ -539,8 +534,7 @@ local function setFieldEditable(field, editable)
 	end)
 end
 
---- Turn on editing for the current panel: the field starts as plain text; once enabled the
---- player focuses it with a click and types. Idempotent (guarded by `editEnabled`).
+--- Make the field editable. Idempotent (guarded by `editEnabled`).
 local function enableEditing()
 	if editEnabled then
 		return
@@ -554,9 +548,7 @@ local function enableEditing()
 	log("enableEditing", uiState())
 end
 
---- Revert the field to non-interactive plain text - used when AllowStorySummons is toggled
---- off while a now-forbidden summon's panel is open, so it stops being editable without a
---- re-summon.
+--- Revert the field to plain text (a summon that became forbidden while its panel is open).
 local function disableEditing()
 	editEnabled = false
 	local field = liveField()

@@ -473,18 +473,16 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 		return
 	end
 
-	-- Story summons (e.g. "Us") are only prompted when opted in; a saved name still
-	-- reapplies above. AllowStorySummons is their dedicated enable, so an opted-in story
-	-- summon skips the per-creature-type filter below - its type (e.g. Aberration for Us)
-	-- is rarely one the player turned on, and requiring both would make the opt-in look
-	-- broken (GH #48).
+	-- Story summons are gated by their own opt-in, and an opted-in one then bypasses the
+	-- per-creature-type filter below: its type (e.g. Aberration for "Us") is rarely one the
+	-- player enabled, so requiring both would make the opt-in look broken (GH #48).
 	local isStory = Util.IsStorySummon(rootTemplate)
 	if isStory and not settings.AllowStorySummons then
 		return
 	end
 
-	-- Only prompt for summon types the player has enabled (GH #14); a saved name still
-	-- reapplies above regardless of type. Opted-in story summons bypass this (see above).
+	-- Only prompt for summon types the player has enabled (GH #14); opted-in story summons
+	-- bypass this (see above).
 	if not isStory and not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
 		return
 	end
