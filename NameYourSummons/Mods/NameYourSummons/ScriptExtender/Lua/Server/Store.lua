@@ -5,7 +5,6 @@ local Store = {}
 
 local VAR_NAMES = "SummonNames"
 local VAR_SETTINGS = "Settings"
-local VAR_SKIPPED = "SkippedSummons"
 local VAR_TYPES = "SummonTypes"
 
 --- How a spell that summons several creatures of the same type at once is
@@ -66,13 +65,6 @@ function Store.Register()
 		Persistent = true,
 		SyncToClient = false,
 	})
-	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_SKIPPED, {
-		Server = true,
-		Client = false,
-		WriteableOnServer = true,
-		Persistent = true,
-		SyncToClient = false,
-	})
 	Ext.Vars.RegisterModVariable(ModuleUUID, VAR_TYPES, {
 		Server = true,
 		Client = false,
@@ -109,8 +101,6 @@ function Store.Set(key, name)
 	t[key] = name
 	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
 	v[VAR_NAMES] = t
-	-- A name and an always-skip are mutually exclusive; naming clears the skip.
-	Store.Unskip(key)
 end
 
 ---@param key string
@@ -143,13 +133,10 @@ local function asList(value)
 	return {}
 end
 
---- Append a name to a key's unique set. Skipped keys are never resurrected.
+--- Append a name to a key's unique set.
 ---@param key string
 ---@param name string
 function Store.AppendUnique(key, name)
-	if Store.IsSkipped(key) then
-		return
-	end
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	local list = asList(t[key])
@@ -159,7 +146,7 @@ function Store.AppendUnique(key, name)
 end
 
 --- Replace a key's unique set with a dense array of names, seeding one that does
---- not exist yet (unlike SetSlot). Clears any always-skip, like Store.Set.
+--- not exist yet (unlike SetSlot).
 ---@param key string
 ---@param list string[]
 function Store.SetUnique(key, list)
@@ -167,8 +154,6 @@ function Store.SetUnique(key, list)
 	local t = v[VAR_NAMES] or {}
 	t[key] = list
 	v[VAR_NAMES] = t
-	-- A name and an always-skip are mutually exclusive; naming clears the skip.
-	Store.Unskip(key)
 end
 
 --- Overwrite one entry of a key's unique set. Out-of-range slots are ignored.
@@ -176,9 +161,6 @@ end
 ---@param slot integer
 ---@param name string
 function Store.SetSlot(key, slot, name)
-	if Store.IsSkipped(key) then
-		return
-	end
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	local list = asList(t[key])
@@ -208,44 +190,6 @@ function Store.ForgetSlot(key, slot)
 		t[key] = list
 	end
 	v[VAR_NAMES] = t
-end
-
----------------------------------------------------------------------------
--- Always-skip
---
--- Keys the player has chosen never to be prompted about. Stored as a set
--- (key -> true) alongside the names, and mutually exclusive with them: a
--- saved name clears the skip, and skipping clears any saved name.
----------------------------------------------------------------------------
-
----@return table<string,boolean>
-function Store.AllSkipped()
-	return vars()[VAR_SKIPPED] or {}
-end
-
----@param key string
----@return boolean
-function Store.IsSkipped(key)
-	return Store.AllSkipped()[key] == true
-end
-
----@param key string
-function Store.Skip(key)
-	local v = vars()
-	local t = v[VAR_SKIPPED] or {}
-	t[key] = true
-	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
-	v[VAR_SKIPPED] = t
-	-- A name and an always-skip are mutually exclusive; skipping clears the name.
-	Store.Forget(key)
-end
-
----@param key string
-function Store.Unskip(key)
-	local v = vars()
-	local t = v[VAR_SKIPPED] or {}
-	t[key] = nil
-	v[VAR_SKIPPED] = t
 end
 
 ---------------------------------------------------------------------------

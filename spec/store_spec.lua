@@ -41,44 +41,6 @@ function TestStoreNames:testForget()
 	lu.assertNil(Store.Get("k"))
 end
 
-TestStoreSkipped = {}
-
-function TestStoreSkipped:setUp()
-	freshBacking()
-end
-
-function TestStoreSkipped:testEmptyBeforeAnythingSkipped()
-	lu.assertEquals(Store.AllSkipped(), {})
-	lu.assertFalse(Store.IsSkipped("k"))
-end
-
-function TestStoreSkipped:testSkipAndQuery()
-	Store.Skip("owner|tmpl")
-	lu.assertTrue(Store.IsSkipped("owner|tmpl"))
-	lu.assertEquals(backing["SkippedSummons"]["owner|tmpl"], true)
-end
-
-function TestStoreSkipped:testUnskip()
-	Store.Skip("k")
-	Store.Unskip("k")
-	lu.assertFalse(Store.IsSkipped("k"))
-end
-
-function TestStoreSkipped:testSkipClearsSavedName()
-	Store.Set("k", "Rex")
-	Store.Skip("k")
-	-- A name and an always-skip are mutually exclusive.
-	lu.assertNil(Store.Get("k"))
-	lu.assertTrue(Store.IsSkipped("k"))
-end
-
-function TestStoreSkipped:testNamingClearsSkip()
-	Store.Skip("k")
-	Store.Set("k", "Rex")
-	lu.assertFalse(Store.IsSkipped("k"))
-	lu.assertEquals(Store.Get("k"), "Rex")
-end
-
 TestStoreTypes = {}
 
 function TestStoreTypes:setUp()
@@ -227,23 +189,7 @@ function TestStoreUniqueSets:testForgetLastSlotDropsKey()
 	lu.assertNil(Store.Get("k"))
 end
 
-function TestStoreUniqueSets:testAppendIgnoredWhenSkipped()
-	Store.Skip("k")
-	Store.AppendUnique("k", "Alpha")
-	-- A name and an always-skip are mutually exclusive; skipping wins.
-	lu.assertNil(Store.Get("k"))
-	lu.assertTrue(Store.IsSkipped("k"))
-end
-
 function TestStoreUniqueSets:testSetUniqueStoresDenseArray()
 	Store.SetUnique("k", { "Alpha", "Beta", "Gamma" })
 	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta", "Gamma" })
-end
-
-function TestStoreUniqueSets:testSetUniqueClearsSkip()
-	Store.Skip("k")
-	Store.SetUnique("k", { "Alpha", "Beta" })
-	-- Unlike AppendUnique/SetSlot, an explicit set clears an always-skip.
-	lu.assertEquals(Store.Get("k"), { "Alpha", "Beta" })
-	lu.assertFalse(Store.IsSkipped("k"))
 end

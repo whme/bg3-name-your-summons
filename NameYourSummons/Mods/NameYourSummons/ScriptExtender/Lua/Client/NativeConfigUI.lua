@@ -39,18 +39,15 @@ local NativeConfigUI = {}
 local SETTINGS_VM = "NYS_SettingsVM"
 local TOGGLE_VM = "NYS_TypeToggleVM"
 local NAME_ROW_VM = "NYS_NameRowVM"
-local SKIP_ROW_VM = "NYS_SkipRowVM"
 
 local panelFinder -- fun(name):node|nil - finds a live Noesis node by x:Name
 
 -- Saved-name row identity/baseline, keyed by rowId (plain strings, safe to cache
 -- unlike viewmodel handles). Edited names are read from the live rows at Save;
--- forgets and un-skips are staged here and flushed on Save (so they can be undone).
+-- forgets are staged here and flushed on Save (so they can be undone).
 local rowMeta = {} -- rowId -> { Key = .., Slot = .. }
 local originalNames = {} -- rowId -> baseline name text
 local pendingForgets = {} -- saved-name rowId -> true
-local pendingUnskips = {} -- always-skipped key -> true
-local pendingSessionUnskips = {} -- session-skipped key -> true
 
 -- Bumped on every (re)populate; async replies from an older generation are stale
 -- and must not touch the current viewmodel (see the module header, constraint 2).
@@ -237,17 +234,6 @@ local function toggleForget(id)
 	end
 end
 
-local function toggleUnskip(collKey, key, pendingSet)
-	local row = findLiveRow(collKey, key)
-	if pendingSet[key] then
-		pendingSet[key] = nil
-		set(row, "NysUndoLabel", "Prompt again")
-	else
-		pendingSet[key] = true
-		set(row, "NysUndoLabel", "Undo")
-	end
-end
-
 ---------------------------------------------------------------------------
 -- Load from the server into the just-built viewmodel (guarded by generation)
 ---------------------------------------------------------------------------
@@ -313,39 +299,6 @@ local function refreshNames(gen)
 				pcall(function()
 					row.NysForgetCommand:SetHandler(function()
 						toggleForget(id)
-					end)
-				end)
-				appendItem(coll, row)
-			end
-		end
-	end)
-end
-
---- Fill one skip list. `pendingSet` is the stage table for its "prompt again"
---- toggles (always-skipped and this-session share a layout and row viewmodel).
-local function refreshSkipList(channel, collKey, hasKey, pendingSet, gen)
-	channel:RequestToServer({}, function(response)
-		if gen ~= generation then
-			return
-		end
-		local v = liveVm()
-		if not v then
-			return
-		end
-		local coll = get(v, collKey)
-		local entries = (response and response.Entries) or {}
-		set(v, hasKey, #entries > 0)
-		for _, entry in ipairs(entries) do
-			local row = instantiate(SKIP_ROW_VM)
-			if row then
-				local key = entry.Key
-				set(row, "NysRowId", key)
-				set(row, "NysOwnerLabel", ownerLabel(entry))
-				set(row, "NysTemplateLabel", entry.TemplateName or "Summon")
-				set(row, "NysUndoLabel", "Prompt again")
-				pcall(function()
-					row.NysUndoCommand:SetHandler(function()
-						toggleUnskip(collKey, key, pendingSet)
 					end)
 				end)
 				appendItem(coll, row)
@@ -428,12 +381,6 @@ local function onSave()
 			end
 		end
 	end
-	for key in pairs(pendingUnskips) do
-		Channels.Unskip:SendToServer({ Key = key })
-	end
-	for key in pairs(pendingSessionUnskips) do
-		Channels.UnskipSession:SendToServer({ Key = key })
-	end
 
 	-- Rebuild from the canonical server state (server-side sanitising, owner names).
 	Ext.Timer.WaitForRealtime(120, populate)
@@ -462,11 +409,7 @@ local function registerTypes()
 			NysSelectUniqueCommand = { Type = "Command" },
 			NysTypeToggles = { Type = "Collection" },
 			NysSavedNames = { Type = "Collection" },
-			NysAlwaysSkipped = { Type = "Collection" },
-			NysSessionSkipped = { Type = "Collection" },
 			NysHasSavedNames = { Type = "Bool", Notify = true },
-			NysHasAlwaysSkipped = { Type = "Bool", Notify = true },
-			NysHasSessionSkipped = { Type = "Bool", Notify = true },
 			NysSaveCommand = { Type = "Command" },
 			NysRefreshCommand = { Type = "Command" },
 			NysCloseCommand = { Type = "Command" },
@@ -493,13 +436,6 @@ local function registerTypes()
 			NysNameEnabled = { Type = "Bool", Notify = true },
 			NysForgetLabel = { Type = "String", Notify = true },
 			NysForgetCommand = { Type = "Command" },
-		})
-		Ext.UI.RegisterType(SKIP_ROW_VM, {
-			NysRowId = { Type = "String" },
-			NysOwnerLabel = { Type = "String" },
-			NysTemplateLabel = { Type = "String" },
-			NysUndoLabel = { Type = "String", Notify = true },
-			NysUndoCommand = { Type = "Command" },
 		})
 	end)
 end
@@ -620,18 +556,8 @@ function populate()
 	rowMeta = {}
 	originalNames = {}
 	pendingForgets = {}
-	pendingUnskips = {}
-	pendingSessionUnskips = {}
 	loadSettings(gen)
 	refreshNames(gen)
-	refreshSkipList(Channels.ListSkipped, "NysAlwaysSkipped", "NysHasAlwaysSkipped", pendingUnskips, gen)
-	refreshSkipList(
-		Channels.ListSessionSkipped,
-		"NysSessionSkipped",
-		"NysHasSessionSkipped",
-		pendingSessionUnskips,
-		gen
-	)
 end
 
 ---------------------------------------------------------------------------

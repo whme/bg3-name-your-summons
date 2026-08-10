@@ -29,18 +29,6 @@ Channels.RenameName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameN
 -- that only knows the creature's uuid, not the storage key).
 Channels.RenameSummon = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameSummon")
 
--- Client -> Server (request/reply): "give me the always-skipped summons"
-Channels.ListSkipped = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListSkipped")
-
--- Client -> Server: "stop always-skipping this summon"
-Channels.Unskip = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_Unskip")
-
--- Client -> Server (request/reply): "give me the summons skipped this session"
-Channels.ListSessionSkipped = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListSessionSkipped")
-
--- Client -> Server: "prompt me again this session for this summon"
-Channels.UnskipSession = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_UnskipSession")
-
 -- Client -> Server (request/reply): "give me the current settings"
 Channels.GetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSettings")
 
