@@ -42,7 +42,7 @@ comes back automatically every time you re-summon that creature. A spell that
 summons several creatures at once shows them one at a time: name (or skip) each
 creature and close its panel, and the next one's opens.
 
-<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-ingame.png" width="1000" alt="Examine screen"></img></a></p>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-ingame.png" width="1000" alt="In game"></img></a></p>
 
 If you would rather not be rushed, the settings offer a toggle to freeze the
 world while you name a summon. It is off by default; turn it on and, out of
@@ -62,7 +62,7 @@ button next to the field opens the config window. This uses the same saved names
 as the prompt, so a rename here sticks and comes back on the next summon.
 
 <h1 align="center">In-game config</h3>
-<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-settings.png" width="1000" alt="Examine screen"></img></a></p>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-settings.png" width="1000" alt="Configuration"></img></a></p>
 
 The gear button next to the Examine name field opens the config window. There
 you can:
@@ -88,10 +88,11 @@ you can:
 
 Settings and names live in the host's save.
 
-## Multiplayer
+<h1 align="center">Local Co-op / Multiplayer</h3>
+<p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-splitscreen.png" width="1000" alt="Split screen"></img></a></p>
 
-Names are stored in the host's save and only the summoner is prompted. This
-should work in co-op, but is untested.
+Built and tested for local co-op.<br>
+Might work in other forms of Multiplayer, but has not been tested.
 
 ## Shout Outs
 
