@@ -29,6 +29,7 @@ NativeConfigUI.Register()
 -- client modules together here (avoids a circular require between them).
 NativeConfigUI.SetPanelFinder(NativeRenameUI.FindNamed)
 NativeRenameUI.SetGearHandler(NativeConfigUI.Open)
+NativeRenameUI.SetPanelCloseHandler(NativeConfigUI.Flush)
 NativeRenameUI.Register()
 
 Ext.Events.SessionLoaded:Subscribe(function()

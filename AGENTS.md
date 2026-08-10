@@ -153,14 +153,23 @@ the game.
   - **An SE `Collection` is effectively append-only from Lua** (`Clear`/`RemoveAt`/
     `table.remove`/whole-array assign all fail; the ONE in-place exception is
     `coll[i]=nil`, which removes a single element - unused here). The only wholly
-    clean list is a fresh viewmodel, so the whole panel is rebuilt on every
-    open/refresh/save/forget (`populate`), guarded by a `generation` counter so a
-    slow reply cannot append to a newer viewmodel.
+    clean list is a fresh viewmodel, so the whole panel is rebuilt on open and on
+    Refresh (`populate`), guarded by a `generation` counter so a slow reply cannot
+    append to a newer viewmodel.
   - **Prefix every viewmodel field `Nys`** so it cannot alias a built-in (an
     unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
     literal "Name").
-  Forgets are staged (toggle to Undo) and flushed on Save; edited names are read
-  off the live rows at Save. It is the sole config UI; no server changes.
+  There is no Save button - every change is live (GH #76): each setting's
+  WriteCallback (`onSettingWrite` / `pushIfLive`) sends the whole settings object
+  to the server as it is toggled, and an edited name commits via `onNameWrite` (a
+  WriteCallback on the row's `NysNameText`, whose binding is
+  `UpdateSourceTrigger=LostFocus`), so it commits on blur - Enter reaches the
+  `LSTextBox` as a blur too. A forget still toggles to Undo and stays visible while
+  the panel is open; the staged forgets flush only when the panel closes
+  (`flushStaged`, run from the overlay's own close button and from the whole
+  Examine panel closing via `NativeConfigUI.Flush`), so a forgotten name vanishes
+  on close and does not reappear on re-open. It is the sole config UI; no server
+  changes.
 - **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`, GH #19):
   the on-summon naming UI is the native Examine panel. Detection, the pending
   count, the world-pause, and per-creature `unique` prompting are all server-side;

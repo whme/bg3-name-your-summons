@@ -43,8 +43,9 @@ local NAME_ROW_VM = "NYS_NameRowVM"
 local panelFinder -- fun(name):node|nil - finds a live Noesis node by x:Name
 
 -- Saved-name row identity/baseline, keyed by rowId (plain strings, safe to cache
--- unlike viewmodel handles). Edited names are read from the live rows at Save;
--- forgets are staged here and flushed on Save (so they can be undone).
+-- unlike viewmodel handles). A name edit commits live when its field loses focus
+-- (onNameWrite); forgets are staged here and flushed when the panel closes
+-- (flushStaged), so they keep an Undo affordance while it is open (GH #76).
 local rowMeta = {} -- rowId -> { Key = .., Slot = .. }
 local originalNames = {} -- rowId -> baseline name text
 local pendingForgets = {} -- saved-name rowId -> true
@@ -53,16 +54,11 @@ local pendingForgets = {} -- saved-name rowId -> true
 -- and must not touch the current viewmodel (see the module header, constraint 2).
 local generation = 0
 
--- The generation whose settings reply has landed. Save reads settings off the
--- viewmodel, so it must wait for this to catch up to `generation` or it would
--- flush the fresh viewmodel's default (all-false) settings over the real ones.
+-- The generation whose settings reply has landed. pushSettings reads settings off
+-- the viewmodel, so it must wait for this to catch up to `generation` or a toggle
+-- fired mid-load would push the fresh viewmodel's default (all-false) settings over
+-- the real ones.
 local settingsLoadedGen = 0
-
--- The generation already flushed by Save. Save stays clickable until populate
--- rebuilds (120ms later); without this a double-click would replay the staged
--- forgets, and a unique-set ForgetSlot compacts the array, so the replay deletes
--- the wrong name. Cleared implicitly: populate bumps `generation` past it.
-local savedGen = 0
 
 -- Guards the `onSettingWrite` recompute against the bulk programmatic writes we do
 -- while loading a viewmodel (those must not be treated as user edits).
@@ -193,15 +189,73 @@ end
 -- WriteCallbacks (Noesis hands them the LIVE context and new value)
 ---------------------------------------------------------------------------
 
+--- Send the whole settings object to the server. Settings are live (GH #76), so
+--- this fires from every setting WriteCallback instead of a Save button.
+local function pushSettings()
+	local v = liveVm()
+	if not v then
+		return
+	end
+	-- Before the settings reply lands the viewmodel holds only its all-false
+	-- defaults; pushing then would overwrite the real settings with them.
+	if settingsLoadedGen ~= generation then
+		return
+	end
+	local settings = {
+		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
+		PromptForNamed = get(v, "NysPromptForNamed") == true,
+		PauseOnPrompt = get(v, "NysPauseOnPrompt") == true,
+		AllowStorySummons = get(v, "NysAllowStorySummons") == true,
+		MultiSummonMode = selectedMode(v),
+		[Classifier.MASTER_KEY] = get(v, "NysNameEverySummon") == true,
+	}
+	local toggles = get(v, "NysTypeToggles")
+	for index, cat in ipairs(Classifier.CATEGORIES) do
+		local toggle = toggles and toggles[index]
+		settings[Classifier.SettingKey(cat.key)] = toggle ~= nil and get(toggle, "NysChecked") == true
+	end
+	Channels.SetSettings:SendToServer(settings)
+end
+
 local function onSettingWrite(context)
 	if suppressWrite then
 		return
 	end
 	recomputeEnabled(context)
+	pushSettings()
+end
+
+--- WriteCallback for props that only need a live push (the mode dropdown value and
+--- each per-type toggle); recompute is handled by the booleans' onSettingWrite.
+local function pushIfLive()
+	if suppressWrite then
+		return
+	end
+	pushSettings()
+end
+
+--- Commit an edited saved name when its field loses focus (the row binding uses
+--- UpdateSourceTrigger=LostFocus, so this fires on blur, which is also how Enter
+--- arrives on the LSTextBox). A row staged for forget is left alone.
+local function onNameWrite(context)
+	if suppressWrite then
+		return
+	end
+	local id = get(context, "NysRowId")
+	local meta = id and rowMeta[id]
+	if not meta or pendingForgets[id] then
+		return
+	end
+	local text = Util.Sanitise(get(context, "NysNameText") or "")
+	if text == "" or text == originalNames[id] then
+		return
+	end
+	originalNames[id] = text
+	Channels.RenameName:SendToServer({ Key = meta.Key, Slot = meta.Slot, Name = text })
 end
 
 ---------------------------------------------------------------------------
--- Staged row actions (toggle a forget / un-skip; flushed on Save)
+-- Staged row actions (toggle a forget / un-skip; flushed when the panel closes)
 ---------------------------------------------------------------------------
 
 --- The live row in `collKey` whose NysRowId matches `id`, or nil. Used to update
@@ -283,6 +337,8 @@ local function refreshNames(gen)
 		local coll = get(v, "NysSavedNames")
 		local entries = (response and response.Entries) or {}
 		set(v, "NysHasSavedNames", #entries > 0)
+		-- Server-populated NysNameText must not fire onNameWrite (user edits only).
+		suppressWrite = true
 		for _, entry in ipairs(entries) do
 			local id = stageId(entry)
 			rowMeta[id] = { Key = entry.Key, Slot = entry.Slot }
@@ -304,57 +360,19 @@ local function refreshNames(gen)
 				appendItem(coll, row)
 			end
 		end
+		suppressWrite = false
 	end)
 end
 
 ---------------------------------------------------------------------------
--- Save (read settings and edited names off the live viewmodel, send, rebuild)
+-- Flush staged forgets when the panel closes (GH #76)
 ---------------------------------------------------------------------------
 
-local function onSave()
-	local v = liveVm()
-	if not v then
-		return
-	end
-	-- Before the settings reply lands the viewmodel holds only its all-false
-	-- defaults; saving then would overwrite the real settings with them.
-	if settingsLoadedGen ~= generation then
-		return
-	end
-	if savedGen == generation then
-		return
-	end
-	savedGen = generation
-	local settings = {
-		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
-		PromptForNamed = get(v, "NysPromptForNamed") == true,
-		PauseOnPrompt = get(v, "NysPauseOnPrompt") == true,
-		AllowStorySummons = get(v, "NysAllowStorySummons") == true,
-		MultiSummonMode = selectedMode(v),
-		[Classifier.MASTER_KEY] = get(v, "NysNameEverySummon") == true,
-	}
-	local toggles = get(v, "NysTypeToggles")
-	for index, cat in ipairs(Classifier.CATEGORIES) do
-		local toggle = toggles and toggles[index]
-		settings[Classifier.SettingKey(cat.key)] = toggle ~= nil and get(toggle, "NysChecked") == true
-	end
-	Channels.SetSettings:SendToServer(settings)
-
-	-- Read edited names straight from the live rows (no per-keystroke staging);
-	-- a row staged for forget is dropped, not renamed.
-	local names = get(v, "NysSavedNames")
-	for index = 1, count(names) do
-		local row = names[index]
-		local id = get(row, "NysRowId")
-		local meta = id and rowMeta[id]
-		if meta and not pendingForgets[id] then
-			local text = Util.Sanitise(get(row, "NysNameText") or "")
-			if text ~= "" and text ~= originalNames[id] then
-				Channels.RenameName:SendToServer({ Key = meta.Key, Slot = meta.Slot, Name = text })
-			end
-		end
-	end
-
+--- Commit the staged forgets, then clear the stage. Both close paths (the overlay
+--- button and the whole panel closing) call it, so clearing the table keeps it
+--- idempotent. Reads only the cached tables, so it is safe once the live node is
+--- gone.
+local function flushStaged()
 	-- ForgetSlot compacts the unique set, so several slots under one key must be
 	-- sent highest-first; otherwise each removal shifts the ones still to come.
 	local forgetSlotsByKey = {}
@@ -381,9 +399,7 @@ local function onSave()
 			end
 		end
 	end
-
-	-- Rebuild from the canonical server state (server-side sanitising, owner names).
-	Ext.Timer.WaitForRealtime(120, populate)
+	pendingForgets = {}
 end
 
 ---------------------------------------------------------------------------
@@ -396,13 +412,13 @@ local function registerTypes()
 			NysIsOpen = { Type = "Bool", Notify = true },
 			NysTypesExpanded = { Type = "Bool", Notify = true },
 			NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysPromptForNamed = { Type = "Bool", Notify = true },
-			NysPauseOnPrompt = { Type = "Bool", Notify = true },
-			NysAllowStorySummons = { Type = "Bool", Notify = true },
+			NysPromptForNamed = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+			NysPauseOnPrompt = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+			NysAllowStorySummons = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
 			NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
 			NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
 			NysNameEverySummonEnabled = { Type = "Bool", Notify = true },
-			NysModeValue = { Type = "String", Notify = true },
+			NysModeValue = { Type = "String", Notify = true, WriteCallback = pushIfLive },
 			NysModeOpen = { Type = "Bool", Notify = true },
 			NysSelectSkipCommand = { Type = "Command" },
 			NysSelectSharedCommand = { Type = "Command" },
@@ -410,7 +426,6 @@ local function registerTypes()
 			NysTypeToggles = { Type = "Collection" },
 			NysSavedNames = { Type = "Collection" },
 			NysHasSavedNames = { Type = "Bool", Notify = true },
-			NysSaveCommand = { Type = "Command" },
 			NysRefreshCommand = { Type = "Command" },
 			NysCloseCommand = { Type = "Command" },
 			NysToggleTypesCommand = { Type = "Command" },
@@ -424,7 +439,7 @@ local function registerTypes()
 		})
 		Ext.UI.RegisterType(TOGGLE_VM, {
 			NysLabel = { Type = "String" },
-			NysChecked = { Type = "Bool", Notify = true },
+			NysChecked = { Type = "Bool", Notify = true, WriteCallback = pushIfLive },
 			NysEnabled = { Type = "Bool", Notify = true },
 			NysToggleCommand = { Type = "Command" },
 		})
@@ -432,7 +447,7 @@ local function registerTypes()
 			NysRowId = { Type = "String" },
 			NysOwnerLabel = { Type = "String" },
 			NysRowLabel = { Type = "String" },
-			NysNameText = { Type = "String", Notify = true },
+			NysNameText = { Type = "String", Notify = true, WriteCallback = onNameWrite },
 			NysNameEnabled = { Type = "Bool", Notify = true },
 			NysForgetLabel = { Type = "String", Notify = true },
 			NysForgetCommand = { Type = "Command" },
@@ -493,15 +508,14 @@ local function buildViewModel()
 		end)
 	end
 	pcall(function()
-		vm.NysSaveCommand:SetHandler(onSave)
-	end)
-	pcall(function()
 		vm.NysRefreshCommand:SetHandler(function()
 			populate()
 		end)
 	end)
 	pcall(function()
 		vm.NysCloseCommand:SetHandler(function()
+			-- Closing the overlay commits the staged forgets/un-skips (GH #76).
+			flushStaged()
 			local v = liveVm()
 			if v then
 				set(v, "NysIsOpen", false)
@@ -573,6 +587,13 @@ end
 --- Open the overlay (build + bind + load). Called from the gear's click handler.
 function NativeConfigUI.Open()
 	populate()
+end
+
+--- Commit any staged forgets / un-skips. Called when the whole Examine panel
+--- closes (NativeRenameUI), so a forget takes effect even if the overlay was not
+--- closed first; idempotent, so it is harmless when nothing is staged (GH #76).
+function NativeConfigUI.Flush()
+	flushStaged()
 end
 
 function NativeConfigUI.Register()

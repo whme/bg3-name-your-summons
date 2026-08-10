@@ -27,6 +27,7 @@ local NativeRenameUI = {}
 -- Set by BootstrapClient so this module (which owns Examine-panel detection) can
 -- drive the native settings overlay without a circular require.
 local onGearClickHandler -- fun() - called when the gear is clicked
+local panelCloseHandler -- fun() - called when the Examine panel closes (commit staged config edits)
 
 -- Verbose tracing of the Examine gear/field/naming flow; off by default, toggle at
 -- runtime from the client console with `!nys_uidebug` (this native UI has no other
@@ -678,6 +679,11 @@ local function setPanelOpen(open)
 	else
 		unwirePanel()
 		abortRemaining()
+		-- Closing the whole panel also dismisses the settings overlay, so commit its
+		-- staged forgets/un-skips even if the overlay was not closed first (GH #76).
+		if panelCloseHandler then
+			pcall(panelCloseHandler)
+		end
 	end
 end
 
@@ -958,6 +964,12 @@ end
 ---@param fn fun()
 function NativeRenameUI.SetGearHandler(fn)
 	onGearClickHandler = fn
+end
+
+--- Wire the panel-close action (commits the settings overlay's staged edits).
+---@param fn fun()
+function NativeRenameUI.SetPanelCloseHandler(fn)
+	panelCloseHandler = fn
 end
 
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent

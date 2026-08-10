@@ -1212,8 +1212,8 @@
                                                         </Grid.ColumnDefinitions>
                                                         <ls:LSTextBox Grid.Column="0" MaxLines="1" TextWrapping="NoWrap" VerticalAlignment="Center"
                                                                       ls:MoveFocus.Focusable="True" Focusable="True" OpenVirtualKeyboardOnFocus="False"
-                                                                      IsReadOnly="{Binding NysNameEnabled, Converter={StaticResource InvertBoolConverter}}" TextImmediateSourceUpdate="True"
-                                                                      Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                      IsReadOnly="{Binding NysNameEnabled, Converter={StaticResource InvertBoolConverter}}"
+                                                                      Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                                         <!-- Horizontal padding via the label's Margin: FocusableButtonStyleMinimal
                                                              ignores the button's Padding, so the focus-highlight border would clip
                                                              the text without this (GH #6). -->
@@ -1227,19 +1227,16 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
 
-                                    <!-- Refresh/Save live at the END of the scrollable content (not a fixed
-                                         footer) so controller down-navigation reaches them only AFTER every list
+                                    <!-- Refresh lives at the END of the scrollable content (not a fixed
+                                         footer) so controller down-navigation reaches it only AFTER every list
                                          row: a fixed footer is always spatially below the list, so nav jumped to
                                          it whenever the next row was scrolled off-screen (GH #6). -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
                                         <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="200" Margin="20,0" Command="{Binding NysRefreshCommand}">
                                             <TextBlock HorizontalAlignment="Center" Text="Refresh"/>
                                         </ls:LSButton>
-                                        <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="200" Margin="20,0" Command="{Binding NysSaveCommand}">
-                                            <TextBlock HorizontalAlignment="Center" Text="Save"/>
-                                        </ls:LSButton>
                                     </StackPanel>
-                                    <!-- Clearance so the last row (Save) can scroll clear of the panel edge. -->
+                                    <!-- Clearance so the last row (Refresh) can scroll clear of the panel edge. -->
                                     <Border Height="40"/>
                                 </StackPanel>
                             </ScrollViewer>
