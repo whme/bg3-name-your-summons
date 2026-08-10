@@ -91,8 +91,8 @@ Settings and names live in the host's save.
 <h1 align="center">Local Co-op / Multiplayer</h3>
 <p align="center"><a href="https://github.com/whme/bg3-name-your-summons"><img src="assets/nys-splitscreen.png" width="1000" alt="Split screen"></img></a></p>
 
-Built and tested for local co-op.
-Might work in other forms Multiplayer too but has not been tested.
+Built and tested for local co-op.<br>
+Might work in other forms of Multiplayer, but has not been tested.
 
 ## Shout Outs
 
