@@ -53,15 +53,26 @@ function TestStoreTypes:testEmptyBeforeAnythingStored()
 end
 
 function TestStoreTypes:testStoreAndRetrieve()
-	Store.SetType("owner|tmpl", "Familiar")
-	lu.assertEquals(Store.GetType("owner|tmpl"), "Familiar")
-	lu.assertEquals(backing["SummonTypes"]["owner|tmpl"], "Familiar")
+	local token = { Creature = "Beast", Familiar = false }
+	Store.SetType("owner|tmpl", token)
+	lu.assertIs(Store.GetType("owner|tmpl"), token)
+	lu.assertIs(backing["SummonTypes"]["owner|tmpl"], token)
 end
 
-function TestStoreTypes:testOverwriteUpdates()
-	Store.SetType("k", "Beast")
-	Store.SetType("k", "Undead")
-	lu.assertEquals(Store.GetType("k"), "Undead")
+function TestStoreTypes:testIdenticalTokenIsNoOp()
+	-- DescribeKey mints a fresh table each call; equal fields must not rewrite the
+	-- ModVar, so the originally stored table is retained (identity unchanged).
+	local first = { Creature = "Fiend", Familiar = true }
+	Store.SetType("k", first)
+	Store.SetType("k", { Creature = "Fiend", Familiar = true })
+	lu.assertIs(Store.GetType("k"), first)
+end
+
+function TestStoreTypes:testChangedTokenRewrites()
+	Store.SetType("k", { Creature = "Fiend", Familiar = true })
+	local second = { Creature = "Fiend", Familiar = false }
+	Store.SetType("k", second)
+	lu.assertIs(Store.GetType("k"), second)
 end
 
 TestStoreSettings = {}

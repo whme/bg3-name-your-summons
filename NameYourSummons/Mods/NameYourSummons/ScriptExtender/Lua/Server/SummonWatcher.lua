@@ -81,10 +81,9 @@ local function currentCharOfUser(user)
 end
 
 --- A readable label for a root template (e.g. "Cat"), for the saved-name list.
---- The template's own DisplayName is a game loca handle - resolved here in the
---- server's language, since it is the creature's real name. Returns nil when no
---- name is readable; the client then applies its own localised "Summon" fallback
---- in the viewing player's language.
+--- The template DisplayName is a game loca handle, resolved here in the server's
+--- language. Returns nil when unreadable; the client then shows its own localised
+--- "Summon" fallback.
 ---@param templateId string
 ---@return string|nil
 local function templateLabel(templateId)
