@@ -64,6 +64,12 @@ local settingsLoadedGen = 0
 -- while loading a viewmodel (those must not be treated as user edits).
 local suppressWrite = false
 
+-- The last settings payload sent to the server. SE dispatches WriteCallbacks
+-- asynchronously, so `suppressWrite` (cleared synchronously) does not stop the
+-- programmatic load writes from firing their callbacks; deduping against this drops
+-- the resulting redundant pushes (GH #76).
+local lastPushedSettings = nil
+
 local populate
 
 ---------------------------------------------------------------------------
@@ -189,18 +195,10 @@ end
 -- WriteCallbacks (Noesis hands them the LIVE context and new value)
 ---------------------------------------------------------------------------
 
---- Send the whole settings object to the server. Settings are live (GH #76), so
---- this fires from every setting WriteCallback instead of a Save button.
-local function pushSettings()
-	local v = liveVm()
-	if not v then
-		return
-	end
-	-- Before the settings reply lands the viewmodel holds only its all-false
-	-- defaults; pushing then would overwrite the real settings with them.
-	if settingsLoadedGen ~= generation then
-		return
-	end
+--- The settings payload as it currently stands on the live viewmodel.
+---@param v any live settings viewmodel
+---@return table
+local function collectSettings(v)
 	local settings = {
 		PromptOnSummon = get(v, "NysPromptOnSummon") == true,
 		PromptForNamed = get(v, "NysPromptForNamed") == true,
@@ -214,6 +212,44 @@ local function pushSettings()
 		local toggle = toggles and toggles[index]
 		settings[Classifier.SettingKey(cat.key)] = toggle ~= nil and get(toggle, "NysChecked") == true
 	end
+	return settings
+end
+
+--- Flat-table equality for the settings payload (boolean/string values only).
+local function sameSettings(a, b)
+	if not a or not b then
+		return false
+	end
+	for key, value in pairs(a) do
+		if b[key] ~= value then
+			return false
+		end
+	end
+	for key in pairs(b) do
+		if a[key] == nil then
+			return false
+		end
+	end
+	return true
+end
+
+--- Send the whole settings object to the server. Settings are live (GH #76), so
+--- this fires from every setting WriteCallback instead of a Save button.
+local function pushSettings()
+	local v = liveVm()
+	if not v then
+		return
+	end
+	-- Before the settings reply lands the viewmodel holds only its all-false
+	-- defaults; pushing then would overwrite the real settings with them.
+	if settingsLoadedGen ~= generation then
+		return
+	end
+	local settings = collectSettings(v)
+	if sameSettings(settings, lastPushedSettings) then
+		return
+	end
+	lastPushedSettings = settings
 	Channels.SetSettings:SendToServer(settings)
 end
 
@@ -322,6 +358,9 @@ local function loadSettings(gen)
 
 		recomputeEnabled(v)
 		settingsLoadedGen = gen
+		-- The load's own writes fire pushSettings asynchronously; seed the dedupe
+		-- baseline with the just-loaded values so those pushes are dropped (GH #76).
+		lastPushedSettings = collectSettings(v)
 	end)
 end
 

@@ -1021,10 +1021,9 @@ function NativeRenameUI.Register()
 		end
 	end)
 
-	-- A summon was renamed from elsewhere (the settings panel): if it is the one on the
-	-- open Examine screen, write the new text into the field, since a manually-opened panel
-	-- will not repaint the game's name binding on its own (GH #76). Skipped during an active
-	-- on-summon session (current ~= nil), which manages the field itself.
+	-- A summon renamed from elsewhere (the settings panel) will not repaint on a
+	-- manually-opened panel, so write the new text into the on-screen field ourselves
+	-- (GH #76). An active on-summon session (current ~= nil) manages the field itself.
 	Channels.SummonRenamed:SetHandler(function(data, _user)
 		if type(data) ~= "table" or type(data.SummonUuid) ~= "string" or type(data.Name) ~= "string" then
 			return

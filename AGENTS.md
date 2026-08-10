@@ -168,8 +168,11 @@ the game.
   the panel is open; the staged forgets flush only when the panel closes
   (`flushStaged`, run from the overlay's own close button and from the whole
   Examine panel closing via `NativeConfigUI.Flush`), so a forgotten name vanishes
-  on close and does not reappear on re-open. It is the sole config UI; no server
-  changes.
+  on close and does not reappear on re-open. Editing a saved name also applies to
+  the live creature, but a manually-opened Examine panel does not repaint a name
+  changed from outside, so the server broadcasts `Channels.SummonRenamed` (uuid +
+  text) from its single apply path (`Server/Naming.lua`) and `NativeRenameUI`
+  writes the new text into the on-screen field.
 - **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`, GH #19):
   the on-summon naming UI is the native Examine panel. Detection, the pending
   count, the world-pause, and per-creature `unique` prompting are all server-side;
