@@ -53,12 +53,9 @@ local GEAR_VM = "NYS_GearVM"
 -- multi-summon group). Set as the Skip button's nested DataContext (GH #51).
 local SKIP_VM = "NYS_SkipVM"
 
--- The Confirm button viewmodel (GH #80): a Command (commit the current name + advance
--- the queue) plus a Bool visibility flag with the SAME visibility as Skip (#examineQueue > 0
--- - shown only while a next summon is queued, so it is hidden for single summons and on the
--- last of a group). Set as the Confirm button's nested DataContext. While shown it is the
--- controller's commit trigger (its blur no longer commits then) and a keyboard alternative to
--- Enter; when hidden (single summon or last of a group) naming commits on blur/Enter as usual.
+-- The Confirm button viewmodel (GH #80): a Command (commit the current name + advance the
+-- queue) plus a Bool visibility flag shared with Skip (#examineQueue > 0). Set as the Confirm
+-- button's nested DataContext. See confirmCurrent for its role in the commit paths.
 local CONFIRM_VM = "NYS_ConfirmVM"
 
 -- After opening or swapping the panel, ignore input for SETTLE_MS while the swapped-in
@@ -515,33 +512,23 @@ local function onFieldBlur(evName)
 	end
 end
 
---- Show the Skip button only when there is a next summon to swap to (hidden for single
---- summons and on the last of a group). Update the live button - the queue may have grown
---- or shrunk after it was wired. Fetch fresh; a Noesis handle does not survive.
-local function refreshSkipVisibility()
-	local skip = findNamed("NYS_SkipButton")
-	local vm = skip and safe(function()
-		return skip.DataContext
-	end)
-	if vm then
-		pcall(function()
-			vm.NysShowSkip = #examineQueue > 0
+--- Show the Skip and Confirm buttons only while a next summon is queued (hidden for single
+--- summons and on the last of a group, where naming commits on blur/Enter instead, GH #80).
+--- Both share the #examineQueue > 0 condition, so refresh them together on every queue
+--- mutation. Update the live buttons - the queue may have grown or shrunk since they were
+--- wired; fetch fresh, a Noesis handle does not survive.
+local function refreshQueueButtons()
+	local show = #examineQueue > 0
+	for name, prop in pairs({ NYS_SkipButton = "NysShowSkip", NYS_ConfirmButton = "NysShowConfirm" }) do
+		local button = findNamed(name)
+		local vm = button and safe(function()
+			return button.DataContext
 		end)
-	end
-end
-
---- Show the Confirm button on the same condition as Skip: only while a next summon is queued
---- (hidden for single summons and on the last of a group, where naming commits on blur/Enter
---- instead, GH #80). Update the live button; a Noesis handle does not survive.
-local function refreshConfirmVisibility()
-	local confirm = findNamed("NYS_ConfirmButton")
-	local vm = confirm and safe(function()
-		return confirm.DataContext
-	end)
-	if vm then
-		pcall(function()
-			vm.NysShowConfirm = #examineQueue > 0
-		end)
+		if vm then
+			pcall(function()
+				vm[prop] = show
+			end)
+		end
 	end
 end
 
@@ -808,7 +795,8 @@ end
 --- controller and there is no panel-open event). Purely a lifecycle detector: it reconciles the
 --- tree and wires the panel; wirePanel itself enables editing for a renamable manual summon on
 --- controller (isControllerPanel). It does NOT set recentClick - a controller has no click, so a
---- field blur is always an Enter commit (onFieldBlur).
+--- field blur commits (onFieldBlur), except while a next summon is queued, where the explicit
+--- Confirm button drives the commit instead (GH #80).
 ---@param e any
 local function onControllerButton(e)
 	local pressed = safe(function()
@@ -1126,8 +1114,7 @@ function NativeRenameUI.Register()
 		else
 			-- A sibling arrived while a session is active: there is now a next summon to swap
 			-- to, so reveal the Skip and Confirm buttons on the panel already showing (GH #80).
-			refreshSkipVisibility()
-			refreshConfirmVisibility()
+			refreshQueueButtons()
 		end
 	end)
 
@@ -1155,7 +1142,7 @@ function NativeRenameUI.Register()
 				closeExaminePanel()
 			end
 		else
-			refreshSkipVisibility()
+			refreshQueueButtons()
 		end
 	end)
 end
