@@ -260,8 +260,9 @@ local editEnabled = false
 local panelForbidden = false
 
 -- The AllowStorySummons setting, cached client-side so the forbidden check is synchronous
--- (GH #48): the live value cannot be fetched without a server round-trip. Seeded at
--- Register and refreshed on each open.
+-- (GH #48): the live value cannot be fetched without a server round-trip. Seeded on
+-- SessionLoaded (once the persisted ModVars have loaded) and kept fresh by the server's
+-- SettingsChanged broadcast.
 local cachedAllowStory = false
 
 --- Refresh the cached AllowStorySummons setting (async; for the NEXT open).
@@ -522,12 +523,26 @@ local function isForbiddenSummon(uuid)
 	return template ~= nil and Util.IsStorySummon(template) and not cachedAllowStory
 end
 
---- Turn on editing for the current panel (GH #48): make the name field interactive and
---- writable. All three flags are checked at INPUT time, not painted, so this takes effect
---- with no repaint - which is why it is safe from a manual click (a Visibility change would
---- not paint until the next click). The field starts non-interactive (plain text); once
---- enabled the player focuses it with a click and types. Idempotent (guarded by
---- `editEnabled`).
+--- Flip the name field's three input-checked flags (GH #48): editable = interactive and
+--- writable, else non-interactive plain text. All checked at INPUT time, not painted, so
+--- the change needs no repaint - which is why a manual click can enable editing at all (a
+--- Visibility change would not paint until the next click).
+---@param field any
+---@param editable boolean
+local function setFieldEditable(field, editable)
+	pcall(function()
+		field:SetProperty("IsReadOnly", not editable)
+	end)
+	pcall(function()
+		field:SetProperty("Focusable", editable)
+	end)
+	pcall(function()
+		field:SetProperty("IsHitTestVisible", editable)
+	end)
+end
+
+--- Turn on editing for the current panel: the field starts as plain text; once enabled the
+--- player focuses it with a click and types. Idempotent (guarded by `editEnabled`).
 local function enableEditing()
 	if editEnabled then
 		return
@@ -536,37 +551,20 @@ local function enableEditing()
 	if not field then
 		return
 	end
-	pcall(function()
-		field:SetProperty("IsReadOnly", false)
-	end)
-	pcall(function()
-		field:SetProperty("Focusable", true)
-	end)
-	pcall(function()
-		field:SetProperty("IsHitTestVisible", true)
-	end)
+	setFieldEditable(field, true)
 	editEnabled = true
 	log("enableEditing", uiState())
 end
 
---- Turn editing back off: make the field non-interactive plain text again (GH #48). Used
---- when AllowStorySummons is toggled off while a now-forbidden summon's panel is open, so
---- the field stops being editable without a re-summon. Input-checked flags, so no repaint.
+--- Revert the field to non-interactive plain text - used when AllowStorySummons is toggled
+--- off while a now-forbidden summon's panel is open, so it stops being editable without a
+--- re-summon.
 local function disableEditing()
 	editEnabled = false
 	local field = liveField()
-	if not field then
-		return
+	if field then
+		setFieldEditable(field, false)
 	end
-	pcall(function()
-		field:SetProperty("IsReadOnly", true)
-	end)
-	pcall(function()
-		field:SetProperty("Focusable", false)
-	end)
-	pcall(function()
-		field:SetProperty("IsHitTestVisible", false)
-	end)
 	log("disableEditing", uiState())
 end
 
@@ -646,7 +644,7 @@ local function wirePanel()
 	-- summon stays plain text (the native look, correct for a forbidden summon with no
 	-- action) until the player clicks to edit, gated by whether it may be renamed.
 	local summonUuid = examinedSummonUuid()
-	panelForbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid) or false
+	panelForbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
 	if current ~= nil then
 		enableEditing()
 	end
@@ -953,9 +951,15 @@ function NativeRenameUI.Register()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
 	end)
 
-	-- Seed the cached AllowStorySummons setting so the first examined summon's forbidden
-	-- check (GH #48) is right before any panel opens; the server pushes later changes.
+	-- Seed the cached AllowStorySummons setting (GH #48). At a fresh boot the persisted
+	-- ModVars are not loaded yet at Register, so the SessionLoaded seed is what honours a
+	-- saved opt-in on the first examine; the immediate call covers a Lua `reset` reload,
+	-- where SessionLoaded does not fire again but the ModVars are already loaded. Later
+	-- changes arrive over SettingsChanged.
 	refreshSettingsCache()
+	pcall(function()
+		Ext.Events.SessionLoaded:Subscribe(refreshSettingsCache)
+	end)
 
 	-- The setting changed (config UI); refresh the cache so the forbidden check is right on
 	-- the very next examine, not after a re-summon (GH #48). Also re-evaluate the panel on
@@ -968,7 +972,7 @@ function NativeRenameUI.Register()
 		cachedAllowStory = data.AllowStorySummons == true
 		if wired then
 			local uuid = examinedSummonUuid()
-			panelForbidden = uuid ~= nil and isForbiddenSummon(uuid) or false
+			panelForbidden = uuid ~= nil and isForbiddenSummon(uuid)
 			if panelForbidden and editEnabled then
 				disableEditing()
 			end

@@ -226,7 +226,13 @@ local function resolveGroup(key, batch, ownerUuid, ownerRaw, rootTemplate)
 	end
 	local settings = Store.Settings()
 	local mode = settings.MultiSummonMode
-	local reAsk = settings.PromptOnSummon and settings.PromptForNamed and ownerIsPlayer(ownerUuid)
+	-- A story summon whose opt-in is off is never re-prompted, matching HandleSummon's gate
+	-- (GH #48); its saved name still reapplies below.
+	local storyForbidden = Util.IsStorySummon(rootTemplate) and not settings.AllowStorySummons
+	local reAsk = settings.PromptOnSummon
+		and settings.PromptForNamed
+		and ownerIsPlayer(ownerUuid)
+		and not storyForbidden
 
 	local live = {}
 	for _, uuid in ipairs(batch) do
