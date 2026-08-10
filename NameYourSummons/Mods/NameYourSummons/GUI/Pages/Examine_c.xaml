@@ -692,10 +692,16 @@
                                                Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
                                     </ls:LSButton>
                                 </StackPanel>
-                                <!-- GH #51: skip this summon and swap to the next in a multi-summon group.
-                                     DataContext is a small NYS_SkipVM set from Lua; NysShowSkip hides it
-                                     for single summons and on the last summon of a group. Focusable style
-                                     so a controller can reach it (see the gear above, GH #6). -->
+                                <!-- GH #80 / #51: the controller has no Enter and a navigation blur must not commit
+                                     while a next summon is queued, so Confirm commits + advances; Skip skips this summon.
+                                     Focusable style so a controller can reach them (GH #6). VMs set from Lua; both share
+                                     NysShow* (#examineQueue > 0), hidden for single summons and on the last of a group. -->
+                                <ls:LSButton x:Name="NYS_ConfirmButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
+                                             HorizontalAlignment="Center" MinWidth="200"
+                                             Command="{Binding NysConfirmCommand}"
+                                             Visibility="{Binding NysShowConfirm, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                                    <TextBlock Text="Confirm" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"/>
+                                </ls:LSButton>
                                 <ls:LSButton x:Name="NYS_SkipButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
                                              HorizontalAlignment="Center" MinWidth="200"
                                              Command="{Binding NysSkipCommand}"

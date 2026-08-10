@@ -128,10 +128,13 @@
                                                         </ls:LSButton.Template>
                                                     </ls:LSButton>
                                                 </StackPanel>
-                                                <!-- GH #51: skip this summon and swap to the next in a multi-summon group.
-                                                     Below the input so it does not squeeze the name/settings row. Its
-                                                     DataContext is a small NYS_SkipVM set from Lua; NysShowSkip hides it
-                                                     for single summons and on the last summon of a group. -->
+                                                <!-- GH #80 / #51: Confirm commits + advances the queue (an Enter alternative);
+                                                     Skip skips this summon. VMs set from Lua; both share NysShow* (#examineQueue > 0),
+                                                     so both hide for single summons and on the last of a group. -->
+                                                <ls:LSButton x:Name="NYS_ConfirmButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
+                                                             HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
+                                                             Content="Confirm" Command="{Binding NysConfirmCommand}"
+                                                             Visibility="{Binding NysShowConfirm, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}"/>
                                                 <ls:LSButton x:Name="NYS_SkipButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"
                                                              Content="Skip" Command="{Binding NysSkipCommand}"
