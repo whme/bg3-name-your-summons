@@ -65,11 +65,6 @@ _G.Ext = {
 			return "1970-01-01 00:00:00.000"
 		end,
 	},
-	IMGUI = {
-		NewWindow = function()
-			return {}
-		end,
-	},
 	Events = setmetatable({}, {
 		__index = function()
 			return { Subscribe = function() end }

@@ -13,7 +13,8 @@ the game.
 
 - **Two Lua states**: BG3SE runs a single **server** state and one **client**
   state per connected peer. Server owns detection, persistence, and name
-  application; client owns the ImGui prompt and the saved-name manager.
+  application; client owns the native Examine rename field, settings gear, and
+  saved-name manager.
 - **Detection pipeline**: there is no "summon created" Osiris event. Detection
   is `Osi.EnteredLevel` -> `Osi.IsSummon` -> `Osi.CharacterGetOwner`. This
   covers Find Familiar, Find Companion, Conjure Animals, Animate Dead, and
@@ -25,7 +26,7 @@ the game.
   the creature type. The classifier is pure (tag names in, category out); the
   glue that resolves a live summon's tag GUIDs to names is `Naming.TagNamesOf`.
   Per-type toggles live in settings; only familiars are named by default, and a
-  `NameEverySummon` master reproduces the old name-everything behaviour.
+  `NameEverySummon` master names every summon regardless of type.
 - **The renaming primitive** (`Shared/NameWriter.lua`): a creature's name is
   `DisplayName.Name`, a localisation handle rather than text. Renaming is two
   writes - register the text under a handle of the mod's own via
@@ -126,9 +127,9 @@ the game.
   `disableEditing` - without a re-summon. The gear is always shown.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
-  `Examine.xaml` override - reproducing the ImGui `ConfigUI` (prompt options,
-  per-creature-type filter, multi-summon mode, and the saved-name /
-  always-skipped / session-skipped managers). It is real MVVM: a viewmodel built
+  `Examine.xaml` override - covering prompt options, the per-creature-type filter,
+  multi-summon mode, and the saved-name / always-skipped / session-skipped
+  managers. It is real MVVM: a viewmodel built
   via `Ext.UI.RegisterType` / `Ext.UI.Instantiate` (`Bool` props for checkboxes,
   a `Collection` per `ItemsControl`, `Command` props for buttons) is set as the
   panel's `DataContext`. `NativeRenameUI` owns Examine-panel detection and feeds
@@ -163,13 +164,12 @@ the game.
     unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
     literal "Name").
   Forgets and un-skips are staged (toggle to Undo) and flushed on Save; edited
-  names are read off the live rows at Save. Same net channels as `ConfigUI`; no
-  server changes. The ImGui `ConfigUI` stays for now (prompt Settings button +
-  `!nys_ui`); both it and the prompt button are slated for later removal.
+  names are read off the live rows at Save. It is the sole config UI; no server
+  changes.
 - **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`, GH #19):
-  the on-summon naming UI is the native Examine panel, not the ImGui window.
-  Detection, the pending count, the world-pause, and per-creature `unique`
-  prompting all stay server-side and unchanged; the server still sends `AskName`.
+  the on-summon naming UI is the native Examine panel. Detection, the pending
+  count, the world-pause, and per-creature `unique` prompting are all server-side;
+  the server sends `AskName`.
   The client answers by opening Examine on the summon: fetch the game's
   `ExamineCommand` (a Noesis `BaseCommand`) off the HUD command-surface DataContext
   (the `HudIndicator` node under `ContentRoot`) and
@@ -178,7 +178,7 @@ the game.
   the handle is read by `EntityUUID` off a live per-entity DataContext (the
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
-  clears its pending count / lifts the pause, exactly as the old window did.
+  clears its pending count / lifts the pause.
 - **Closing Examine from Lua** (`closeExaminePanel`, GH #54): the panel's close runs the
   `CloseWidget` state event (action `<ls:RemoveState/>`) through the widget's own
   `CustomEvent` command. Its parameter must be a BOXED Noesis string, which SE cannot mint,
@@ -219,8 +219,7 @@ the game.
   never cached - a stale handle crashes on use). A `!nys_uidebug` client console command
   toggles verbose tracing (each line carries a live
   `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=.. queued=..]`
-  snapshot of the real UI). The old ImGui prompt (`Client/PromptUI.lua`) is kept but no
-  longer wired to `AskName`; its removal is a separate follow-up.
+  snapshot of the real UI).
 
 ## Project Structure
 
@@ -235,7 +234,6 @@ NameYourSummons/                     <- pak this folder
         BootstrapClient.lua          client entry point
         Shared/
           Channels.lua               net channels, created in both states
-          MultiSummonMode.lua        pure MultiSummonMode enum <-> control-index mapping (shared by both config UIs)
           NameWriter.lua             the two writes that do the renaming
           SummonClassifier.lua       pure tag-name -> creature-type category + per-type setting keys
           Util.lua                   uuid / sanitising / key / loca-handle helpers
@@ -244,10 +242,7 @@ NameYourSummons/                     <- pak this folder
           Naming.lua                 applying names + diagnostics + reading a summon's tag names
           SummonWatcher.lua          detection, prompting, net handlers
         Client/
-          Layout.lua                 viewport-relative sizing (4K-referenced) for the windows
-          WindowState.lua            persist window geometry to a mod file (open-state is never persisted)
-          PromptUI.lua               legacy ImGui naming prompt (GH #19 replaced it with the Examine panel; kept, no longer wired to AskName) + client loca handlers
-          ConfigUI.lua               ImGui config: prompt settings (story-summon opt-in, per-creature-type filter, multi-summon mode) + saved-name, always-skipped and session-skipped managers
+          Loca.lua                   client loca handlers (register names broadcast by the server so co-op peers resolve them)
           NativeConfigUI.lua         native (Noesis) settings panel (viewmodel + data flow) opened by the Examine gear (see "Native Examine settings")
           NativeRenameUI.lua         native Examine-panel rename field + gear; owns panel detection and drives NativeConfigUI (see "Native Examine rename")
     GUI/                             UI-mod overlay (packed alongside ScriptExtender)
@@ -326,7 +321,6 @@ Diagnostic console commands (server state unless noted):
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
 | `!nys_clear` | wipe all saved names and always-skip choices |
-| `!nys_ui` | open the in-game config: prompt settings + saved-name, always-skipped and session-skipped managers (client state; type `client` first) |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to
@@ -402,8 +396,8 @@ Notes:
   off-game; `spec/run.lua` is the runner. **Keep pure logic (key derivation,
   hashing, sanitising, ModVar shaping, the two DisplayName writes) free of
   direct engine calls so it stays testable** - push unavoidable ECS / net /
-  ImGui / timing code into the thin, untested glue (`SummonWatcher`, `Naming`,
-  `PromptUI`, `Channels`). When you add such logic, add a spec for it.
+  native-UI / timing code into the thin, untested glue (`SummonWatcher`, `Naming`,
+  `NativeRenameUI`, `Channels`). When you add such logic, add a spec for it.
 - The `.githooks/pre-commit` hook runs `./make.ps1 format-check` and `lint` when a
   PowerShell is available, so the ASCII-punctuation check still works without
   one. CI enforces every gate unconditionally.

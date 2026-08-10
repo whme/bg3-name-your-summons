@@ -98,8 +98,8 @@ You **cannot run the game** in CI, and neither can a reviewer quickly. So:
   `DisplayName` writes. `spec/spec_helper.lua` stubs the `Ext`/`Osi` surface so
   modules load off-game. When you change testable logic, add or update a spec.
 - **Keep pure logic engine-free** so it stays testable; push unavoidable ECS,
-  net, ImGui, and timing code into the thin glue modules (`SummonWatcher`,
-  `Naming`, `PromptUI`, `Channels`).
+  net, native-UI, and timing code into the thin glue modules (`SummonWatcher`,
+  `Naming`, `NativeRenameUI`, `Channels`).
 - **In-game behaviour** is verified with the Script Extender console commands
   (see below). If a change needs in-game confirmation, say so in your PR and
   name the command a reviewer should run.
@@ -120,7 +120,6 @@ alongside the game once you enable it in
 | `!nys_diag` | server | dump what the game thinks your summons are named |
 | `!nys_rename <name>` | server | rename the host's summons right now, no prompt |
 | `!nys_clear` | server | wipe all saved names |
-| `!nys_ui` | **client** (type `client` first) | open the in-game config (settings + saved-name manager) |
 
 `!nys_diag` is the primary debugging tool: when a name will not stick, paste its
 output when reporting the issue.
