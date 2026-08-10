@@ -1,9 +1,9 @@
 -- SPDX-License-Identifier: MIT
 --[[
-    The renaming primitive, shared by the server and client Lua states. A
-    creature's name comes from DisplayName.Name, a localisation handle rather
-    than text, so renaming is two writes: register the text under a handle of our
-    own, then point Name at it. See the README for why the handle must be ours.
+    The renaming primitive, shared by both Lua states. A creature's name comes from
+    DisplayName.Name, a localisation handle rather than text, so renaming is two
+    writes: register the text under a handle of our own, then point Name at it. The
+    handle must be ours - the template's shared handle renames every creature from it.
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
@@ -58,8 +58,7 @@ function Writer.SetDisplayName(e, handle, version, replicate)
 		return false, "no Name"
 	end
 
-	-- Skip when unchanged: reapply on re-summon and on load would otherwise
-	-- rewrite and re-replicate a DisplayName that already holds this name.
+	-- Skip when unchanged, so reapply does not needlessly re-replicate.
 	if dn.Name.Handle.Handle == handle and dn.Name.Handle.Version == version then
 		return true
 	end

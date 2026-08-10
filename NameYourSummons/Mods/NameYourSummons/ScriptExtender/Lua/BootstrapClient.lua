@@ -6,8 +6,7 @@ local Loca = Ext.Require("Client/Loca.lua")
 local NativeConfigUI = Ext.Require("Client/NativeConfigUI.lua")
 local NativeRenameUI = Ext.Require("Client/NativeRenameUI.lua")
 
--- Server-owned and not synced, but the docs recommend identical registrations
--- on both states to avoid serialisation mismatches.
+-- The docs require identical ModVar prototypes in both Lua states.
 Ext.Vars.RegisterModVariable(ModuleUUID, "SummonNames", {
 	Server = true,
 	Client = false,
@@ -25,8 +24,7 @@ Ext.Vars.RegisterModVariable(ModuleUUID, "Settings", {
 
 Loca.Register()
 NativeConfigUI.Register()
--- NativeRenameUI owns Examine-panel detection and node lookup; wire the two
--- client modules together here (avoids a circular require between them).
+-- Wire the two client modules here to avoid a circular require.
 NativeConfigUI.SetPanelFinder(NativeRenameUI.FindNamedIn)
 NativeConfigUI.SetViewerProvider(NativeRenameUI.ViewerOf)
 NativeRenameUI.SetGearHandler(NativeConfigUI.Open)

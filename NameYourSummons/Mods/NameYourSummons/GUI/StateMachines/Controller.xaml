@@ -5,17 +5,15 @@
     <ls:StateMachine.States>
 
         <!-- Override ONLY the Examine state so the controller layout loads our
-             modified Examine_c.xaml (a bare filename resolves to this mod's own
-             Pages). The base controller Examine STATE is named "Examine" (not
-             "Examine_c"; that is only the widget filename). Every other state merges
-             from MainUI unchanged.
+             Examine_c.xaml (a bare filename resolves to this mod's own Pages). The base
+             controller Examine STATE is named "Examine" (not "Examine_c"; that is only
+             the widget filename).
 
-             We deliberately do NOT copy the base state's IE.UICancel -> RemoveState
-             (GH #6): a state-level cancel closes the whole panel unconditionally, so
-             the settings overlay could not make Circle close only itself. Closing
-             Examine on Circle is instead driven by the widget's footer UICancel button
-             (CustomEvent -> CloseWidget, handled below), which we can gate off while
-             the settings overlay is open. The other four events are copied verbatim. -->
+             We deliberately do NOT copy the base state's IE.UICancel -> RemoveState: a
+             state-level cancel closes the whole panel unconditionally, so the settings
+             overlay could not make Circle close only itself. Closing Examine on Circle is
+             instead driven by the widget's footer UICancel button (CustomEvent ->
+             CloseWidget, gated off while the overlay is open). -->
         <ls:State Name="Examine" ModType="Override" DisableStatesBelow="True" HideStatesBelow="False" IsModal="True" Layout="Player" Owner="Player">
             <ls:State.Widgets>
                 <ls:StateWidget Filename="Examine_c.xaml" Layer="PopupPanels"/>

@@ -16,16 +16,14 @@
 
     <ls:UIWidget.Resources>
         <ResourceDictionary>
-            <!-- Name Your Summons (GH #54): a boxed Noesis string the client reads back with
-                 element:Resource("NYS_CloseWidget") to close this panel from Lua. CustomEvent's
-                 "CloseWidget" parameter must be a boxed Noesis value, not a Lua string, and SE
-                 cannot mint one - so we plant it here. Do not remove; NativeRenameUI depends on it. -->
+            <!-- A boxed Noesis string the client reads back with element:Resource("NYS_CloseWidget")
+                 to close this panel from Lua: CustomEvent's "CloseWidget" parameter must be a boxed
+                 Noesis value, which SE cannot mint. Do not remove; NativeRenameUI depends on it. -->
             <System:String x:Key="NYS_CloseWidget">CloseWidget</System:String>
 
-            <!-- Name Your Summons (GH #6): compact checkbox row for the controller settings panel.
-                 A small box (filled when checked) + the label as content, centered. Tag carries the
-                 bound bool. Replaces the game TickBox carousel here, which is a fixed 500px wide and
-                 overflowed the panel. -->
+            <!-- Compact checkbox row for the controller settings panel: a small box (filled when
+                 checked) + the label as content. Tag carries the bound bool. Replaces the game
+                 TickBox carousel, which is a fixed 500px wide and overflowed the panel. -->
             <ControlTemplate x:Key="NYS_CheckContent" TargetType="ContentControl">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                     <Border Width="40" Height="40" VerticalAlignment="Center" BorderThickness="3" BorderBrush="{StaticResource LS_accent75TxtColor}">
@@ -36,11 +34,10 @@
                 </StackPanel>
             </ControlTemplate>
 
-            <!-- Name Your Summons (GH #6): decorated section header for the controller settings
-                 panel. The controller BaseTitleStyle is a plain TextBlock style (and our titles are
-                 ContentControls, so it does not even apply), so replicate the keyboard's decorated
-                 header - a centered title flanked by the game's own decor_header.png (a Core asset,
-                 so no cross-layout dependency). -->
+            <!-- Decorated section header for the controller settings panel. The controller
+                 BaseTitleStyle is a plain TextBlock style that does not apply to our ContentControls,
+                 so replicate the keyboard's decorated header - a centered title flanked by the game's
+                 own decor_header.png (a Core asset). -->
             <Style x:Key="NYS_SectionTitle" TargetType="ContentControl">
                 <Style.Resources>
                     <Style TargetType="TextBlock">
@@ -568,11 +565,10 @@
                     </Image.OpacityMask>
                 </Image>
 
-                <!-- While the settings overlay is open, disable the whole Examine content (GH #6):
-                     controller focus navigation skips disabled elements, so this forces focus into
-                     the overlay and keeps it there (the game's Henchmen_c disables its siblings the
-                     same way - IsMoveFocusScope alone does not trap). ElementName binding, so it is
-                     independent of this grid's ExamineTarget DataContext. -->
+                <!-- While the settings overlay is open, disable the whole Examine content: controller
+                     focus navigation skips disabled elements, so this traps focus in the overlay (as
+                     the game's Henchmen_c does; IsMoveFocusScope alone does not trap). ElementName
+                     binding, so it is independent of this grid's ExamineTarget DataContext. -->
                 <Grid x:Name="Panel"
               IsEnabled="{Binding IsVisible, ElementName=NYS_SettingsPanel, Converter={StaticResource InvertBoolConverter}}"
               DataContext="{Binding CurrentPlayer.UIData.ExamineTarget}" RenderTransformOrigin="0.5,0.5" Style="{StaticResource SplitScreenOverride}" VerticalAlignment="Stretch" Margin="0,0,0,0">
@@ -653,13 +649,11 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <!-- Name Your Summons (GH #6, controller layout): the summon's name +
-                                 settings gear + Skip (summons only). The name box defaults to
-                                 read-only/Focusable/IsHitTestVisible all off - the native plain-name
-                                 look, correct for a forbidden summon; NativeRenameUI flips those
-                                 input-checked flags (plus ls:MoveFocus.Focusable) on for a renamable
-                                 one so a controller can navigate to it (GH #48). The gear and Skip are
-                                 always controller-navigable. -->
+                            <!-- The summon's name + settings gear + Skip (summons only). The name box
+                                 defaults to read-only/Focusable/IsHitTestVisible all off - the native
+                                 plain-name look, correct for a forbidden summon; NativeRenameUI flips
+                                 those input-checked flags on for a renamable one so a controller can
+                                 navigate to it. The gear and Skip are always controller-navigable. -->
                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                 <StackPanel.Style>
                                     <Style TargetType="StackPanel">
@@ -673,29 +667,27 @@
                                 </StackPanel.Style>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <!-- ls:MoveFocus.Focusable stays True so the controller can navigate to the
-                                         field once it is editable; Focusable (toggled by NativeRenameUI) gates
-                                         whether nav actually stops here, so a forbidden/plain field is skipped.
-                                         OpenVirtualKeyboardOnFocus=False (as the game's own focusable text boxes,
-                                         e.g. SignUp_c) so merely NAVIGATING onto the field just highlights it -
-                                         the on-screen keyboard opens on accept (X), not on focus (GH #6). -->
+                                         field once editable; Focusable (toggled by NativeRenameUI) gates whether
+                                         nav actually stops here, so a forbidden/plain field is skipped.
+                                         OpenVirtualKeyboardOnFocus=False (as the game's own focusable text boxes)
+                                         so navigating onto the field just highlights it - the on-screen keyboard
+                                         opens on accept, not on focus. -->
                                     <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" ls:MoveFocus.Focusable="True" OpenVirtualKeyboardOnFocus="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
-                                    <!-- GH #50: an LSButton with a Command binding. Its DataContext is a
-                                         small NYS_GearVM set from Lua (NativeRenameUI). On controller a
-                                         button is only reachable if it carries the game's focusable style
-                                         (Focusable + ls:MoveFocus + FocusVisualStyle + a focus-frame
-                                         template); the two bare MoveFocus attrs on a custom template are
-                                         NOT enough (GH #6). The gear icon is the button content and the
-                                         focus highlight is the style's, so no hover-swap template here. -->
+                                    <!-- An LSButton with a Command binding. Its DataContext is a small
+                                         NYS_GearVM set from Lua (NativeRenameUI). On controller a button is
+                                         only reachable if it carries the game's focusable style (Focusable +
+                                         ls:MoveFocus + FocusVisualStyle + a focus-frame template); bare
+                                         MoveFocus attrs on a custom template are NOT enough. The gear icon is
+                                         the content and the focus highlight is the style's. -->
                                     <ls:LSButton x:Name="NYS_SettingsButton" Style="{StaticResource FocusableButtonStyleMinimal}"
                                                  Width="80" VerticalAlignment="Center" Margin="10,0,0,0" Command="{Binding NysGearCommand}">
                                         <Image Width="40" Height="40" Stretch="Uniform" HorizontalAlignment="Center"
                                                Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
                                     </ls:LSButton>
                                 </StackPanel>
-                                <!-- GH #80 / #51: the controller has no Enter and a navigation blur must not commit
-                                     while a next summon is queued, so Confirm commits + advances; Skip skips this summon.
-                                     Focusable style so a controller can reach them (GH #6). VMs set from Lua; both share
-                                     NysShow* (#examineQueue > 0), hidden for single summons and on the last of a group. -->
+                                <!-- The controller has no Enter, so Confirm commits + advances the queue; Skip skips
+                                     this summon. Focusable style so a controller can reach them. VMs set from Lua; both
+                                     share NysShow* (#examineQueue > 0), hidden for single summons and the last of a group. -->
                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
                                              HorizontalAlignment="Center" MinWidth="200"
                                              Command="{Binding NysConfirmCommand}"
@@ -983,10 +975,10 @@
                 <!--BUTTON PROMPTS-->
                 <StackPanel x:Name="ControllerHints" VerticalAlignment="Bottom" Style="{StaticResource ButtonHint.Container.Center}">
 
-                    <!-- Name Your Summons (GH #6): the generic "accept routes to the focused element's
-                         Command" prompt, copied from the game's SignUp_c. The base Examine has no such
-                         router, so a focused control we add (the gear / Skip) never activated on X. The
-                         name field has no Command, so X on it falls through to its native open-keyboard. -->
+                    <!-- The generic "accept routes to the focused element's Command" prompt, copied from
+                         the game's SignUp_c. The base Examine has no such router, so a focused control we
+                         add (gear / Skip) never activated on X. The name field has no Command, so X on it
+                         falls through to its native open-keyboard. -->
                     <ls:LSButton x:Name="NYS_AcceptPrompt"
                                  ContentTemplate="{StaticResource ControllerButtonHint}"
                                  VerticalAlignment="Center"
@@ -1026,7 +1018,7 @@
 
                     <!-- Closes Examine on Circle. Hidden while the settings overlay is open so it does
                          not fire (a Collapsed BoundEvent button does not receive the event); the overlay's
-                         own ls:LSInputBinding then handles Circle to close only the overlay (GH #6). -->
+                         own ls:LSInputBinding then handles Circle to close only the overlay. -->
                     <ls:LSButton ContentTemplate="{StaticResource ControllerButtonHint}"
                                              VerticalAlignment="Center"
                                              Content="{Binding DataContext.CurrentPlayer.UIData.InputEvents, RelativeSource={RelativeSource AncestorType={x:Type ls:UIWidget}}, Converter={StaticResource FindInputEventConverter}, ConverterParameter='UICancel'}"
@@ -1037,22 +1029,21 @@
                                              CommandParameter="CloseWidget"/>
                 </StackPanel>
 
-                <!-- ===== Name Your Summons: native settings overlay (GH #6, controller layout) =====
+                <!-- ===== Name Your Summons: native settings overlay (controller layout) =====
                      Mirrors the keyboard Examine.xaml overlay. DataContext is an SE viewmodel set
                      from Lua (NativeConfigUI) when the panel opens; the gear toggles NysIsOpen. The
                      panel is a MoveFocus scope: opening it traps navigation here and jumps focus in,
-                     Circle closes only it (see the container triggers below). Every control uses the
-                     game's FocusableButtonStyleMinimal so a controller can reach and activate it: each
-                     checkbox is a focusable button that toggles a bool on accept, and the multi-summon
-                     mode is three choice buttons (BG3 has no drop-in focusable toggle). FallbackValue
-                     keeps the panel collapsed before the DataContext is bound. -->
+                     Circle closes only it. Every control uses the game's FocusableButtonStyleMinimal
+                     so a controller can reach and activate it: each checkbox is a focusable button that
+                     toggles a bool on accept, and the multi-summon mode is three choice buttons (BG3
+                     has no drop-in focusable toggle). FallbackValue keeps it collapsed before bind. -->
                 <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="100"
                       ls:MoveFocus.IsMoveFocusScope="True"
                       Visibility="{Binding NysIsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                     <b:Interaction.Triggers>
                         <!-- When the panel opens, jump focus into it and (via IsMoveFocusScope) keep
                              navigation trapped here until it closes. Pattern from the game's Henchmen_c
-                             AppearancePage (GH #6). -->
+                             AppearancePage. -->
                         <b:DataTrigger Binding="{Binding IsVisible, ElementName=NYS_SettingsPanel}" Value="True">
                             <ls:SetMoveFocusAction TargetName="Examine_c" FocusElement="{Binding ElementName=NYS_SettingsPanel}"/>
                         </b:DataTrigger>
@@ -1086,17 +1077,17 @@
                             </Grid>
 
                             <!-- Plain ScrollViewer scrolled by focus-follow: navigating a focusable row
-                                 brings it into view, exactly as the base Examine_c scrolls the character
-                                 stats list (its item panel uses LSScrollViewer + a stick event instead,
-                                 but only because that holds a single non-navigable tooltip). GH #6. -->
+                                 brings it into view, as the base Examine_c scrolls the character stats list
+                                 (its item panel uses LSScrollViewer + a stick event, but only because that
+                                 holds a single non-navigable tooltip). -->
                             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Margin="0,20,0,20">
                                 <StackPanel>
                                     <!-- ===== Prompt ===== -->
                                     <ContentControl Style="{StaticResource NYS_SectionTitle}">
                                         <TextBlock Text="Prompt"/>
                                     </ContentControl>
-                                    <!-- Each checkbox is a focusable button toggled by accept (X); NYS_CheckContent
-                                         draws the compact box (Tag = the bound bool) + centered label (GH #6). -->
+                                    <!-- Each checkbox is a focusable button toggled by accept; NYS_CheckContent
+                                         draws the compact box (Tag = the bound bool) + centered label. -->
                                     <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" HorizontalAlignment="Stretch" Margin="0,4" Command="{Binding NysTogglePromptOnSummonCommand}">
                                         <ContentControl Template="{StaticResource NYS_CheckContent}" Tag="{Binding NysPromptOnSummon}">
                                             <TextBlock Style="{StaticResource DetailedListText}" Text="Ask me to name new summons"/>
@@ -1145,10 +1136,9 @@
                                     <!-- ===== Multi-summon mode (vanilla options-menu dropdown) ===== -->
                                     <TextBlock Style="{StaticResource DetailedListText}" TextWrapping="Wrap" Margin="0,16,0,0"
                                                Text="When one spell summons several creatures at once:"/>
-                                    <!-- Controller (GH #6): a Popup flyout is not controller-navigable, so the
-                                         mode is three focusable choice buttons instead of the mouse pill+flyout.
-                                         Accept (X) selects; the current value is bold/accent. Same NysSelectX
-                                         commands as the keyboard page. -->
+                                    <!-- A Popup flyout is not controller-navigable, so the mode is three focusable
+                                         choice buttons instead of the mouse pill+flyout. Accept selects; the current
+                                         value is bold/accent. Same NysSelectX commands as the keyboard page. -->
                                     <StackPanel Orientation="Vertical" HorizontalAlignment="Left" Margin="0,8,0,0">
                                         <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="520" HorizontalAlignment="Stretch" Command="{Binding NysSelectSkipCommand}">
                                             <TextBlock Text="Do not name them" HorizontalAlignment="Center">
@@ -1209,8 +1199,7 @@
                                                     <!-- Field (fills the line) with Forget to its right. The field is READ-ONLY
                                                          (not disabled) when a forget is staged, so it stays focusable and carries
                                                          the up/down column - a disabled field is unfocusable and breaks it, letting
-                                                         down skip to Refresh. Forget is reached by going right from the field. Its
-                                                         Padding keeps the focus-highlight border from clipping the label (GH #6). -->
+                                                         down skip to Refresh. Forget is reached by going right from the field. -->
                                                     <Grid Margin="0,4,0,0">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
@@ -1222,7 +1211,7 @@
                                                                       Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                                         <!-- Horizontal padding via the label's Margin: FocusableButtonStyleMinimal
                                                              ignores the button's Padding, so the focus-highlight border would clip
-                                                             the text without this (GH #6). -->
+                                                             the text without this. -->
                                                         <ls:LSButton Grid.Column="1" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="16,0,0,0" VerticalAlignment="Center"
                                                                      Command="{Binding NysForgetCommand}">
                                                             <TextBlock Margin="30,0" Text="{Binding NysForgetLabel}"/>
@@ -1236,7 +1225,7 @@
                                     <!-- Refresh lives at the END of the scrollable content (not a fixed
                                          footer) so controller down-navigation reaches it only AFTER every list
                                          row: a fixed footer is always spatially below the list, so nav jumped to
-                                         it whenever the next row was scrolled off-screen (GH #6). -->
+                                         it whenever the next row was scrolled off-screen. -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
                                         <ls:LSButton Style="{StaticResource FocusableButtonStyleMinimal}" MinWidth="200" Margin="20,0" Command="{Binding NysRefreshCommand}">
                                             <TextBlock HorizontalAlignment="Center" Text="Refresh"/>

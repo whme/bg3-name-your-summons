@@ -1,9 +1,8 @@
 -- SPDX-License-Identifier: MIT
 --[[
-    Client-side localisation handlers. Runtime loca added via UpdateTranslatedString
-    is not persisted and does not replicate, so the server broadcasts each summon
-    name's handle/text (ApplyName) and re-seeds the full set on load (SeedLoca); the
-    client re-registers them locally so co-op peers resolve the correct names.
+    Client-side localisation handlers. Runtime loca does not persist or replicate, so
+    the server broadcasts each name's handle/text (ApplyName) and re-seeds the full set
+    on load (SeedLoca); the client re-registers them so co-op peers resolve the names.
 ]]
 
 local Channels = Ext.Require("Shared/Channels.lua")

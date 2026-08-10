@@ -6,9 +6,8 @@
 
 local Channels = {}
 
--- Server -> Client: "please ask the player to name this summon". Payload carries
--- ViewportChar (the summoner's controlled character) so the shared split-screen client
--- opens Examine on the summoner's viewport, not always player 1's (GH #86).
+-- Server -> Client: "ask the player to name this summon". Payload's ViewportChar
+-- (the summoner's controlled character) picks the split-screen viewport to open in.
 Channels.AskName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_AskName")
 
 -- Client -> Server: "the player typed this name"
@@ -19,8 +18,7 @@ Channels.SubmitName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SubmitN
 Channels.RetractPrompt = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RetractPrompt")
 
 -- Client -> Server (request/reply): "give me the saved names visible to this player".
--- Payload carries ViewerCharacter (the viewport's controlled character) so the server
--- returns only summons whose owner that player currently controls (GH #86).
+-- Payload's ViewerCharacter scopes the reply to summons that player currently controls.
 Channels.ListNames = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListNames")
 
 -- Client -> Server: "forget this saved name"
@@ -39,17 +37,16 @@ Channels.GetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSet
 -- Client -> Server: "store these settings"
 Channels.SetSettings = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SetSettings")
 
--- Server -> All Clients: the settings just changed, so a client can refresh anything it
--- caches locally (the story-summon rename gate in NativeRenameUI). Payload: the settings.
+-- Server -> All Clients: the settings changed, so a client refreshes anything it caches
+-- locally (the story-summon rename gate in NativeRenameUI). Payload: the settings.
 Channels.SettingsChanged = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SettingsChanged")
 
 -- Server -> All Clients: the text behind a localisation handle, for remote peers
 -- whose separate string table has never seen a handle the host minted.
 Channels.ApplyName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ApplyName")
 
--- Server -> All Clients: a live summon was just renamed (uuid + new text). Lets the
--- client showing that summon repaint its Examine name field for a rename it did not
--- type itself (e.g. an edit in the settings panel). Payload: { SummonUuid, Name }.
+-- Server -> All Clients: a live summon was renamed, so the client showing it can repaint
+-- its Examine field for a rename it did not type itself. Payload: { SummonUuid, Name }.
 Channels.SummonRenamed = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SummonRenamed")
 
 -- Server -> All Clients: every saved name's handle in bulk, on session load.

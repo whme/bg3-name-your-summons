@@ -2,23 +2,18 @@
 --[[
 	Maps a summon to one naming category from the tag names on its entity.
 
-	Engine-independent on purpose (input is a plain list of tag-name strings, not
-	an EntityHandle) so it is unit-tested off-game; the thin glue that reads the
-	Tag component off a live summon lives in Server/Naming.lua (TagNamesOf).
-
-	Classification is by the character's creature-type tag (UNDEAD, BEAST, FEY,
-	... - the 14 D&D types, each a plain character tag). FIND_FAMILIAR takes
-	priority over the creature type: a Find Familiar imp carries
-	FIEND+FIND_FAMILIAR but the player thinks "familiar".
+	Engine-independent (input is a plain list of tag-name strings) so it is
+	unit-tested off-game; the glue that reads the Tag component off a live summon is
+	Server/Naming.lua (TagNamesOf). Classification is by creature-type tag (UNDEAD,
+	BEAST, ... - the 14 D&D types); FIND_FAMILIAR takes priority over creature type.
 ]]
 
 local Classifier = {}
 
 local FAMILIAR_TAG = "FIND_FAMILIAR"
 
--- Tiebreak order for the rare creature carrying more than one type tag; the
--- generic Beast and Humanoid sit last so a more specific type wins. Each
--- category's tag name is its key uppercased (Undead -> "UNDEAD").
+-- Tiebreak order for a creature carrying more than one type tag; generic Beast
+-- and Humanoid sit last so a more specific type wins.
 local TYPE_ORDER = {
 	"Undead",
 	"Fiend",
@@ -36,8 +31,7 @@ local TYPE_ORDER = {
 	"Humanoid",
 }
 
--- Toggle metadata for the config UI, in display order. Familiar first, the
--- generic catch-all Untagged last.
+-- Toggle metadata for the config UI, in display order.
 Classifier.CATEGORIES = {
 	{ key = "Familiar", label = "Familiars (all, whatever their creature type)" },
 	{ key = "Beast", label = "Beasts / animals" },
@@ -102,9 +96,8 @@ function Classifier.Classify(tagNames)
 	return creatureType(present) or "Untagged"
 end
 
---- A human-readable label of a summon's type for the saved-name list. Creature
---- type and familiar status are independent (an imp is a Fiend and a Familiar),
---- so both are shown: "Fiend, Familiar", "Beast", "Familiar", or "Other".
+--- A human-readable type label for the saved-name list. Type and familiar status
+--- are independent, so both show: "Fiend, Familiar", "Beast", "Familiar", "Other".
 ---@param tagNames string[]
 ---@return string
 function Classifier.Describe(tagNames)

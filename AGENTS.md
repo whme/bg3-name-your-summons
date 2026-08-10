@@ -61,8 +61,7 @@ the game.
   older summons of the type keep their names), and it follows the CURRENT
   `MultiSummonMode`, not how the value was stored - switching `unique` -> `shared`
   collapses the stored set to its first name on the next summon and re-asks once.
-- **Native UI - the one proven approach (GH #50).** Verified in game (Patch 8, SE
-  v30). Implement and extend native UI this way; do not re-litigate:
+- **Native UI - the proven approach.** Implement and extend native UI this way:
   1. Open a game panel (Examine) - fetch `ExamineCommand` off the HUD command-surface
      DataContext (a `ui::DCWidget` with ~200 game commands, inherited onto the
      always-present `HudIndicator` node under `ContentRoot`; `ContentRoot`'s OWN
@@ -92,38 +91,35 @@ the game.
   examined creature's uuid is read from the panel's Noesis DataContext
   (`EntityUUID` + `CharacterType == "Summon"`, bag-only) and renames go to the
   server over `Channels.RenameSummon`. Following the approach above, the controls we
-  add are driven by per-element MVVM (proven to fire on the first panel of a
-  session): the gear is an `ls:LSButton` whose `Command` binds to a tiny `NYS_GearVM`
-  set as its nested DataContext; the field SAVES on its own per-element `TextChanged`
-  subscription, debounced by `TEXT_COMMIT_DEBOUNCE_MS` so rapid typing saves once, NOT
-  on a focus-loss blur - the blur (`LostFocus` / `LostKeyboardFocus`) is not reliably
-  delivered, especially on controller, so a rename must never hinge on it (GH #86).
-  Saving is decoupled from advancing a multi-summon queue (see below), and also flushed
-  when the gear opens or the panel closes. The single remaining global input hook is one `Ext.Events.MouseButtonInput`
-  used SOLELY as the panel lifecycle detector, because `Ext.UI.GetStateMachine()` is
-  stubbed to `nullptr` in this SE build and there is no open event. Every scan is
-  anchored at `ContentRoot` / `Examine` and reads the property bag; `GetProperty`
-  warns per miss and cost 238-510 ms to open Examine when used to scan, so it is
-  reserved for one known object (the HUD command surface, a matched entity handle). A
-  `!nys_uidebug` client console command toggles verbose tracing of the whole flow.
-  **Non-interactive by default; editing is opt-in (GH #48).** The name field
-  (`NYS_NameInput`) defaults to `IsReadOnly`, `Focusable`, and `IsHitTestVisible` all off
-  in the XAML, so it renders as the native plain name - no caret, no hover border, not
-  clickable. That default is the correct look for a **forbidden** summon (a story-bound one
-  - `Util.IsStorySummon` - with the opt-in off) with NO Lua action needed, which is what
-  makes it work despite a manually-opened Examine panel not repainting a Lua-driven change
-  until the next real click. `enableEditing` flips those three flags on for an on-summon
-  prompt or a click on a renamable manually-examined summon; they are checked at INPUT time,
-  not painted, so this needs no repaint. A forbidden summon is never enabled:
-  `panelForbidden` is computed in `wirePanel` by `isForbiddenSummon`, which reads the root
+  add are driven by per-element MVVM: the gear is an `ls:LSButton` whose `Command`
+  binds to a tiny `NYS_GearVM` set as its nested DataContext; the field SAVES on its
+  own per-element `TextChanged` subscription, debounced by `TEXT_COMMIT_DEBOUNCE_MS` so
+  rapid typing saves once, NOT on a focus-loss blur - the blur (`LostFocus` /
+  `LostKeyboardFocus`) is not reliably delivered, especially on controller, so a rename
+  must never hinge on it. Saving is decoupled from advancing a multi-summon queue (see
+  below), and also flushed when the gear opens or the panel closes. The one global input
+  hook is `Ext.Events.MouseButtonInput`, used SOLELY as the panel lifecycle detector,
+  because `Ext.UI.GetStateMachine()` is stubbed to `nullptr` and there is no open event.
+  Every scan is anchored at `ContentRoot` / `Examine` and reads the property bag;
+  `GetProperty` warns per miss and costs 238-510 ms to open Examine when used to scan, so
+  it is reserved for one known object (the HUD command surface, a matched entity handle).
+  A `!nys_uidebug` client console command toggles verbose tracing.
+  **Non-interactive by default; editing is opt-in.** The name field (`NYS_NameInput`)
+  defaults to `IsReadOnly`, `Focusable`, and `IsHitTestVisible` all off in the XAML, so it
+  renders as the native plain name - no caret, no hover border, not clickable. That is the
+  correct look for a **forbidden** summon (a story-bound one - `Util.IsStorySummon` - with
+  the opt-in off) with NO Lua action needed, which is what makes it work despite a
+  manually-opened Examine panel not repainting a Lua-driven change until the next real
+  click. `enableEditing` flips those three flags on for an on-summon prompt or a click on a
+  renamable manually-examined summon; they are checked at INPUT time, not painted, so this
+  needs no repaint. A forbidden summon is never enabled: `isForbiddenSummon` reads the root
   template off the client entity (`Ext.Entity.Get(uuid).OriginalTemplate.OriginalTemplate`)
   and tests `Util.IsStorySummon` against `cachedAllowStory` - a copy of `AllowStorySummons`
-  seeded on `SessionLoaded` (once persisted ModVars have loaded) and kept fresh by the
-  server's `Channels.SettingsChanged` broadcast (the live value cannot be fetched
-  synchronously; fails open to renamable if the template is not readable client-side). That
-  broadcast also re-evaluates the on-screen panel, so toggling the setting takes effect on
-  the next examine - and live, a now-forbidden summon reverts to plain text via
-  `disableEditing` - without a re-summon. The gear is always shown.
+  seeded on `SessionLoaded` and kept fresh by the server's `Channels.SettingsChanged`
+  broadcast (the live value cannot be fetched synchronously; fails open to renamable if the
+  template is not readable client-side). That broadcast also re-evaluates the on-screen
+  panel, so toggling the setting reverts a now-forbidden summon to plain text via
+  `disableEditing` without a re-summon. The gear is always shown.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
   `Examine.xaml` override - covering prompt options, the per-creature-type filter,
@@ -142,8 +138,7 @@ the game.
   `pack://.../Core;component/Assets/Options/...` URIs, declared `NYS_`-prefixed in
   `Examine.xaml`). The stored value is a single `NysModeValue` String; each flyout
   Button's `Command` sets it and closes the flyout, so radio exclusivity is
-  inherent (one value) with no WriteCallback re-entry to guard. Four traps,
-  learned the hard way and encoded in the module header:
+  inherent (one value) with no WriteCallback re-entry to guard. Four engine constraints:
   - **No standalone-window API** (and `Ext.UI.GetStateMachine()` is stubbed), so
     the panel must live inside a page we already override (Examine).
   - **A viewmodel/node handle does not survive across ticks** - the object lives
@@ -161,7 +156,7 @@ the game.
   - **Prefix every viewmodel field `Nys`** so it cannot alias a built-in (an
     unprefixed `Name` aliased `FrameworkElement.Name` and round-tripped the
     literal "Name").
-  There is no Save button - every change is live (GH #76): each setting's
+  There is no Save button - every change is live: each setting's
   WriteCallback (`onSettingWrite` / `pushIfLive`) sends the whole settings object
   to the server as it is toggled, and an edited name commits via `onNameWrite` (a
   WriteCallback on the row's `NysNameText`, whose binding is
@@ -175,7 +170,7 @@ the game.
   changed from outside, so the server broadcasts `Channels.SummonRenamed` (uuid +
   text) from its single apply path (`Server/Naming.lua`) and `NativeRenameUI`
   writes the new text into the on-screen field.
-- **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`, GH #19):
+- **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`):
   the on-summon naming UI is the native Examine panel. Detection, the pending
   count, the world-pause, and per-creature `unique` prompting are all server-side;
   the server sends `AskName`.
@@ -188,7 +183,7 @@ the game.
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
   clears its pending count / lifts the pause.
-- **Local split-screen (GH #86)**: one machine is one shared client Lua state but a BG3SE
+- **Local split-screen**: one machine is one shared client Lua state but a BG3SE
   user per split-screen player (up to four), each able to have its own Examine panel open at
   once - nothing here is hardcoded to two; state is keyed per player. **Server**: a summon's
   owner maps to the controlling UserID via `Osi.GetReservedUserID`, so the saved-name list is
@@ -208,7 +203,7 @@ the game.
   elements (a shared re-layout) which silently kills our `Subscribe`d handlers - so already-open
   panels are re-wired after any panel opens (`rewireStale`, EXCLUDING the just-opened one, so a
   single panel / single-player is never disturbed).
-- **Closing Examine from Lua** (`closeExaminePanel`, GH #54): the panel's close runs the
+- **Closing Examine from Lua** (`closeExaminePanel`): the panel's close runs the
   `CloseWidget` state event (action `<ls:RemoveState/>`) through the widget's own
   `CustomEvent` command. Its parameter must be a BOXED Noesis string, which SE cannot mint,
   so plant one as a `<System:String x:Key="NYS_CloseWidget">` resource in the `Examine.xaml`
@@ -216,20 +211,20 @@ the game.
   `Noesis::BaseComponent`), then pass it to `CustomEvent:Execute`. This is the general recipe
   for driving any Noesis command that needs a boxed primitive parameter -
   [docs/driving-native-ui-from-lua.md](docs/driving-native-ui-from-lua.md).
-- **Multi-summon = ONE panel that swaps through the queue, closed once at the end
-  (GH #51).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
-  already-open panel SWAPS its content rather than being ignored (GH #50 finding C4), so a
-  group is named in one panel: the creature's name is saved live as the player types
-  (debounced `TextChanged`), and an explicit Confirm advances the panel to the next queued
-  summon; repeat until the queue drains; the player closes the panel once at the end.
+- **Multi-summon = ONE panel that swaps through the queue, closed once at the end.**
+  Only one Examine panel exists, and `ExamineCommand:Execute` on an already-open panel
+  SWAPS its content rather than being ignored, so a group is named in one panel: the
+  creature's name is saved live as the player types (debounced `TextChanged`), and an
+  explicit Confirm advances the panel to the next queued summon; repeat until the queue
+  drains; the player closes the panel once at the end.
   Advancing is the `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`, which answers over
   `SubmitName` if not yet answered and then swaps), shown via a `Bool NysShowConfirm` on its
   `NYS_ConfirmVM` with the SAME condition as Skip (`#examineQueue > 0`), so it is hidden for
-  single summons and on the LAST creature of a group (GH #80). Confirm is the SOLE advance on
-  BOTH layouts - the field's blur is no longer a commit or advance path at all (it was
-  unreliable on controller, GH #86); a single summon or the last of a group needs no advance
-  (its name is already saved live, and the server's pending count clears when the panel
-  closes). `showNext` Executes Examine on the next request (open, or content-swap if a panel is
+  single summons and on the LAST creature of a group. Confirm is the SOLE advance on BOTH
+  layouts - the field's blur is not a commit or advance path (unreliable on controller); a
+  single summon or the last of a group needs no advance (its name is already saved live, and
+  the server's pending count clears when the panel closes). `showNext` Executes Examine on
+  the next request (open, or content-swap if a panel is
   up); the outgoing `current` is always already resolved (answered, skipped, or retracted), so
   `showNext` never aborts it. Because the field's `Text` binding is OneWay and does NOT
   follow a swap, `setFieldText` writes the new creature's name in directly after each swap.
@@ -238,7 +233,7 @@ the game.
   mid-queue skips ALL that is left (`abortRemaining` aborts `current` if unnamed and every
   still-queued request), so the pending count still clears and the pause lifts; a retract of
   the on-screen summon swaps to the next or, if the queue is empty, closes the panel via
-  `closeExaminePanel` (GH #54). After each open/swap, input is ignored for
+  `closeExaminePanel`. After each open/swap, input is ignored for
   `EXAMINE_SETTLE_MS` (`awaitingOpen` gates it) while the swapped-in field settles, then the
   fresh field is wired and its text set - one-shot `Ext.Timer.WaitForRealtime`, not polling;
   an `openGeneration` token makes a superseded settle callback bail (and drain any summon
@@ -249,7 +244,7 @@ the game.
   toggles verbose tracing (each line carries a live
   `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=.. queued=..]`
   snapshot of the real UI).
-- **Controller support (GH #6).** The controller UI is a SEPARATE layout: the game
+- **Controller support.** The controller UI is a SEPARATE layout: the game
   loads a different page (`Examine_c.xaml`), so the keyboard override alone leaves
   our controls absent on a controller. Support mirrors the keyboard side:
   `StateMachines/Controller.xaml` overrides the `Examine` state (the base controller
@@ -266,19 +261,18 @@ the game.
   NOT enough. So our buttons use the game's `FocusableButtonStyleMinimal`
   (`Public/Game/GUI/Library/FocusableControls_c.xaml`, gear icon / "Skip" as content),
   not a custom template - a fully custom template drops the focus wiring and the button
-  becomes unreachable (verified in game: the old gear was visible but unfocusable).
+  becomes unreachable.
   Focusable is only half of it - being focused does NOT run a button's `Command` on
   accept. BG3 routes accept through ONE hint button with `BoundEvent="UIAccept"` and
   `Command="{Binding FocusedElement.Command, ElementName=<widget>}"` (copied from the
-  game's `SignUp_c`); the base Examine has none, so our focused gear/Skip never fired
-  until we added `NYS_AcceptPrompt`. A focused element with no `Command` (the name field)
-  falls through to its native behaviour. The name field is reachable because `LSTextBox`
+  game's `SignUp_c`); the base Examine has none, so `NYS_AcceptPrompt` supplies it.
+  A focused element with no `Command` (the name field) falls through to its native
+  behaviour. The name field is reachable because `LSTextBox`
   is inherently focusable; it carries `ls:MoveFocus.Focusable` permanently but gates real
   navigability through `Focusable` (toggled by `NativeRenameUI`), so a forbidden/plain
   field is skipped, and it sets `OpenVirtualKeyboardOnFocus="False"` (as the game's own
   focusable text boxes) so merely NAVIGATING onto it just highlights it - the on-screen
-  keyboard opens on accept, not on focus (without this it popped the keyboard on every
-  fly-over). Lua deltas (`NativeRenameUI.lua`): `examineNode`
+  keyboard opens on accept, not on focus. Lua deltas (`NativeRenameUI.lua`): `examineNode`
   accepts `Examine` OR `Examine_c`; `isControllerPanel` (the `Examine_c` node is
   present) tells the layouts apart; a global `Ext.Events.ControllerButtonInput` hook
   (`onControllerButton`) is the controller counterpart of the mouse hook -
@@ -289,23 +283,21 @@ the game.
   otherwise never get the panel wired - so we do NOT poll the stick axis (that would
   scan on every stick movement during normal play). `wirePanel` auto-enables editing for
   a renamable manually-examined summon on controller (there is no click to start it).
-  **Advancing a queued multi-summon is the explicit Confirm button (GH #80).** The
+  **Advancing a queued multi-summon is the explicit Confirm button.** The
   `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`) is the sole advance trigger on BOTH
   layouts, stacked above Skip and focusable via `FocusableButtonStyleMinimal`; the field blur is
-  not a commit or advance path at all (GH #86). The name itself is saved live as the player
-  types (debounced `TextChanged`), so a single summon, the last of a group, or a manual examine
-  needs no Confirm and no blur - its name is already saved.
-  Verified in game: the on-summon prompt, rename, native keyboard, gear activation, and
-  the field's navigate-highlight / accept-edit all work. The settings overlay
-  (`NYS_SettingsPanel`) jumps focus in on open (`ls:SetMoveFocusAction` on an
-  `IsVisible=True` trigger) and its text rows set `OpenVirtualKeyboardOnFocus="False"`.
-  Trapping focus needed TWO things, not one: `ls:MoveFocus.IsMoveFocusScope` alone did NOT
-  trap (navigation still walked into the Examine content behind), so - as the game's
-  `Henchmen_c` does - the whole Examine `Panel` is `IsEnabled`-disabled while the overlay is
-  open (disabled elements are skipped by navigation), which both traps focus and lets the
-  initial `SetMoveFocusAction` land. Circle-closes-only-the-overlay likewise needed a
-  state-machine change: a state-level `IE.UICancel -> RemoveState` fires unconditionally and
-  no widget handler can veto it, so `Controller.xaml` OMITS it and closes Examine via the
+  not a commit or advance path. The name itself is saved live as the player types (debounced
+  `TextChanged`), so a single summon, the last of a group, or a manual examine needs no
+  Confirm and no blur - its name is already saved.
+  The settings overlay (`NYS_SettingsPanel`) jumps focus in on open (`ls:SetMoveFocusAction`
+  on an `IsVisible=True` trigger) and its text rows set `OpenVirtualKeyboardOnFocus="False"`.
+  Trapping focus needs TWO things: `ls:MoveFocus.IsMoveFocusScope` alone does NOT trap
+  (navigation still walks into the Examine content behind), so - as the game's `Henchmen_c`
+  does - the whole Examine `Panel` is `IsEnabled`-disabled while the overlay is open (disabled
+  elements are skipped by navigation), which both traps focus and lets the initial
+  `SetMoveFocusAction` land. Circle-closes-only-the-overlay likewise needs a state-machine
+  change: a state-level `IE.UICancel -> RemoveState` fires unconditionally and no widget
+  handler can veto it, so `Controller.xaml` OMITS it and closes Examine via the
   footer UICancel button (gated `Collapsed` while the overlay is open); the overlay's own
   `ls:LSInputBinding BoundEvent="UICancel"` (enabled on `NysIsOpen`) then handles Circle to
   close just it. Its buttons use `FocusableButtonStyleMinimal`. The checkboxes and the
@@ -345,9 +337,9 @@ NameYourSummons/                     <- pak this folder
     GUI/                             UI-mod overlay (packed alongside ScriptExtender)
       metadata.lsf                   UI-mod marker (empty config)
       Pages/Examine.xaml             keyboard Examine override: injects the editable name field, settings gear, and native settings overlay (NYS_SettingsPanel) for summons
-      Pages/Examine_c.xaml           controller Examine override: the same controls injected into the game's controller Examine layout, controller-navigable via ls:MoveFocus.Focusable (GH #6)
+      Pages/Examine_c.xaml           controller Examine override: the same controls injected into the game's controller Examine layout, controller-navigable via ls:MoveFocus.Focusable
       StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
-      StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml (GH #6)
+      StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml
 ```
 
 ## Reference docs
@@ -477,8 +469,7 @@ Notes:
   `.luacheckrc` as read-only; add one there if luacheck flags a real engine
   global as undefined. `spec/` has a scoped override (writable `Ext`/`Osi` for
   the stubs, `allow_defined_top` for the LuaUnit `Test*` tables). Line length is
-  disabled - StyLua owns that. (Selene was evaluated and rejected: its released
-  CLI cannot parse Lua 5.3/5.4 syntax - upstream PR #666 is still open.)
+  disabled - StyLua owns that.
 - **lua-language-server** type-checks from the EmmyLua annotations. `./make.ps1
   typecheck` auto-fetches the authoritative BG3SE `ExtIdeHelpers.lua` into
   `.luals-libs/` (gitignored; `.luarc.json` points `workspace.library` there)
@@ -579,9 +570,8 @@ dn.Name.Handle.Handle = handle
 ## BG3SE-Specific Notes
 
 - **API drift**: BG3SE tracks game builds and component layouts shift between
-  patches. Field names change (e.g. `DisplayName.NameKey` was renamed to
-  `.Name`; a shim resolves the old name but warns). When a field read returns
-  `nil` unexpectedly, suspect a rename and check the current IDE helpers.
+  patches, so field names change. When a field read returns `nil` unexpectedly,
+  suspect a rename and check the current IDE helpers.
 - **No summon-created event**: use the `EnteredLevel` -> `IsSummon` route, not
   a hypothetical `Summoned` event. The `SummonCreatedEvent` /
   `SummonOwnerSetEvent` ECS components have no structure known to SE.

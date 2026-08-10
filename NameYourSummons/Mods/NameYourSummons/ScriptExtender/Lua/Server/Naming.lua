@@ -5,10 +5,6 @@ local Writer = Ext.Require("Shared/NameWriter.lua")
 
 local Naming = {}
 
----------------------------------------------------------------------------
--- Reading the current name
----------------------------------------------------------------------------
-
 ---@param ref string|EntityHandle
 ---@return string
 function Naming.GetCurrentName(ref)
@@ -32,10 +28,6 @@ function Naming.GetCurrentName(ref)
 	return ""
 end
 
----------------------------------------------------------------------------
--- Applying a name
----------------------------------------------------------------------------
-
 ---@param ref string|EntityHandle
 ---@param name string
 ---@return boolean success, string|nil err
@@ -57,7 +49,7 @@ function Naming.Apply(ref, name)
 		return false, "could not register localisation handle"
 	end
 
-	-- Our runtime loca registers at version 0; a stale version makes it miss.
+	-- Runtime loca registers at version 0; a stale version makes the lookup miss.
 	local ok, err = Writer.SetDisplayName(e, handle, 0, true)
 	if not ok then
 		return false, err
@@ -70,9 +62,8 @@ function Naming.Apply(ref, name)
 
 	local uuid = e.Uuid and tostring(e.Uuid.EntityUuid) or tostring(ref)
 
-	-- A manually-opened Examine panel does not repaint the game's name binding when the
-	-- summon is renamed from elsewhere (the settings panel); tell the client to write the
-	-- new text into its on-screen field directly.
+	-- A manually-opened Examine panel does not repaint a rename from elsewhere; tell the
+	-- client to write the new text into its on-screen field directly.
 	pcall(function()
 		Channels.SummonRenamed:Broadcast({ SummonUuid = uuid, Name = name })
 	end)
@@ -81,9 +72,8 @@ function Naming.Apply(ref, name)
 	return true
 end
 
---- Applies the name a moment after the entity settles. Summons are still being
---- assembled on the tick they enter the level, and an immediate write can be
---- clobbered by the engine.
+--- Apply the name after the entity settles: a summon is still assembling on the
+--- tick it enters the level, and an immediate write can be clobbered by the engine.
 ---@param guid string
 ---@param name string
 ---@param delayMs integer|nil
@@ -96,9 +86,8 @@ function Naming.ApplyDeferred(guid, name, delayMs)
 	end)
 end
 
---- Points a summon's display name back at its template's original handle,
---- undoing a custom name. The template handle is a shipped game loca entry, so
---- co-op peers already have it - no broadcast needed, unlike Apply.
+--- Point a summon's display name back at its template's original handle. The
+--- template handle is a shipped game loca entry, so co-op peers already have it.
 ---@param ref string|EntityHandle
 ---@param rootTemplate string
 ---@return boolean success, string|nil err
@@ -124,9 +113,9 @@ function Naming.Restore(ref, rootTemplate)
 	return true
 end
 
---- Re-registers every saved name's handle. Runtime localisation entries do not
---- survive a restart, so this runs on session load before any name is re-applied.
---- A stored value is either one name (string) or a unique set (array of names).
+--- Re-register every saved name's handle. Runtime loca does not survive a restart,
+--- so this runs on session load before any name is re-applied. A stored value is
+--- either one name (string) or a unique set (array of names).
 ---@param names table<string,string|string[]>  key -> name or unique set
 function Naming.SeedLoca(names)
 	local seeded = {}
@@ -155,10 +144,6 @@ function Naming.SeedLoca(names)
 		Util.Log(("Registered %d localisation handle(s) for saved names."):format(n))
 	end
 end
-
----------------------------------------------------------------------------
--- Diagnostics
----------------------------------------------------------------------------
 
 ---@param ref string|EntityHandle
 function Naming.Diagnose(ref)
@@ -201,9 +186,9 @@ function Naming.Diagnose(ref)
 	Util.Log("-------------------------------")
 end
 
---- The resolved creature/type tag names on a summon, for classification.
---- Runtime tags are GUIDs; each resolves to a Tag resource whose Name is the
---- creature type (e.g. "UNDEAD", "FIND_FAMILIAR"). Unresolvable tags are dropped.
+--- The resolved tag names on a summon, for classification. Runtime tags are GUIDs;
+--- each resolves to a Tag resource whose Name is the creature type. Unresolvable
+--- tags are dropped.
 ---@param ref string|EntityHandle
 ---@return string[]
 function Naming.TagNamesOf(ref)
@@ -220,9 +205,8 @@ function Naming.TagNamesOf(ref)
 	return names
 end
 
---- Every live summon in the session.
---- SummonContainer.Characters is userdata that will not iterate from Lua, so we
---- enumerate by the IsSummon marker component instead.
+--- Every live summon in the session. SummonContainer.Characters is userdata that
+--- will not iterate from Lua, so enumerate by the IsSummon marker component.
 ---@return EntityHandle[]
 function Naming.AllSummons()
 	local ok, summons = pcall(Ext.Entity.GetAllEntitiesWithComponent, "IsSummon")

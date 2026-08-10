@@ -92,17 +92,14 @@ Game version v4.73.98.727 OK
 ```
 
 - `Game version v4.73.98.727` - the game build. **It gates where assets live and
-  what shape they have**: Larian moves and renames things between patches (the UI
-  moved from `Public/Game/GUI/Widgets/*.xaml` to `Mods/MainUI/GUI/Pages/*.xaml`
-  in Patch 7/8), and BG3SE component layouts drift too.
+  what shape they have**: Larian moves and renames things between patches, and
+  BG3SE component layouts drift too.
 - `BG3Ext v32` - the Script Extender build.
 - `SE v30` - the API version the mod targets (`RequiredVersion` in `Config.json`);
   it can lag the installed extender and guards the API version, not the layout.
 
 The rule: **do not trust "patch X moved this to Y" claims from docs; confirm the
-layout against the user's actual paks with `list-package`.** The work that
-motivated this guide burned several iterations on an override path a wiki called
-current but the installed game had already changed.
+layout against the user's actual paks with `list-package`.**
 
 ## Checklist
 

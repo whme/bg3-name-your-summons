@@ -41,8 +41,7 @@ local WRITABLE_SETTINGS = {
 	end,
 }
 
--- Per-summon-type toggles (GH #14): one boolean per creature type plus the
--- "every summon" master. All client-writable; only familiars default on.
+-- One boolean per creature type plus the "every summon" master. All client-writable.
 for key, def in pairs(Classifier.DefaultSettings()) do
 	DEFAULT_SETTINGS[key] = def
 	WRITABLE_SETTINGS[key] = isBoolean
@@ -78,10 +77,6 @@ local function vars()
 	return Ext.Vars.GetModVariables(ModuleUUID)
 end
 
----------------------------------------------------------------------------
--- Names
----------------------------------------------------------------------------
-
 ---@return table<string,string>
 function Store.All()
 	return vars()[VAR_NAMES] or {}
@@ -111,14 +106,9 @@ function Store.Forget(key)
 	v[VAR_NAMES] = t
 end
 
----------------------------------------------------------------------------
--- Unique sets
---
--- A key's value is EITHER a string (one shared name) OR an array of strings
--- (one distinct name per creature, for the "unique" multi-summon mode). The
--- array is always kept dense: a sparse Lua table would serialise to a JSON
--- object and break the `#value` length checks the distribution relies on.
----------------------------------------------------------------------------
+-- A key's value is EITHER a string (one shared name) OR an array of strings (one
+-- distinct name per creature, for "unique" mode). The array is kept dense: a sparse
+-- Lua table serialises to a JSON object and breaks the `#value` length checks.
 
 --- Coerce a key's stored value into an array of names (empty if unset/string).
 ---@param value string|string[]|nil
@@ -192,13 +182,8 @@ function Store.ForgetSlot(key, slot)
 	v[VAR_NAMES] = t
 end
 
----------------------------------------------------------------------------
--- Creature types
---
--- The type label (e.g. "Fiend, Familiar", "Beast") last seen for a key, so the
--- saved-name list can show a summon's type even when no instance is alive to
--- read tags from. Populated from a live summon's tags whenever one is seen.
----------------------------------------------------------------------------
+-- The type label (e.g. "Fiend, Familiar") last seen for a key, so the saved-name
+-- list can show a type even when no instance is alive to read tags from.
 
 ---@return table<string,string>
 function Store.AllTypes()
@@ -223,10 +208,6 @@ function Store.SetType(key, label)
 	-- Reassigning marks the ModVar dirty; mutating the nested table would not.
 	v[VAR_TYPES] = t
 end
-
----------------------------------------------------------------------------
--- Settings
----------------------------------------------------------------------------
 
 ---@return table
 function Store.Settings()
