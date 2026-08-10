@@ -8,7 +8,7 @@
                 <node id="ModuleInfo">
                     <attribute id="Author" type="LSString" value="whme" />
                     <attribute id="CharacterCreationLevelName" type="FixedString" value="" />
-                    <attribute id="Description" type="LSString" value="Name your summons. Names persist across re-summons." />
+                    <attribute id="Description" type="LSString" value="Names your summoned creatures, remembers the names, and reapplies them automatically the next time you summon the same creature. Optionally opens the creature's Examine panel to name it the moment a summon appears." />
                     <attribute id="Folder" type="LSString" value="NameYourSummons" />
                     <attribute id="LobbyLevelName" type="FixedString" value="" />
                     <attribute id="MD5" type="LSString" value="" />
