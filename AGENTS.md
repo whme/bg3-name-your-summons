@@ -220,6 +220,69 @@ the game.
   toggles verbose tracing (each line carries a live
   `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=.. queued=..]`
   snapshot of the real UI).
+- **Controller support (GH #6).** The controller UI is a SEPARATE layout: the game
+  loads a different page (`Examine_c.xaml`), so the keyboard override alone leaves
+  our controls absent on a controller. Support mirrors the keyboard side:
+  `StateMachines/Controller.xaml` overrides the `Examine` state (the base controller
+  Examine STATE is named `Examine`, not `Examine_c`; that is only the widget
+  filename, and unlike the keyboard state it carries five events, four copied
+  verbatim and IE.UICancel deliberately omitted - see below)
+  to load our own `GUI/Pages/Examine_c.xaml` - a copy of the game's controller
+  Examine page with the same rename bar + gear + Skip + `NYS_SettingsPanel` overlay
+  injected next to the inline `{Binding Name}` title (unlike the keyboard page, the
+  controller name is inline in the page, not in an external template). A control is
+  navigable by the controller ONLY if it carries the game's focusable contract -
+  `Focusable` + `ls:MoveFocus.Focusable` + `ls:MoveFocus.FocusMovementMode` +
+  `FocusVisualStyle` + a focus-frame template; the two bare `ls:MoveFocus` attrs are
+  NOT enough. So our buttons use the game's `FocusableButtonStyleMinimal`
+  (`Public/Game/GUI/Library/FocusableControls_c.xaml`, gear icon / "Skip" as content),
+  not a custom template - a fully custom template drops the focus wiring and the button
+  becomes unreachable (verified in game: the old gear was visible but unfocusable).
+  Focusable is only half of it - being focused does NOT run a button's `Command` on
+  accept. BG3 routes accept through ONE hint button with `BoundEvent="UIAccept"` and
+  `Command="{Binding FocusedElement.Command, ElementName=<widget>}"` (copied from the
+  game's `SignUp_c`); the base Examine has none, so our focused gear/Skip never fired
+  until we added `NYS_AcceptPrompt`. A focused element with no `Command` (the name field)
+  falls through to its native behaviour. The name field is reachable because `LSTextBox`
+  is inherently focusable; it carries `ls:MoveFocus.Focusable` permanently but gates real
+  navigability through `Focusable` (toggled by `NativeRenameUI`), so a forbidden/plain
+  field is skipped, and it sets `OpenVirtualKeyboardOnFocus="False"` (as the game's own
+  focusable text boxes) so merely NAVIGATING onto it just highlights it - the on-screen
+  keyboard opens on accept, not on focus (without this it popped the keyboard on every
+  fly-over). Lua deltas (`NativeRenameUI.lua`): `examineNode`
+  accepts `Examine` OR `Examine_c`; `isControllerPanel` (the `Examine_c` node is
+  present) tells the layouts apart; a global `Ext.Events.ControllerButtonInput` hook
+  (`onControllerButton`) is the controller counterpart of the mouse hook -
+  `MouseButtonInput` never fires on a controller and there is no panel-open event. It
+  only reconciles lifecycle (never sets `recentClick`, so a field blur is always an
+  Enter commit) and, unlike the mouse hook, ALWAYS schedules one post-settle re-poll:
+  the button that OPENS Examine fires the hook while the panel is still mid-open, and a
+  player who then navigates with the left STICK (no further button events) would
+  otherwise never get the panel wired - so we do NOT poll the stick axis (that would
+  scan on every stick movement during normal play). `wirePanel` auto-enables editing for
+  a renamable manually-examined summon on controller (there is no click to start it).
+  Verified in game: the on-summon prompt, rename, native keyboard, gear activation, and
+  the field's navigate-highlight / accept-edit all work. The settings overlay
+  (`NYS_SettingsPanel`) jumps focus in on open (`ls:SetMoveFocusAction` on an
+  `IsVisible=True` trigger) and its text rows set `OpenVirtualKeyboardOnFocus="False"`.
+  Trapping focus needed TWO things, not one: `ls:MoveFocus.IsMoveFocusScope` alone did NOT
+  trap (navigation still walked into the Examine content behind), so - as the game's
+  `Henchmen_c` does - the whole Examine `Panel` is `IsEnabled`-disabled while the overlay is
+  open (disabled elements are skipped by navigation), which both traps focus and lets the
+  initial `SetMoveFocusAction` land. Circle-closes-only-the-overlay likewise needed a
+  state-machine change: a state-level `IE.UICancel -> RemoveState` fires unconditionally and
+  no widget handler can veto it, so `Controller.xaml` OMITS it and closes Examine via the
+  footer UICancel button (gated `Collapsed` while the overlay is open); the overlay's own
+  `ls:LSInputBinding BoundEvent="UICancel"` (enabled on `NysIsOpen`) then handles Circle to
+  close just it. Its buttons use `FocusableButtonStyleMinimal`. The checkboxes and the
+  multi-summon dropdown could not stay as-is on controller (BG3 has no drop-in focusable
+  toggle, and a `Popup` flyout is not controller-navigable), so on the controller page each
+  checkbox is a `FocusableButtonStyleMinimal` button that toggles a VM bool on accept (the
+  `TickBox` inside is a non-interactive state indicator), and the dropdown is three focusable
+  choice buttons (the current value bold/accent) reusing the same `NysSelectX` commands. The
+  toggles are driven by per-boolean `Nys*Command`s added to `NativeConfigUI`'s viewmodels
+  (the keyboard page still uses the mouse `TwoWay`/pill path, unchanged). Trace with
+  `!nys_uidebug`.
 
 ## Project Structure
 
@@ -247,9 +310,10 @@ NameYourSummons/                     <- pak this folder
           NativeRenameUI.lua         native Examine-panel rename field + gear; owns panel detection and drives NativeConfigUI (see "Native Examine rename")
     GUI/                             UI-mod overlay (packed alongside ScriptExtender)
       metadata.lsf                   UI-mod marker (empty config)
-      Pages/Examine.xaml             Examine.xaml override: injects the editable name field, settings gear, and native settings overlay (NYS_SettingsPanel) for summons
+      Pages/Examine.xaml             keyboard Examine override: injects the editable name field, settings gear, and native settings overlay (NYS_SettingsPanel) for summons
+      Pages/Examine_c.xaml           controller Examine override: the same controls injected into the game's controller Examine layout, controller-navigable via ls:MoveFocus.Focusable (GH #6)
       StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
-      StateMachines/Controller.xaml  empty (no controller overrides)
+      StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml (GH #6)
 ```
 
 ## Reference docs
