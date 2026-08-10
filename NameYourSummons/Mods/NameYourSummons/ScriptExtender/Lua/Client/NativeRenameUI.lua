@@ -27,6 +27,7 @@ local NativeRenameUI = {}
 -- Set by BootstrapClient so this module (which owns Examine-panel detection) can
 -- drive the native settings overlay without a circular require.
 local onGearClickHandler -- fun() - called when the gear is clicked
+local panelCloseHandler -- fun() - called when the Examine panel closes (commit staged config edits)
 
 -- Verbose tracing of the Examine gear/field/naming flow; off by default, toggle at
 -- runtime from the client console with `!nys_uidebug` (this native UI has no other
@@ -678,6 +679,11 @@ local function setPanelOpen(open)
 	else
 		unwirePanel()
 		abortRemaining()
+		-- Closing the whole panel also dismisses the settings overlay, so commit its
+		-- staged forgets/un-skips even if the overlay was not closed first (GH #76).
+		if panelCloseHandler then
+			pcall(panelCloseHandler)
+		end
 	end
 end
 
@@ -960,6 +966,12 @@ function NativeRenameUI.SetGearHandler(fn)
 	onGearClickHandler = fn
 end
 
+--- Wire the panel-close action (commits the settings overlay's staged edits).
+---@param fn fun()
+function NativeRenameUI.SetPanelCloseHandler(fn)
+	panelCloseHandler = fn
+end
+
 -- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent
 -- "MouseButtonInput"); the IDE helper's "EclLua*" names are stale for this build, and
 -- Ext.Events is not enumerable.
@@ -1006,6 +1018,23 @@ function NativeRenameUI.Register()
 			if panelForbidden and editEnabled then
 				disableEditing()
 			end
+		end
+	end)
+
+	-- A summon renamed from elsewhere (the settings panel) will not repaint on a
+	-- manually-opened panel, so write the new text into the on-screen field ourselves
+	-- (GH #76). An active on-summon session (current ~= nil) manages the field itself.
+	Channels.SummonRenamed:SetHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.SummonUuid) ~= "string" or type(data.Name) ~= "string" then
+			return
+		end
+		if not panelOpen or awaitingOpen or current ~= nil then
+			return
+		end
+		local examined = examinedSummonUuid()
+		if examined ~= nil and Util.ToUuid(examined) == Util.ToUuid(data.SummonUuid) then
+			log("SummonRenamed: refreshing field to", data.Name)
+			setFieldText(data.Name)
 		end
 	end)
 

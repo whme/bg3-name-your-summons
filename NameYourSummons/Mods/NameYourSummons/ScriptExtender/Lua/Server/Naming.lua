@@ -69,6 +69,14 @@ function Naming.Apply(ref, name)
 	end)
 
 	local uuid = e.Uuid and tostring(e.Uuid.EntityUuid) or tostring(ref)
+
+	-- A manually-opened Examine panel does not repaint the game's name binding when the
+	-- summon is renamed from elsewhere (the settings panel); tell the client to write the
+	-- new text into its on-screen field directly.
+	pcall(function()
+		Channels.SummonRenamed:Broadcast({ SummonUuid = uuid, Name = name })
+	end)
+
 	Util.Log(("Named %s '%s'"):format(uuid, name))
 	return true
 end

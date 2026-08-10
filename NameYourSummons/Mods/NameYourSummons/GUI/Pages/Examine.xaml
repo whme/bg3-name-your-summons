@@ -650,8 +650,8 @@
                                                         <TextBlock Style="{StaticResource DetailedListText}" Text="{Binding NysRowLabel}"/>
                                                     </StackPanel>
                                                     <ls:LSTextBox Grid.Column="1" Width="520" MaxLines="1" TextWrapping="NoWrap" VerticalAlignment="Center"
-                                                                  IsEnabled="{Binding NysNameEnabled}" TextImmediateSourceUpdate="True"
-                                                                  Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                  IsEnabled="{Binding NysNameEnabled}"
+                                                                  Text="{Binding NysNameText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                                     <ls:LSButton Grid.Column="2" Style="{DynamicResource SmallBrownButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center"
                                                                  Content="{Binding NysForgetLabel}" Command="{Binding NysForgetCommand}"/>
                                                 </Grid>
@@ -663,7 +663,6 @@
 
                             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
                                 <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="Refresh" Command="{Binding NysRefreshCommand}"/>
-                                <ls:LSButton Style="{DynamicResource SmallBrownButtonStyle}" Margin="20,0" Content="Save" Command="{Binding NysSaveCommand}"/>
                             </StackPanel>
                         </Grid>
                     </ls:LSNineSliceImage>

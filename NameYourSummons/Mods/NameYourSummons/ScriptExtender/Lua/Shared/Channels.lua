@@ -43,6 +43,11 @@ Channels.SettingsChanged = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_Se
 -- whose separate string table has never seen a handle the host minted.
 Channels.ApplyName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ApplyName")
 
+-- Server -> All Clients: a live summon was just renamed (uuid + new text). Lets the
+-- client showing that summon repaint its Examine name field for a rename it did not
+-- type itself (e.g. an edit in the settings panel). Payload: { SummonUuid, Name }.
+Channels.SummonRenamed = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SummonRenamed")
+
 -- Server -> All Clients: every saved name's handle in bulk, on session load.
 Channels.SeedLoca = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SeedLoca")
 
