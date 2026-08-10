@@ -88,7 +88,14 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <!-- ===== Name Your Summons: editable name + settings (summons only; Enter renames) ===== -->
+                                            <!-- ===== Name Your Summons: the summon's name + settings (summons only) =====
+                                                 The name box is read-only AND non-interactive by DEFAULT (Focusable and
+                                                 IsHitTestVisible false), so it renders as the native plain name - no
+                                                 caret, no hover border, cannot be clicked into. That is the correct look
+                                                 for a forbidden (story-bound, opt-in off) summon with NO Lua action, since
+                                                 it is just the panel's initial render (GH #48). For a renamable summon
+                                                 NativeRenameUI turns those three flags on (all input-checked, so no repaint
+                                                 is needed); Enter renames. The gear is always shown. -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
@@ -101,7 +108,7 @@
                                                     </Style>
                                                 </StackPanel.Style>
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                    <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" Focusable="True" SelectTextOnFocus="True"/>
+                                                    <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
                                                     <!-- GH #50: an LSButton with a Command binding (a Grid has no Click/command).
                                                          Its DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
                                                     <ls:LSButton x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center"

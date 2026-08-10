@@ -240,6 +240,8 @@ local openGeneration = 0 -- bumped per open/swap so a superseded settle callback
 local showNext -- forward decl: swap to the next queued request (or open the first)
 local answerSession -- forward decl: answer a session over SubmitName
 local openExamine -- forward decl: Execute Examine on a request
+local getExamineCommand -- forward decl: fetch the game's ExamineCommand
+local entityHandleFor -- forward decl: Noesis EntityHandle for a summon uuid
 
 -- Panel lifecycle + per-element wiring. `panelOpen` is the last-seen presence of the
 -- Examine node; `wired` is whether the current panel's field/gear have their
@@ -249,6 +251,29 @@ local wired = false
 local fieldSubs = {} -- { { field = node, handle = h }, ... } to unsubscribe on teardown
 local lastSent = nil -- last committed sanitised text, to dedupe Enter + blur
 local recentClick = false -- a left click just happened, so a blur now is click-driven not Enter (no save)
+
+-- Editing state for the current panel (GH #48). The name field is read-only by DEFAULT
+-- (the panel opens looking like the native plain name, correct for a forbidden summon with
+-- no action). `editEnabled` is whether we have turned editing on for this panel;
+-- `panelForbidden` is whether the examined summon may not be renamed (computed once).
+local editEnabled = false
+local panelForbidden = false
+
+-- The AllowStorySummons setting, cached client-side so the forbidden check is synchronous
+-- (GH #48): the live value cannot be fetched without a server round-trip. Seeded at
+-- Register and refreshed on each open.
+local cachedAllowStory = false
+
+--- Refresh the cached AllowStorySummons setting (async; for the NEXT open).
+local function refreshSettingsCache()
+	pcall(function()
+		Channels.GetSettings:RequestToServer({}, function(response)
+			if type(response) == "table" then
+				cachedAllowStory = response.AllowStorySummons == true
+			end
+		end)
+	end)
+end
 
 --- Reset per-summon state for the new `current` request.
 local function beginCurrent()
@@ -469,6 +494,82 @@ local function refreshSkipVisibility()
 	end
 end
 
+--- The root template of a summon, read client-side (Ext.Entity is available in both
+--- states) so the forbidden check is synchronous. Nil if OriginalTemplate is not
+--- replicated to the client - then we fail open (treat as renamable).
+---@param uuid string
+---@return string|nil
+local function clientTemplateOf(uuid)
+	local entity = safe(function()
+		return Ext.Entity.Get(uuid)
+	end)
+	if not entity then
+		return nil
+	end
+	local template = safe(function()
+		return entity.OriginalTemplate and entity.OriginalTemplate.OriginalTemplate
+	end)
+	return type(template) == "string" and template or nil
+end
+
+--- Whether the examined summon must not offer a rename: a story-bound template (e.g.
+--- "Us") while the opt-in is off (GH #48). Mirrors the server's HandleSummon story gate
+--- via the shared Util.IsStorySummon and the cached setting.
+---@param uuid string
+---@return boolean
+local function isForbiddenSummon(uuid)
+	local template = clientTemplateOf(uuid)
+	return template ~= nil and Util.IsStorySummon(template) and not cachedAllowStory
+end
+
+--- Turn on editing for the current panel (GH #48): make the name field interactive and
+--- writable. All three flags are checked at INPUT time, not painted, so this takes effect
+--- with no repaint - which is why it is safe from a manual click (a Visibility change would
+--- not paint until the next click). The field starts non-interactive (plain text); once
+--- enabled the player focuses it with a click and types. Idempotent (guarded by
+--- `editEnabled`).
+local function enableEditing()
+	if editEnabled then
+		return
+	end
+	local field = liveField()
+	if not field then
+		return
+	end
+	pcall(function()
+		field:SetProperty("IsReadOnly", false)
+	end)
+	pcall(function()
+		field:SetProperty("Focusable", true)
+	end)
+	pcall(function()
+		field:SetProperty("IsHitTestVisible", true)
+	end)
+	editEnabled = true
+	log("enableEditing", uiState())
+end
+
+--- Turn editing back off: make the field non-interactive plain text again (GH #48). Used
+--- when AllowStorySummons is toggled off while a now-forbidden summon's panel is open, so
+--- the field stops being editable without a re-summon. Input-checked flags, so no repaint.
+local function disableEditing()
+	editEnabled = false
+	local field = liveField()
+	if not field then
+		return
+	end
+	pcall(function()
+		field:SetProperty("IsReadOnly", true)
+	end)
+	pcall(function()
+		field:SetProperty("Focusable", false)
+	end)
+	pcall(function()
+		field:SetProperty("IsHitTestVisible", false)
+	end)
+	log("disableEditing", uiState())
+end
+
 --- Attach the gear's Command viewmodel and the field's key/focus subscriptions to the
 --- current panel. Idempotent (guarded by `wired`); no-op until the field node exists
 --- (the panel may still be animating open).
@@ -539,6 +640,16 @@ local function wirePanel()
 
 	wired = true
 	log("wirePanel: wired", #fieldSubs, "field subs", uiState())
+
+	-- The field is non-interactive by default (GH #48). An on-summon prompt (current ~= nil)
+	-- is the server actively asking for a name, so turn editing on now. A manually examined
+	-- summon stays plain text (the native look, correct for a forbidden summon with no
+	-- action) until the player clicks to edit, gated by whether it may be renamed.
+	local summonUuid = examinedSummonUuid()
+	panelForbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid) or false
+	if current ~= nil then
+		enableEditing()
+	end
 end
 
 --- Drop the current panel's per-element wiring. The Examine field element is
@@ -551,6 +662,8 @@ local function unwirePanel()
 	end
 	fieldSubs = {}
 	wired = false
+	editEnabled = false
+	panelForbidden = false
 end
 
 --- React to the panel opening or closing. On close, tear down wiring and skip whatever is
@@ -609,6 +722,13 @@ local function onMouseButton(e)
 	end
 	log("onMouseButton: left click", uiState())
 	local present = pollLifecycle()
+	-- A click on a manually examined, renamable summon is the player asking to edit its
+	-- name (there is no edit hotkey), so turn editing on now - the click that focuses the
+	-- read-only field is the same one that clears IsReadOnly, so typing works at once. A
+	-- forbidden summon stays read-only, i.e. the native plain name (GH #48).
+	if present and current == nil and not editEnabled and not panelForbidden then
+		enableEditing()
+	end
 	-- A click may start a close animation not yet reflected in the tree; reconcile once
 	-- after it settles. One-shot, not a poll loop.
 	if present or current ~= nil then
@@ -634,7 +754,7 @@ local COMMAND_SURFACE_NODE = "HudIndicator"
 --- (a small anchored hop: ContentRoot -> HudIndicator). Runs once per open. Returned
 --- fresh, never cached (a stale Noesis handle crashes on use).
 ---@return any|nil
-local function getExamineCommand()
+function getExamineCommand()
 	local hud = findFrom(contentRoot(), COMMAND_SURFACE_NODE)
 	local dc = hud and safe(function()
 		return hud.DataContext
@@ -649,7 +769,7 @@ end
 --- getter returns the object Execute needs; the bag may copy it.
 ---@param uuid string
 ---@return any|nil
-local function entityHandleFor(uuid)
+function entityHandleFor(uuid)
 	local handle
 	findNode(contentRoot(), 0, function(node)
 		local dc = safe(function()
@@ -831,6 +951,28 @@ function NativeRenameUI.Register()
 
 	pcall(function()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
+	end)
+
+	-- Seed the cached AllowStorySummons setting so the first examined summon's forbidden
+	-- check (GH #48) is right before any panel opens; the server pushes later changes.
+	refreshSettingsCache()
+
+	-- The setting changed (config UI); refresh the cache so the forbidden check is right on
+	-- the very next examine, not after a re-summon (GH #48). Also re-evaluate the panel on
+	-- screen: a summon that just became forbidden reverts to plain text at once; one that
+	-- became renamable is enabled on the next click.
+	Channels.SettingsChanged:SetHandler(function(data, _user)
+		if type(data) ~= "table" then
+			return
+		end
+		cachedAllowStory = data.AllowStorySummons == true
+		if wired then
+			local uuid = examinedSummonUuid()
+			panelForbidden = uuid ~= nil and isForbiddenSummon(uuid) or false
+			if panelForbidden and editEnabled then
+				disableEditing()
+			end
+		end
 	end)
 
 	-- Toggle the verbose UI tracing above from the client console: `!nys_uidebug`.

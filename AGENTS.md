@@ -106,6 +106,30 @@ the game.
   warns per miss and cost 238-510 ms to open Examine when used to scan, so it is
   reserved for one known object (the HUD command surface, a matched entity handle). A
   `!nys_uidebug` client console command toggles verbose tracing of the whole flow.
+  **Non-interactive by default; editing is opt-in (GH #48).** The name field
+  (`NYS_NameInput`) is `IsReadOnly="True" Focusable="False" IsHitTestVisible="False"` in the
+  XAML, so it renders as the native plain name - no caret, no hover border, cannot be
+  clicked into (an `LSTextBox` draws no border/background until hovered/focused, and those
+  never fire). That default IS the correct look for a **forbidden** summon - a story-bound
+  one (`Util.IsStorySummon`) with the opt-in off - and needs NO Lua action, because it is
+  just the panel's initial render. This sidesteps the hard constraint that a
+  **manually-opened** Examine panel does not repaint a Lua-driven change until the next
+  real click (verified in game across an async reply, a synchronous change in the opening
+  click, `node.Visibility = ...`, `SetProperty`, and an `ExamineCommand` reload - only a
+  panel WE open fresh via `ExamineCommand:Execute` repaints, which is why the multi-summon
+  Skip button works). `enableEditing` turns those three flags on - all checked at INPUT
+  time, not painted, so it takes effect with NO repaint - for an on-summon prompt (in the
+  programmatic open's settle) or when the player clicks a renamable manually-examined
+  summon; the player then focuses the now-interactive field with a click and types. A
+  forbidden summon is never enabled: `panelForbidden` is computed once in `wirePanel` via
+  `isForbiddenSummon`, which reads the root template off the client entity
+  (`Ext.Entity.Get(uuid).OriginalTemplate.OriginalTemplate`) and tests `Util.IsStorySummon`
+  against `cachedAllowStory` (a copy of `AllowStorySummons` seeded at `Register` and kept
+  fresh by the server's `Channels.SettingsChanged` broadcast on every `SetSettings` - the
+  live value cannot be fetched synchronously; fails open to renamable if the template is not
+  readable client-side). That broadcast also re-evaluates the panel on screen, so toggling
+  the setting takes effect on the next examine (and live: a now-forbidden summon reverts to
+  plain text via `disableEditing`) without a re-summon. The gear is always shown.
 - **Native Examine settings** (`Client/NativeConfigUI.lua` + `GUI/`): the gear
   opens a native (Noesis) settings overlay - an `NYS_SettingsPanel` in the same
   `Examine.xaml` override - reproducing the ImGui `ConfigUI` (prompt options,
