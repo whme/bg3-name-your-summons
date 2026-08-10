@@ -87,6 +87,21 @@ Settings and names live in the host's save.
 Names are stored in the host's save and only the summoner is prompted. This
 should work in co-op, but is untested.
 
+## Shout Outs
+
+This mod would not exist without the tools, references, and groundwork built by
+others. Huge thanks to:
+
+- **[Norbyte](https://github.com/Norbyte)** - for the [Baldur's Gate 3 Script
+  Extender](https://github.com/Norbyte/bg3se) that everything here runs on, for
+  [LSLib / `divine.exe`](https://github.com/Norbyte/lslib) that packs the mod and
+  lets us unpack the game's own files, and for the `ExtIdeHelpers.lua` type
+  definitions that make the Lua API navigable.
+- **[LaughingLeader](https://github.com/LaughingLeader)** - for
+  [BG3ModdingTools](https://github.com/LaughingLeader/BG3ModdingTools), the
+  generated reference for every Osiris function and event the detection pipeline
+  relies on.
+
 ## License
 
 The mod's original code is released under the [MIT License](LICENSE). Game
