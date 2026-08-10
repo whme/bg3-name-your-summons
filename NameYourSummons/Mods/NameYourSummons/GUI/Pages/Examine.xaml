@@ -88,14 +88,10 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <!-- ===== Name Your Summons: the summon's name + settings (summons only) =====
-                                                 The name box is read-only AND non-interactive by DEFAULT (Focusable and
-                                                 IsHitTestVisible false), so it renders as the native plain name - no
-                                                 caret, no hover border, cannot be clicked into. That is the correct look
-                                                 for a forbidden (story-bound, opt-in off) summon with NO Lua action, since
-                                                 it is just the panel's initial render (GH #48). For a renamable summon
-                                                 NativeRenameUI turns those three flags on (all input-checked, so no repaint
-                                                 is needed); Enter renames. The gear is always shown. -->
+                                            <!-- Name Your Summons: the summon's name + settings gear (summons only).
+                                                 The name box defaults to read-only/Focusable/IsHitTestVisible all off - the
+                                                 native plain-name look, correct for a forbidden summon; NativeRenameUI flips
+                                                 those input-checked flags on for a renamable one (GH #48). -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">

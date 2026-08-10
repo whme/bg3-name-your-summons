@@ -252,10 +252,8 @@ local fieldSubs = {} -- { { field = node, handle = h }, ... } to unsubscribe on 
 local lastSent = nil -- last committed sanitised text, to dedupe Enter + blur
 local recentClick = false -- a left click just happened, so a blur now is click-driven not Enter (no save)
 
--- Editing state for the current panel (GH #48). The name field is read-only by DEFAULT
--- (the panel opens looking like the native plain name, correct for a forbidden summon with
--- no action). `editEnabled` is whether we have turned editing on for this panel;
--- `panelForbidden` is whether the examined summon may not be renamed (computed once).
+-- Editing state for the current panel (GH #48): `editEnabled` whether we turned editing on,
+-- `panelForbidden` whether the examined summon may not be renamed. Both reset on unwire.
 local editEnabled = false
 local panelForbidden = false
 
@@ -639,10 +637,8 @@ local function wirePanel()
 	wired = true
 	log("wirePanel: wired", #fieldSubs, "field subs", uiState())
 
-	-- The field is non-interactive by default (GH #48). An on-summon prompt (current ~= nil)
-	-- is the server actively asking for a name, so turn editing on now. A manually examined
-	-- summon stays plain text (the native look, correct for a forbidden summon with no
-	-- action) until the player clicks to edit, gated by whether it may be renamed.
+	-- An on-summon prompt (current ~= nil) is the server asking for a name, so enable editing
+	-- now; a manually examined summon stays plain text until a click, if it may be renamed.
 	local summonUuid = examinedSummonUuid()
 	panelForbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
 	if current ~= nil then
@@ -720,10 +716,9 @@ local function onMouseButton(e)
 	end
 	log("onMouseButton: left click", uiState())
 	local present = pollLifecycle()
-	-- A click on a manually examined, renamable summon is the player asking to edit its
-	-- name (there is no edit hotkey), so turn editing on now - the click that focuses the
-	-- read-only field is the same one that clears IsReadOnly, so typing works at once. A
-	-- forbidden summon stays read-only, i.e. the native plain name (GH #48).
+	-- A click on a renamable manually-examined summon is the player asking to edit it (there
+	-- is no edit hotkey); the same click that focuses the field also clears IsReadOnly, so
+	-- typing works at once. A forbidden summon stays plain text (GH #48).
 	if present and current == nil and not editEnabled and not panelForbidden then
 		enableEditing()
 	end
@@ -951,11 +946,9 @@ function NativeRenameUI.Register()
 		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
 	end)
 
-	-- Seed the cached AllowStorySummons setting (GH #48). At a fresh boot the persisted
-	-- ModVars are not loaded yet at Register, so the SessionLoaded seed is what honours a
-	-- saved opt-in on the first examine; the immediate call covers a Lua `reset` reload,
-	-- where SessionLoaded does not fire again but the ModVars are already loaded. Later
-	-- changes arrive over SettingsChanged.
+	-- Seed cachedAllowStory (GH #48). A fresh boot has not loaded the persisted ModVars at
+	-- Register, so the SessionLoaded seed is what honours a saved opt-in; the immediate call
+	-- covers a Lua `reset` reload, where ModVars are loaded but SessionLoaded does not re-fire.
 	refreshSettingsCache()
 	pcall(function()
 		Ext.Events.SessionLoaded:Subscribe(refreshSettingsCache)
