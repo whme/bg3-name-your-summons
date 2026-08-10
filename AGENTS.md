@@ -94,10 +94,12 @@ the game.
   server over `Channels.RenameSummon`. Following the approach above, the controls we
   add are driven by per-element MVVM (proven to fire on the first panel of a
   session): the gear is an `ls:LSButton` whose `Command` binds to a tiny `NYS_GearVM`
-  set as its nested DataContext; the field commits on its own per-element `KeyDown`
-  (Enter) and focus-loss subscriptions. (Focus-GAIN events - `GotFocus` /
-  `GotKeyboardFocus` - and a bare `Grid` (no `Click`) are the only things that stay
-  silent.) The single remaining global input hook is one `Ext.Events.MouseButtonInput`
+  set as its nested DataContext; the field SAVES on its own per-element `TextChanged`
+  subscription, debounced by `TEXT_COMMIT_DEBOUNCE_MS` so rapid typing saves once, NOT
+  on a focus-loss blur - the blur (`LostFocus` / `LostKeyboardFocus`) is not reliably
+  delivered, especially on controller, so a rename must never hinge on it (GH #86).
+  Saving is decoupled from advancing a multi-summon queue (see below), and also flushed
+  when the gear opens or the panel closes. The single remaining global input hook is one `Ext.Events.MouseButtonInput`
   used SOLELY as the panel lifecycle detector, because `Ext.UI.GetStateMachine()` is
   stubbed to `nullptr` in this SE build and there is no open event. Every scan is
   anchored at `ContentRoot` / `Examine` and reads the property bag; `GetProperty`
@@ -186,6 +188,26 @@ the game.
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
   clears its pending count / lifts the pause.
+- **Local split-screen (GH #86)**: one machine is one shared client Lua state but a BG3SE
+  user per split-screen player (up to four), each able to have its own Examine panel open at
+  once - nothing here is hardcoded to two; state is keyed per player. **Server**: a summon's
+  owner maps to the controlling UserID via `Osi.GetReservedUserID`, so the saved-name list is
+  filtered to the viewing player (`Util.IsNameVisible`) - each player sees only summons whose
+  owner they CURRENTLY control. This is dynamic: when the 2nd controller leaves, that character
+  reverts to the host, so its names become visible to the host with no re-summon. `AskName`
+  carries `ViewportChar` - the summoner's controlled character, which equals that viewport's
+  `CurrentPlayer.SelectedCharacter` client-side and the server's
+  `Osi.GetCurrentCharacter(reservedUser)` - so the client opens Examine on the summoner's
+  viewport (`getExamineCommand` matches the right `HudIndicator` by it), not always player 1's.
+  `ListNames` takes a `ViewerCharacter`; the client's own `CurrentPlayer.UserId` (a small 1/2
+  index) is NOT the Osiris UserID, so a character uuid is the bridge. **Client**: all panel
+  state is keyed by `CurrentPlayer.PlayerId` (`NativeRenameUI` `panels[id]`, `NativeConfigUI`
+  per-viewport `sessions[id]`) and every node lookup is scoped to a viewport
+  (`examineNodeById` / `findNamedIn` / `liveFieldIn`), so every player examines, names, and opens
+  settings independently. Trap: opening one Examine panel REBUILDS the other open panels' field
+  elements (a shared re-layout) which silently kills our `Subscribe`d handlers - so already-open
+  panels are re-wired after any panel opens (`rewireStale`, EXCLUDING the just-opened one, so a
+  single panel / single-player is never disturbed).
 - **Closing Examine from Lua** (`closeExaminePanel`, GH #54): the panel's close runs the
   `CloseWidget` state event (action `<ls:RemoveState/>`) through the widget's own
   `CustomEvent` command. Its parameter must be a BOXED Noesis string, which SE cannot mint,
@@ -197,29 +219,22 @@ the game.
 - **Multi-summon = ONE panel that swaps through the queue, closed once at the end
   (GH #51).** Only one Examine panel exists, and `ExamineCommand:Execute` on an
   already-open panel SWAPS its content rather than being ignored (GH #50 finding C4), so a
-  group is named in one panel: commit a creature's name (answers over `SubmitName`,
-  decrements the server's pending count) and the panel swaps to the next queued summon;
-  repeat until the queue drains; the player closes the panel once at the end. Committing is
-  the `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`), shown via a `Bool
-  NysShowConfirm` on its `NYS_ConfirmVM` with the SAME condition as Skip (`#examineQueue > 0`),
-  so it is hidden for single summons and on the LAST creature of a group (GH #80). On keyboard
-  the button is an alternative to Enter (which still commits + advances via the blur path); on
-  the controller it is the commit trigger while shown (the controller's blur no longer commits
-  while a next summon is queued - see the controller paragraph). Where Confirm is hidden (a
-  single summon, or the last of a group) naming commits on blur/Enter as usual. `showNext`
-  Executes Examine on the next request (open, or content-swap if a panel is up); the
-  outgoing `current` is always already resolved (answered, skipped, or retracted), so
+  group is named in one panel: the creature's name is saved live as the player types
+  (debounced `TextChanged`), and an explicit Confirm advances the panel to the next queued
+  summon; repeat until the queue drains; the player closes the panel once at the end.
+  Advancing is the `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`, which answers over
+  `SubmitName` if not yet answered and then swaps), shown via a `Bool NysShowConfirm` on its
+  `NYS_ConfirmVM` with the SAME condition as Skip (`#examineQueue > 0`), so it is hidden for
+  single summons and on the LAST creature of a group (GH #80). Confirm is the SOLE advance on
+  BOTH layouts - the field's blur is no longer a commit or advance path at all (it was
+  unreliable on controller, GH #86); a single summon or the last of a group needs no advance
+  (its name is already saved live, and the server's pending count clears when the panel
+  closes). `showNext` Executes Examine on the next request (open, or content-swap if a panel is
+  up); the outgoing `current` is always already resolved (answered, skipped, or retracted), so
   `showNext` never aborts it. Because the field's `Text` binding is OneWay and does NOT
   follow a swap, `setFieldText` writes the new creature's name in directly after each swap.
-  Skipping one creature is the `NYS_SkipButton` (abort + swap), shown only while there is a
-  next summon to swap to via a `Bool NysShowSkip` on its `NYS_SkipVM` (set from
-  `#examineQueue > 0`, so it is hidden for single summons and on the last of a group).
-  KeyDown is NOT delivered to our Subscribe on the rename `LSTextBox` (verified in game -
-  not even for character keys), so Enter arrives as a focus loss: a field blur with no left
-  click in the last `CLICK_BLUR_WINDOW_MS` is an Enter commit (save + swap via
-  `onFieldEnter`), while a blur just after a click is click-driven and does NOT save during a
-  session - the clicked control (Confirm / Skip / gear / close) acts, so Skip and close are
-  free to abort (a plain Examine rename with no session still saves on blur). Closing the panel
+  Skipping one creature is the `NYS_SkipButton` (abort + swap), shown on the same
+  `#examineQueue > 0` condition as Confirm (`refreshQueueButtons` toggles both). Closing the panel
   mid-queue skips ALL that is left (`abortRemaining` aborts `current` if unnamed and every
   still-queued request), so the pending count still clears and the pause lifts; a retract of
   the on-screen summon swaps to the next or, if the queue is empty, closes the panel via
@@ -268,22 +283,18 @@ the game.
   present) tells the layouts apart; a global `Ext.Events.ControllerButtonInput` hook
   (`onControllerButton`) is the controller counterpart of the mouse hook -
   `MouseButtonInput` never fires on a controller and there is no panel-open event. It
-  only reconciles lifecycle (never sets `recentClick`) and, unlike the mouse hook, ALWAYS
-  schedules one post-settle re-poll:
+  only reconciles lifecycle and, unlike the mouse hook, ALWAYS schedules one post-settle re-poll:
   the button that OPENS Examine fires the hook while the panel is still mid-open, and a
   player who then navigates with the left STICK (no further button events) would
   otherwise never get the panel wired - so we do NOT poll the stick axis (that would
   scan on every stick movement during normal play). `wirePanel` auto-enables editing for
   a renamable manually-examined summon on controller (there is no click to start it).
-  **Naming a queued multi-summon is an explicit Confirm button on the controller (GH #80).** A
-  controller has no Enter and cannot tell a navigation blur (field -> Confirm / Skip / gear)
-  from an accept, so while a next summon is queued (`#examineQueue > 0`, i.e. Confirm/Skip
-  shown) `onFieldBlur` no longer commits or advances on the controller layout (gated by
-  `#examineQueue > 0 and isControllerPanel`); the `NYS_ConfirmButton` (`confirmCurrent` ->
-  `onFieldEnter`) is the commit trigger, stacked above Skip and focusable via
-  `FocusableButtonStyleMinimal`. Where Confirm is hidden - a single summon, the LAST creature
-  of a group, or a manual examine - the blur commits as usual. The keyboard layout carries the
-  same button (same visibility) but keeps Enter (its blur path is unchanged).
+  **Advancing a queued multi-summon is the explicit Confirm button (GH #80).** The
+  `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`) is the sole advance trigger on BOTH
+  layouts, stacked above Skip and focusable via `FocusableButtonStyleMinimal`; the field blur is
+  not a commit or advance path at all (GH #86). The name itself is saved live as the player
+  types (debounced `TextChanged`), so a single summon, the last of a group, or a manual examine
+  needs no Confirm and no blur - its name is already saved.
   Verified in game: the on-summon prompt, rename, native keyboard, gear activation, and
   the field's navigate-highlight / accept-edit all work. The settings overlay
   (`NYS_SettingsPanel`) jumps focus in on open (`ls:SetMoveFocusAction` on an

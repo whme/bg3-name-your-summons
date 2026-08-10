@@ -6,7 +6,9 @@
 
 local Channels = {}
 
--- Server -> Client: "please ask the player to name this summon"
+-- Server -> Client: "please ask the player to name this summon". Payload carries
+-- ViewportChar (the summoner's controlled character) so the shared split-screen client
+-- opens Examine on the summoner's viewport, not always player 1's (GH #86).
 Channels.AskName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_AskName")
 
 -- Client -> Server: "the player typed this name"
@@ -16,7 +18,9 @@ Channels.SubmitName = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_SubmitN
 -- and revealed it to be a multi-summon we should not have asked about.
 Channels.RetractPrompt = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RetractPrompt")
 
--- Client -> Server (request/reply): "give me the full list of saved names"
+-- Client -> Server (request/reply): "give me the saved names visible to this player".
+-- Payload carries ViewerCharacter (the viewport's controlled character) so the server
+-- returns only summons whose owner that player currently controls (GH #86).
 Channels.ListNames = Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_ListNames")
 
 -- Client -> Server: "forget this saved name"

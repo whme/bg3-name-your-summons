@@ -55,6 +55,39 @@ local function ownerIsPlayer(ownerUuid)
 	return ok and result == 1
 end
 
+--- The BG3SE UserID currently reserving/controlling a character, or nil. In local
+--- split-screen each player has a distinct UserID (e.g. 65537 host, 65538 P2) even
+--- though they share one client; when a player leaves, their character's reserved
+--- user flips to the host (GH #86). Bare uuids are accepted by Osi.
+---@param character string|nil
+---@return integer|nil
+local function reservedUser(character)
+	if type(character) ~= "string" or character == "" then
+		return nil
+	end
+	local ok, uid = pcall(Osi.GetReservedUserID, character)
+	if ok and type(uid) == "number" then
+		return uid
+	end
+	return nil
+end
+
+--- The character a user currently controls (its viewport's SelectedCharacter on the
+--- client), as a bare uuid, or nil. This is the client<->server bridge for targeting a
+--- split-screen viewport: it equals CurrentPlayer.SelectedCharacter.EntityUUID client-side.
+---@param user integer|nil
+---@return string|nil
+local function currentCharOfUser(user)
+	if type(user) ~= "number" then
+		return nil
+	end
+	local ok, ch = pcall(Osi.GetCurrentCharacter, user)
+	if ok and type(ch) == "string" and ch ~= "" then
+		return Util.ToUuid(ch)
+	end
+	return nil
+end
+
 --- A readable label for a root template (e.g. "Cat"), for the saved-name list.
 --- Falls back to the template's dev name and finally "Summon"; never a uuid.
 ---@param templateId string
@@ -191,10 +224,16 @@ local function sendPrompt(key, summonGuid, rootTemplate, ownerUuid, ownerRaw, sc
 			return
 		end
 		pauseFor(ownerUuid)
+		-- ViewportChar tells the (single, shared) split-screen client which viewport to
+		-- open Examine in: it is the summoner's user's current character, which equals that
+		-- viewport's CurrentPlayer.SelectedCharacter.EntityUUID client-side (GH #86). Falls
+		-- back to the owner uuid when the user/char cannot be resolved.
+		local viewportChar = currentCharOfUser(reservedUser(ownerRaw)) or ownerUuid
 		Channels.AskName:SendToClient({
 			Key = key,
 			SummonUuid = Util.ToUuid(summonGuid),
 			OwnerUuid = ownerUuid,
+			ViewportChar = viewportChar,
 			DefaultName = savedName or Naming.GetCurrentName(summonGuid),
 			Template = rootTemplate,
 			Scope = scope,
@@ -613,21 +652,39 @@ function Watcher.RegisterNet()
 		Util.Log(("Saved name '%s' for key %s"):format(name, key))
 	end)
 
-	Channels.ListNames:SetRequestHandler(function(_data, _user)
+	Channels.ListNames:SetRequestHandler(function(data, _user)
+		-- Scope the list to the viewing player (GH #86): show only summons whose owner
+		-- that player currently controls. The client sends the viewer's controlled
+		-- character (a viewport's SelectedCharacter); resolve both it and each owner to a
+		-- UserID and compare. A missing/unresolvable viewer shows all (never an empty list).
+		local viewerUser = reservedUser(type(data) == "table" and data.ViewerCharacter or nil)
+		local hostOk, host = pcall(Osi.GetHostCharacter)
+		local hostUser = reservedUser(hostOk and host or nil)
+		local ownerUserCache = {}
+		local function isVisible(owner)
+			if ownerUserCache[owner] == nil then
+				ownerUserCache[owner] = { user = reservedUser(owner) }
+			end
+			return Util.IsNameVisible(ownerUserCache[owner].user, viewerUser, hostUser)
+		end
+
 		local out = {}
 		for key, value in pairs(Store.All()) do
-			if type(value) == "table" then
-				-- A unique set: one row per distinct name, tagged with its slot.
-				for i, name in ipairs(value) do
+			local entry0 = describeKey(key)
+			if isVisible(entry0.Owner) then
+				if type(value) == "table" then
+					-- A unique set: one row per distinct name, tagged with its slot.
+					for i, name in ipairs(value) do
+						local entry = describeKey(key)
+						entry.Name = name
+						entry.Slot = i
+						out[#out + 1] = entry
+					end
+				else
 					local entry = describeKey(key)
-					entry.Name = name
-					entry.Slot = i
+					entry.Name = value
 					out[#out + 1] = entry
 				end
-			else
-				local entry = describeKey(key)
-				entry.Name = value
-				out[#out + 1] = entry
 			end
 		end
 		table.sort(out, function(a, b)
