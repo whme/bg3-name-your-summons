@@ -188,8 +188,9 @@ the game.
   always-present portrait view-models carry it). An on-summon request renames over
   `Channels.SubmitName` (not `RenameSummon`) so the server saves the name AND
   clears its pending count / lifts the pause.
-- **Local split-screen (GH #86)**: one machine is one shared client Lua state but TWO
-  BG3SE users, each able to have its own Examine panel open at once. **Server**: a summon's
+- **Local split-screen (GH #86)**: one machine is one shared client Lua state but a BG3SE
+  user per split-screen player (up to four), each able to have its own Examine panel open at
+  once - nothing here is hardcoded to two; state is keyed per player. **Server**: a summon's
   owner maps to the controlling UserID via `Osi.GetReservedUserID`, so the saved-name list is
   filtered to the viewing player (`Util.IsNameVisible`) - each player sees only summons whose
   owner they CURRENTLY control. This is dynamic: when the 2nd controller leaves, that character
@@ -202,7 +203,7 @@ the game.
   index) is NOT the Osiris UserID, so a character uuid is the bridge. **Client**: all panel
   state is keyed by `CurrentPlayer.PlayerId` (`NativeRenameUI` `panels[id]`, `NativeConfigUI`
   per-viewport `sessions[id]`) and every node lookup is scoped to a viewport
-  (`examineNodeById` / `findNamedIn` / `liveFieldIn`), so both players examine, name, and open
+  (`examineNodeById` / `findNamedIn` / `liveFieldIn`), so every player examines, names, and opens
   settings independently. Trap: opening one Examine panel REBUILDS the other open panels' field
   elements (a shared re-layout) which silently kills our `Subscribe`d handlers - so already-open
   panels are re-wired after any panel opens (`rewireStale`, EXCLUDING the just-opened one, so a
