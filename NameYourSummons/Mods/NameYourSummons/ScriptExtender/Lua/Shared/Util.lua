@@ -44,6 +44,25 @@ function Util.MakeKey(ownerUuid, rootTemplate)
 	return Util.ToUuid(ownerUuid) .. "|" .. Util.ToUuid(rootTemplate)
 end
 
+--- Whether a saved name is visible to the viewing player (GH #86). A name is
+--- visible when its summon's owner is currently controlled by the same user that
+--- is viewing. `nil` viewerUser (the viewer could not be resolved) shows all, so
+--- the list never regresses to empty; an owner with no resolvable user (not
+--- loaded) is shown only to the host, so orphaned names are not lost.
+---@param ownerUser integer|nil  the UserID reserving the summon's owner
+---@param viewerUser integer|nil  the UserID viewing the settings panel
+---@param hostUser integer|nil  the host's UserID
+---@return boolean
+function Util.IsNameVisible(ownerUser, viewerUser, hostUser)
+	if viewerUser == nil then
+		return true
+	end
+	if ownerUser == nil then
+		return viewerUser == hostUser
+	end
+	return ownerUser == viewerUser
+end
+
 -- Named story creatures the game classifies as summons but that the player
 -- should not be prompted to rename (e.g. the intellect devourer "Us"). Keyed by
 -- root-template uuid; verify each in game with !nys_diag.

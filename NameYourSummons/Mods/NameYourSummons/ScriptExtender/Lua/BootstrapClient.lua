@@ -27,7 +27,8 @@ Loca.Register()
 NativeConfigUI.Register()
 -- NativeRenameUI owns Examine-panel detection and node lookup; wire the two
 -- client modules together here (avoids a circular require between them).
-NativeConfigUI.SetPanelFinder(NativeRenameUI.FindNamed)
+NativeConfigUI.SetPanelFinder(NativeRenameUI.FindNamedIn)
+NativeConfigUI.SetViewerProvider(NativeRenameUI.ViewerOf)
 NativeRenameUI.SetGearHandler(NativeConfigUI.Open)
 NativeRenameUI.SetPanelCloseHandler(NativeConfigUI.Flush)
 NativeRenameUI.Register()

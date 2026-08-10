@@ -109,6 +109,31 @@ function TestIsRenameRequestValid:testFalseForEmptyName()
 	lu.assertFalse(Util.IsRenameRequestValid({ SummonUuid = UUID }))
 end
 
+TestIsNameVisible = {}
+
+local HOST_USER = 65537
+local P2_USER = 65538
+
+function TestIsNameVisible:testOwnerControlledByViewerIsVisible()
+	lu.assertTrue(Util.IsNameVisible(P2_USER, P2_USER, HOST_USER))
+	lu.assertTrue(Util.IsNameVisible(HOST_USER, HOST_USER, HOST_USER))
+end
+
+function TestIsNameVisible:testOwnerControlledByAnotherPlayerIsHidden()
+	lu.assertFalse(Util.IsNameVisible(P2_USER, HOST_USER, HOST_USER))
+	lu.assertFalse(Util.IsNameVisible(HOST_USER, P2_USER, HOST_USER))
+end
+
+function TestIsNameVisible:testUnresolvedOwnerVisibleOnlyToHost()
+	lu.assertTrue(Util.IsNameVisible(nil, HOST_USER, HOST_USER))
+	lu.assertFalse(Util.IsNameVisible(nil, P2_USER, HOST_USER))
+end
+
+function TestIsNameVisible:testUnresolvedViewerShowsAll()
+	lu.assertTrue(Util.IsNameVisible(P2_USER, nil, HOST_USER))
+	lu.assertTrue(Util.IsNameVisible(nil, nil, HOST_USER))
+end
+
 TestHash32 = {}
 
 -- Canonical FNV-1a 32-bit test vectors.

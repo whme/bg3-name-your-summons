@@ -9,24 +9,27 @@
     a built-in Noesis/WPF property (an unprefixed `Name` did - it aliased
     FrameworkElement.Name and the edit box round-tripped the literal "Name").
 
+    Per-viewport (GH #86): local split-screen can have one settings overlay open PER
+    viewport at once, so all state is keyed by PlayerId in `sessions[id]` and every
+    node lookup is scoped to that viewport (panelFinder(id, name)). Each viewmodel
+    carries its viewport id in `NysViewport`, so a WriteCallback (handed only the live
+    context) can find its session. Command handlers are built per viewport and close
+    over the id. The saved-name list is scoped to the viewing player (its viewer
+    character is sent to the server, which returns only that player's names).
+
     Two hard-won engine constraints shape this module:
 
     1. A viewmodel/node reference obtained from Lua does NOT survive across ticks -
-       the object lives on as the panel's DataContext, but any Lua handle to it
-       expires. So we never cache the viewmodel; we re-fetch it live from the panel
-       (liveVm) at each point of use, and inside a WriteCallback we use the live
-       `context`/`value` it is handed.
-    2. An SE Collection is append-only from Lua: Clear/RemoveAt/table.remove and
-       whole-array assignment all fail (the ONE in-place exception is `coll[i] = nil`,
-       which removes a single element - we do not rely on it here). The only way to
-       get a wholly clean list is a fresh viewmodel (its collections start empty), so
-       the panel is fully rebuilt on every open/refresh/save/forget via `populate`,
-       guarded by a generation counter so a slow in-flight reply cannot append to a
-       newer viewmodel.
+       so we never cache the viewmodel; we re-fetch it live from the panel (liveVm)
+       at each point of use, and inside a WriteCallback we use the live context.
+    2. An SE Collection is append-only from Lua, so the only way to a clean list is a
+       fresh viewmodel; the panel is fully rebuilt on every open/refresh via
+       `populate`, guarded by a per-session generation counter so a slow in-flight
+       reply cannot append to a newer viewmodel.
 
     There is no SE API to create a standalone native window, so the panel lives
     inside a page we already override (Examine); NativeRenameUI owns panel
-    detection and feeds this module the node finder and the gear hook.
+    detection and feeds this module the (viewport-scoped) node finder and gear hook.
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
@@ -40,37 +43,40 @@ local SETTINGS_VM = "NYS_SettingsVM"
 local TOGGLE_VM = "NYS_TypeToggleVM"
 local NAME_ROW_VM = "NYS_NameRowVM"
 
-local panelFinder -- fun(name):node|nil - finds a live Noesis node by x:Name
+local panelFinder -- fun(id, name):node|nil - finds a live Noesis node by x:Name within viewport id
+local viewerProvider -- fun(id):string|nil - the viewing player's controlled character (GH #86)
 
--- Saved-name row identity/baseline, keyed by rowId (plain strings, safe to cache
--- unlike viewmodel handles). A name edit commits live when its field loses focus
--- (onNameWrite); forgets are staged here and flushed when the panel closes
--- (flushStaged), so they keep an Undo affordance while it is open (GH #76).
-local rowMeta = {} -- rowId -> { Key = .., Slot = .. }
-local originalNames = {} -- rowId -> baseline name text
-local pendingForgets = {} -- saved-name rowId -> true
+-- Per-viewport settings sessions, keyed by PlayerId (GH #86). Each holds the saved-name
+-- row identity/baselines, staged forgets, and the async generation guards for that panel.
+-- A name edit commits live on blur (onNameWrite); forgets are staged and flushed when the
+-- overlay/panel closes (flushStaged), keeping an Undo affordance while open (GH #76).
+local sessions = {} -- id -> { rowMeta, originalNames, pendingForgets, generation, settingsLoadedGen, lastPushedSettings }
 
--- Bumped on every (re)populate; async replies from an older generation are stale
--- and must not touch the current viewmodel (see the module header, constraint 2).
-local generation = 0
-
--- The generation whose settings reply has landed. pushSettings reads settings off
--- the viewmodel, so it must wait for this to catch up to `generation` or a toggle
--- fired mid-load would push the fresh viewmodel's default (all-false) settings over
--- the real ones.
-local settingsLoadedGen = 0
-
--- Guards the `onSettingWrite` recompute against the bulk programmatic writes we do
--- while loading a viewmodel (those must not be treated as user edits).
+-- Guards onSettingWrite against the bulk programmatic writes done while loading a
+-- viewmodel (those must not be treated as user edits). Set/cleared synchronously around
+-- each bulk write, so a single global is safe (Lua is single-threaded; the bulk sections
+-- never yield).
 local suppressWrite = false
 
--- The last settings payload sent to the server. SE dispatches WriteCallbacks
--- asynchronously, so `suppressWrite` (cleared synchronously) does not stop the
--- programmatic load writes from firing their callbacks; deduping against this drops
--- the resulting redundant pushes (GH #76).
-local lastPushedSettings = nil
-
 local populate
+
+---@param id integer
+---@return table
+local function sessionFor(id)
+	local s = sessions[id]
+	if not s then
+		s = {
+			rowMeta = {},
+			originalNames = {},
+			pendingForgets = {},
+			generation = 0,
+			settingsLoadedGen = 0,
+			lastPushedSettings = nil,
+		}
+		sessions[id] = s
+	end
+	return s
+end
 
 ---------------------------------------------------------------------------
 -- Guarded accessors (a dead node/prop must never tear down the Lua state)
@@ -116,14 +122,15 @@ local function instantiate(typeName)
 	return nil
 end
 
---- The live settings viewmodel (the panel's DataContext). Valid only in the
---- immediate scope - re-fetch every time; never cache across calls/ticks.
+--- The live settings viewmodel for viewport `id` (its panel's DataContext). Valid only
+--- in the immediate scope - re-fetch every time; never cache across calls/ticks.
+---@param id integer
 ---@return any|nil
-local function liveVm()
+local function liveVm(id)
 	if not panelFinder then
 		return nil
 	end
-	local panel = panelFinder("NYS_SettingsPanel")
+	local panel = panelFinder(id, "NYS_SettingsPanel")
 	if not panel then
 		return nil
 	end
@@ -134,6 +141,13 @@ local function liveVm()
 		return dc
 	end
 	return nil
+end
+
+--- The viewport id a viewmodel context belongs to (set as NysViewport when built).
+---@param context any
+---@return integer|nil
+local function viewportOf(context)
+	return tonumber(get(context, "NysViewport"))
 end
 
 ---------------------------------------------------------------------------
@@ -161,7 +175,6 @@ local function rowLabel(entry)
 	if entry.Slot then
 		name = name .. " #" .. tostring(entry.Slot)
 	end
-	-- Tag the row with its type (GH #47).
 	if type(entry.Type) == "string" and entry.Type ~= "" then
 		name = name .. " (" .. entry.Type .. ")"
 	end
@@ -178,8 +191,7 @@ local function selectedMode(v)
 end
 
 --- Grey the toggles that cannot take effect: the "every summon" master overrides
---- the per-type list, and nothing is filtered when prompting is off. `v` is the
---- live viewmodel (usually the WriteCallback's context).
+--- the per-type list, and nothing is filtered when prompting is off.
 local function recomputeEnabled(v)
 	local promptOn = get(v, "NysPromptOnSummon") == true
 	set(v, "NysPromptForNamedEnabled", promptOn)
@@ -195,7 +207,8 @@ end
 -- WriteCallbacks (Noesis hands them the LIVE context and new value)
 ---------------------------------------------------------------------------
 
---- The settings payload as it currently stands on the live viewmodel.
+--- The settings payload as it currently stands on the live viewmodel. Settings are a
+--- shared/global mod config (not per-player), so any viewport's edit writes them all.
 ---@param v any live settings viewmodel
 ---@return table
 local function collectSettings(v)
@@ -233,23 +246,28 @@ local function sameSettings(a, b)
 	return true
 end
 
---- Send the whole settings object to the server. Settings are live (GH #76), so
---- this fires from every setting WriteCallback instead of a Save button.
-local function pushSettings()
-	local v = liveVm()
+--- Send the whole settings object to the server for viewport `id`. Settings are live
+--- (GH #76), so this fires from every setting WriteCallback instead of a Save button.
+---@param id integer
+local function pushSettings(id)
+	local session = sessions[id]
+	if not session then
+		return
+	end
+	local v = liveVm(id)
 	if not v then
 		return
 	end
-	-- Before the settings reply lands the viewmodel holds only its all-false
-	-- defaults; pushing then would overwrite the real settings with them.
-	if settingsLoadedGen ~= generation then
+	-- Before the settings reply lands the viewmodel holds only its all-false defaults;
+	-- pushing then would overwrite the real settings with them.
+	if session.settingsLoadedGen ~= session.generation then
 		return
 	end
 	local settings = collectSettings(v)
-	if sameSettings(settings, lastPushedSettings) then
+	if sameSettings(settings, session.lastPushedSettings) then
 		return
 	end
-	lastPushedSettings = settings
+	session.lastPushedSettings = settings
 	Channels.SetSettings:SendToServer(settings)
 end
 
@@ -258,35 +276,38 @@ local function onSettingWrite(context)
 		return
 	end
 	recomputeEnabled(context)
-	pushSettings()
+	pushSettings(viewportOf(context))
 end
 
---- WriteCallback for props that only need a live push (the mode dropdown value and
---- each per-type toggle); recompute is handled by the booleans' onSettingWrite.
-local function pushIfLive()
+--- WriteCallback for props that only need a live push (the mode dropdown value and each
+--- per-type toggle); recompute is handled by the booleans' onSettingWrite.
+local function pushIfLive(context)
 	if suppressWrite then
 		return
 	end
-	pushSettings()
+	pushSettings(viewportOf(context))
 end
 
 --- Commit an edited saved name when its field loses focus (the row binding uses
---- UpdateSourceTrigger=LostFocus, so this fires on blur, which is also how Enter
---- arrives on the LSTextBox). A row staged for forget is left alone.
+--- UpdateSourceTrigger=LostFocus). A row staged for forget is left alone.
 local function onNameWrite(context)
 	if suppressWrite then
 		return
 	end
+	local session = sessions[viewportOf(context)]
+	if not session then
+		return
+	end
 	local id = get(context, "NysRowId")
-	local meta = id and rowMeta[id]
-	if not meta or pendingForgets[id] then
+	local meta = id and session.rowMeta[id]
+	if not meta or session.pendingForgets[id] then
 		return
 	end
 	local text = Util.Sanitise(get(context, "NysNameText") or "")
-	if text == "" or text == originalNames[id] then
+	if text == "" or text == session.originalNames[id] then
 		return
 	end
-	originalNames[id] = text
+	session.originalNames[id] = text
 	Channels.RenameName:SendToServer({ Key = meta.Key, Slot = meta.Slot, Name = text })
 end
 
@@ -294,31 +315,31 @@ end
 -- Staged row actions (toggle a forget / un-skip; flushed when the panel closes)
 ---------------------------------------------------------------------------
 
---- The live row in `collKey` whose NysRowId matches `id`, or nil. Used to update
---- a single row's label/enabled state in place (re-fetched, never cached).
-local function findLiveRow(collKey, id)
-	local v = liveVm()
+--- The live row in viewport `id`'s `collKey` whose NysRowId matches `rowId`, or nil.
+local function findLiveRow(id, collKey, rowId)
+	local v = liveVm(id)
 	local coll = v and get(v, collKey)
 	for index = 1, count(coll) do
 		local row = coll[index]
-		if get(row, "NysRowId") == id then
+		if get(row, "NysRowId") == rowId then
 			return row
 		end
 	end
 	return nil
 end
 
-local function toggleForget(id)
-	if not rowMeta[id] then
+local function toggleForget(id, rowId)
+	local session = sessions[id]
+	if not session or not session.rowMeta[rowId] then
 		return
 	end
-	local row = findLiveRow("NysSavedNames", id)
-	if pendingForgets[id] then
-		pendingForgets[id] = nil
+	local row = findLiveRow(id, "NysSavedNames", rowId)
+	if session.pendingForgets[rowId] then
+		session.pendingForgets[rowId] = nil
 		set(row, "NysForgetLabel", "Forget")
 		set(row, "NysNameEnabled", true)
 	else
-		pendingForgets[id] = true
+		session.pendingForgets[rowId] = true
 		set(row, "NysForgetLabel", "Undo")
 		set(row, "NysNameEnabled", false)
 	end
@@ -328,12 +349,13 @@ end
 -- Load from the server into the just-built viewmodel (guarded by generation)
 ---------------------------------------------------------------------------
 
-local function loadSettings(gen)
+local function loadSettings(id, gen)
 	Channels.GetSettings:RequestToServer({}, function(response)
-		if gen ~= generation then
+		local session = sessions[id]
+		if not session or gen ~= session.generation then
 			return
 		end
-		local v = liveVm()
+		local v = liveVm(id)
 		if not v then
 			return
 		end
@@ -357,19 +379,23 @@ local function loadSettings(gen)
 		suppressWrite = false
 
 		recomputeEnabled(v)
-		settingsLoadedGen = gen
-		-- The load's own writes fire pushSettings asynchronously; seed the dedupe
-		-- baseline with the just-loaded values so those pushes are dropped (GH #76).
-		lastPushedSettings = collectSettings(v)
+		session.settingsLoadedGen = gen
+		-- The load's own writes fire pushSettings asynchronously; seed the dedupe baseline
+		-- with the just-loaded values so those pushes are dropped (GH #76).
+		session.lastPushedSettings = collectSettings(v)
 	end)
 end
 
-local function refreshNames(gen)
-	Channels.ListNames:RequestToServer({}, function(response)
-		if gen ~= generation then
+local function refreshNames(id, gen)
+	-- Scope the list to the viewing split-screen player (GH #86): send the character this
+	-- viewport controls; the server returns only summons whose owner that player controls.
+	local viewer = viewerProvider and viewerProvider(id) or nil
+	Channels.ListNames:RequestToServer({ ViewerCharacter = viewer }, function(response)
+		local session = sessions[id]
+		if not session or gen ~= session.generation then
 			return
 		end
-		local v = liveVm()
+		local v = liveVm(id)
 		if not v then
 			return
 		end
@@ -379,13 +405,14 @@ local function refreshNames(gen)
 		-- Server-populated NysNameText must not fire onNameWrite (user edits only).
 		suppressWrite = true
 		for _, entry in ipairs(entries) do
-			local id = stageId(entry)
-			rowMeta[id] = { Key = entry.Key, Slot = entry.Slot }
-			originalNames[id] = entry.Name
+			local rowId = stageId(entry)
+			session.rowMeta[rowId] = { Key = entry.Key, Slot = entry.Slot }
+			session.originalNames[rowId] = entry.Name
 
 			local row = instantiate(NAME_ROW_VM)
 			if row then
-				set(row, "NysRowId", id)
+				set(row, "NysViewport", tostring(id))
+				set(row, "NysRowId", rowId)
 				set(row, "NysOwnerLabel", ownerLabel(entry))
 				set(row, "NysRowLabel", rowLabel(entry))
 				set(row, "NysNameText", entry.Name)
@@ -393,7 +420,7 @@ local function refreshNames(gen)
 				set(row, "NysNameEnabled", true)
 				pcall(function()
 					row.NysForgetCommand:SetHandler(function()
-						toggleForget(id)
+						toggleForget(id, rowId)
 					end)
 				end)
 				appendItem(coll, row)
@@ -404,19 +431,22 @@ local function refreshNames(gen)
 end
 
 ---------------------------------------------------------------------------
--- Flush staged forgets when the panel closes (GH #76)
+-- Flush staged forgets when the overlay/panel closes (GH #76)
 ---------------------------------------------------------------------------
 
---- Commit the staged forgets, then clear the stage. Both close paths (the overlay
---- button and the whole panel closing) call it, so clearing the table keeps it
---- idempotent. Reads only the cached tables, so it is safe once the live node is
---- gone.
-local function flushStaged()
-	-- ForgetSlot compacts the unique set, so several slots under one key must be
-	-- sent highest-first; otherwise each removal shifts the ones still to come.
+--- Commit viewport `id`'s staged forgets, then clear the stage. Idempotent; reads only
+--- the cached tables, so it is safe once the live node is gone.
+---@param id integer
+local function flushStaged(id)
+	local session = sessions[id]
+	if not session then
+		return
+	end
+	-- ForgetSlot compacts the unique set, so several slots under one key must be sent
+	-- highest-first; otherwise each removal shifts the ones still to come.
 	local forgetSlotsByKey = {}
-	for id in pairs(pendingForgets) do
-		local meta = rowMeta[id]
+	for rowId in pairs(session.pendingForgets) do
+		local meta = session.rowMeta[rowId]
 		local slots = forgetSlotsByKey[meta.Key]
 		if not slots then
 			slots = {}
@@ -438,7 +468,7 @@ local function flushStaged()
 			end
 		end
 	end
-	pendingForgets = {}
+	session.pendingForgets = {}
 end
 
 ---------------------------------------------------------------------------
@@ -448,6 +478,7 @@ end
 local function registerTypes()
 	pcall(function()
 		Ext.UI.RegisterType(SETTINGS_VM, {
+			NysViewport = { Type = "String" },
 			NysIsOpen = { Type = "Bool", Notify = true },
 			NysTypesExpanded = { Type = "Bool", Notify = true },
 			NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
@@ -477,12 +508,14 @@ local function registerTypes()
 			NysToggleNameEveryCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(TOGGLE_VM, {
+			NysViewport = { Type = "String" },
 			NysLabel = { Type = "String" },
 			NysChecked = { Type = "Bool", Notify = true, WriteCallback = pushIfLive },
 			NysEnabled = { Type = "Bool", Notify = true },
 			NysToggleCommand = { Type = "Command" },
 		})
 		Ext.UI.RegisterType(NAME_ROW_VM, {
+			NysViewport = { Type = "String" },
 			NysRowId = { Type = "String" },
 			NysOwnerLabel = { Type = "String" },
 			NysRowLabel = { Type = "String" },
@@ -494,21 +527,24 @@ local function registerTypes()
 	end)
 end
 
---- Build a fresh viewmodel (empty collections) and wire the window-level commands.
---- Kept alive by the DataContext assignment in populate, not by any Lua handle;
---- the command handlers re-fetch the live viewmodel and never close over this one.
+--- Build a fresh viewmodel (empty collections) for viewport `id` and wire its commands.
+--- Command handlers close over `id` (a stable number) and re-fetch the live viewmodel via
+--- liveVm(id); they never close over the viewmodel handle (it does not survive).
+---@param id integer
 ---@return any|nil vm
-local function buildViewModel()
+local function buildViewModel(id)
 	local vm = instantiate(SETTINGS_VM)
 	if not vm then
 		Util.Warn("NYS: could not instantiate the native settings viewmodel")
 		return nil
 	end
 	suppressWrite = true
+	set(vm, "NysViewport", tostring(id))
 	local toggles = get(vm, "NysTypeToggles")
 	for index, cat in ipairs(Classifier.CATEGORIES) do
 		local toggle = instantiate(TOGGLE_VM)
 		if toggle then
+			set(toggle, "NysViewport", tostring(id))
 			set(toggle, "NysLabel", cat.label)
 			set(toggle, "NysChecked", false)
 			set(toggle, "NysEnabled", true)
@@ -516,7 +552,7 @@ local function buildViewModel()
 			-- item handle does not survive), and only toggle when the row is enabled.
 			pcall(function()
 				toggle.NysToggleCommand:SetHandler(function()
-					local v = liveVm()
+					local v = liveVm(id)
 					local list = v and get(v, "NysTypeToggles")
 					local item = list and list[index]
 					if item and get(item, "NysEnabled") == true then
@@ -538,7 +574,7 @@ local function buildViewModel()
 	}) do
 		pcall(function()
 			vm[field]:SetHandler(function()
-				local v = liveVm()
+				local v = liveVm(id)
 				if v then
 					set(v, "NysModeValue", mode)
 					set(v, "NysModeOpen", false)
@@ -548,14 +584,14 @@ local function buildViewModel()
 	end
 	pcall(function()
 		vm.NysRefreshCommand:SetHandler(function()
-			populate()
+			populate(id)
 		end)
 	end)
 	pcall(function()
 		vm.NysCloseCommand:SetHandler(function()
 			-- Closing the overlay commits the staged forgets/un-skips (GH #76).
-			flushStaged()
-			local v = liveVm()
+			flushStaged(id)
+			local v = liveVm(id)
 			if v then
 				set(v, "NysIsOpen", false)
 			end
@@ -563,7 +599,7 @@ local function buildViewModel()
 	end)
 	pcall(function()
 		vm.NysToggleTypesCommand:SetHandler(function()
-			local v = liveVm()
+			local v = liveVm(id)
 			if v then
 				set(v, "NysTypesExpanded", not get(v, "NysTypesExpanded"))
 			end
@@ -580,7 +616,7 @@ local function buildViewModel()
 	}) do
 		pcall(function()
 			vm[command]:SetHandler(function()
-				local v = liveVm()
+				local v = liveVm(id)
 				if v then
 					set(v, field, get(v, field) ~= true)
 					recomputeEnabled(v)
@@ -592,47 +628,60 @@ local function buildViewModel()
 	return vm
 end
 
---- Rebuild the whole panel: fresh viewmodel (empty append-only collections),
+--- Rebuild viewport `id`'s whole panel: fresh viewmodel (empty append-only collections),
 --- bind it as the DataContext, then load everything under a new generation.
-function populate()
-	local vm = buildViewModel()
+---@param id integer
+function populate(id)
+	local vm = buildViewModel(id)
 	if not vm then
 		return
 	end
-	local panel = panelFinder and panelFinder("NYS_SettingsPanel")
+	local panel = panelFinder and panelFinder(id, "NYS_SettingsPanel")
 	if panel then
 		set(panel, "DataContext", vm)
 	end
 	set(vm, "NysIsOpen", true)
-	generation = generation + 1
-	local gen = generation
-	rowMeta = {}
-	originalNames = {}
-	pendingForgets = {}
-	loadSettings(gen)
-	refreshNames(gen)
+	local session = sessionFor(id)
+	session.generation = session.generation + 1
+	local gen = session.generation
+	session.rowMeta = {}
+	session.originalNames = {}
+	session.pendingForgets = {}
+	loadSettings(id, gen)
+	refreshNames(id, gen)
 end
 
 ---------------------------------------------------------------------------
 -- Public lifecycle (NativeRenameUI owns panel detection and node lookup)
 ---------------------------------------------------------------------------
 
---- Set the finder that resolves a live Noesis node by x:Name (NativeRenameUI).
----@param fn fun(name:string):any|nil
+--- Set the finder that resolves a live Noesis node by x:Name within a viewport's Examine
+--- subtree (NativeRenameUI.FindNamedIn).
+---@param fn fun(id:integer, name:string):any|nil
 function NativeConfigUI.SetPanelFinder(fn)
 	panelFinder = fn
 end
 
---- Open the overlay (build + bind + load). Called from the gear's click handler.
-function NativeConfigUI.Open()
-	populate()
+--- Set the provider for a viewport's viewing character, used to scope its saved-name list
+--- per split-screen player (NativeRenameUI.ViewerOf, GH #86).
+---@param fn fun(id:integer):string|nil
+function NativeConfigUI.SetViewerProvider(fn)
+	viewerProvider = fn
 end
 
---- Commit any staged forgets / un-skips. Called when the whole Examine panel
---- closes (NativeRenameUI), so a forget takes effect even if the overlay was not
---- closed first; idempotent, so it is harmless when nothing is staged (GH #76).
-function NativeConfigUI.Flush()
-	flushStaged()
+--- Open the overlay for viewport `id` (build + bind + load). Called from the gear handler.
+---@param id integer
+function NativeConfigUI.Open(id)
+	populate(id)
+end
+
+--- Commit a viewport's staged forgets and drop its session. Called when its whole Examine
+--- panel closes (NativeRenameUI), so a forget takes effect even if the overlay was not
+--- closed first; idempotent (GH #76).
+---@param id integer
+function NativeConfigUI.Flush(id)
+	flushStaged(id)
+	sessions[id] = nil
 end
 
 function NativeConfigUI.Register()
