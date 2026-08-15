@@ -491,6 +491,7 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 ascii-check   # reject non-ASCII typography in tracked text (CI twin of the pre-commit hook)
 ./make.ps1 xaml-check    # resolve mod XAML keys/controls/pack assets vs the game or the committed oracle
 ./make.ps1 xaml-extract  # regenerate the committed xaml-check oracle from the installed game
+./make.ps1 loca-check    # compile every .loca.xml with divine (Windows only - see below)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
 ./make.ps1 all           # format + lint + typecheck + test + validate-xml + ascii-check (verify locally)
@@ -513,6 +514,28 @@ writing it.)
 | Unit tests | LuaUnit | `spec/` | `./make.ps1 test` |
 | XML well-formedness | System.Xml | (none) | `./make.ps1 validate-xml` |
 | Typography | regex | (mirrors `.githooks/pre-commit`) | `./make.ps1 ascii-check` |
+| Loca compile | divine | (none) | `./make.ps1 loca-check` |
+| Pak smoke | divine | (none) | `./make.ps1 build` (asserts pak members) |
+
+### Asset gates: local vs CI, and the divine-on-Linux trap
+
+The Lua gates and the two game-data-free asset gates (`validate-xml`,
+`ascii-check`) run on `ubuntu-latest` and are folded into `all`/`check`. The
+**divine-dependent** gates are split off because **LSLib's `divine` CLI crashes
+on POSIX paths** - `Divine/CLI/CommandLineActions.cs::TryToValidatePath` runs
+`Uri.IsFile` on a relative `Uri` for any `/abs/path` (uncaught throw) and rejects
+`file:///abs/path` as non-rooted, so no input works on Linux (identical on
+`master`). Therefore:
+
+- `loca-check` and the `build` pak-smoke gate run on a **`windows-latest`** CI
+  job (`ci.yml` `assets`), matching `release.yml`. This is the first time the pak
+  is built on a PR - `release.yml` only builds on a tag. They are NOT in
+  `all`/`check` (which stay cross-platform); run them locally on Windows.
+- **`validate-xml` proves the XML parses, NOT that the Noesis semantics hold.**
+  There is no offline validator for Larian's `ls:`/`se:` XAML dialect: the
+  controls are compiled game code, not extractable data, so XamlPlayer/Noesis
+  cannot load them even with full game data. Real XAML validity is only provable
+  in game (the `UI State verification failed` console line).
 
 `xaml-check` resolves the mod's XAML `Static`/`DynamicResource` keys,
 `ls:`/`se:`/`noesis:` controls, and `pack://` assets against the game's real UI,
@@ -709,8 +732,11 @@ confirm:
 3. Every fallible SE call is `pcall`-guarded.
 4. Server/client replication is correct for any renaming path touched.
 5. `./make.ps1 all` passes - this single command (format, lint, type check,
-   LuaUnit tests) is how you verify a change locally; do not run the gates
-   piecemeal. If you cannot run it, reason through each gate and say so. Add or
-   update a spec when you change testable logic.
+   LuaUnit tests, XML well-formedness, ASCII typography) is how you verify a
+   change locally; do not run the gates piecemeal. The divine-dependent gates
+   (`loca-check`, `build`) are Windows-only and run in CI; run them locally on
+   Windows if you touched loca or the pak layout. If you cannot run a gate,
+   reason through it and say so. Add or update a spec when you change testable
+   logic.
 6. Any behaviour you could not verify in game is called out explicitly, with
    the console command the user should run to confirm it.

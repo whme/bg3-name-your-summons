@@ -78,3 +78,18 @@ jobs:
       - run: ./make.ps1 xaml-check
         env:
           NYS_XAML_ORACLE_SALT: ${{ secrets.NYS_XAML_ORACLE_SALT }}
+
+  # divine's CLI crashes on POSIX paths (LSLib TryToValidatePath), so the
+  # divine-dependent gates - compiling every .loca.xml and packing/verifying the
+  # .pak - run on Windows, matching release.yml. This is the first time the pak
+  # is built on a PR (release.yml only builds on a tag), closing that gap.
+  assets:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
+      - run: ./make.ps1 loca-check
+      - run: ./make.ps1 build

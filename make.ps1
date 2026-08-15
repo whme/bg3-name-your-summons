@@ -12,6 +12,7 @@
 #   ./make.ps1 ascii-check   reject non-ASCII typography in tracked text
 #   ./make.ps1 xaml-check    resolve mod XAML keys/controls/pack assets vs the game (or the committed oracle in CI)
 #   ./make.ps1 xaml-extract  regenerate the committed xaml-check oracle from the installed game
+#   ./make.ps1 loca-check    compile every .loca.xml with divine (Windows only)
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
 #   ./make.ps1 all           format + lint + typecheck + test + validate-xml + ascii-check
@@ -211,6 +212,20 @@ function Get-Divine {
         throw "divine.exe not found in $asset after extraction - the release layout may have changed."
     }
     return $divine.FullName
+}
+
+# Locate a named tool inside the already-vendored LSLib ExportTool. divine.exe,
+# StoryCompiler.exe and StatParser.exe all live side by side in Packed/Tools, so
+# Get-Divine's download covers them; this just finds one by filename.
+function Get-LslibTool($Name) {
+    Get-Divine | Out-Null
+    $lslibDir = Join-Path $ToolsDir "lslib-$($V.LSLib)"
+    $tool = Get-ChildItem -Path $lslibDir -Filter $Name -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $tool) {
+        throw "$Name not found in LSLib $($V.LSLib) - the release layout may have changed."
+    }
+    return $tool.FullName
 }
 
 # nekitdev's changelogging CLI - consumes news/ fragments into CHANGELOG.md.
@@ -519,6 +534,40 @@ function Cmd-XamlCheck {
     return 0
 }
 
+# Compile every Localization/**/*.loca.xml with divine to a throwaway dir,
+# failing on any malformed table. Same conversion the build stages, run in
+# isolation so a bad loca is caught without a full pack. divine's CLI crashes on
+# POSIX paths (TryToValidatePath), so this is a Windows-side gate.
+function Cmd-LocaCheck {
+    if ($Plat -ne "windows") {
+        Write-Host "loca-check: divine's CLI only runs on Windows (POSIX paths crash it) - skipping."
+        return 0
+    }
+    $locaRoot = Join-Path $Root "NameYourSummons/Localization"
+    if (-not (Test-Path $locaRoot)) { Write-Host "loca-check: no Localization/ - nothing to check."; return 0 }
+    $xmls = @(Get-ChildItem -Path $locaRoot -Filter "*.loca.xml" -Recurse -ErrorAction SilentlyContinue)
+    if (-not $xmls) { Write-Host "loca-check: no .loca.xml files."; return 0 }
+    $divine = Get-Divine
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "nys-loca-$([Guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    $fail = 0
+    try {
+        foreach ($xml in $xmls) {
+            $out = Join-Path $tmp ("$($xml.Directory.Name)-$($xml.Name).loca")
+            & $divine --game bg3 --action convert-loca --source $xml.FullName --destination $out --loglevel warn
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "loca-check: convert-loca FAILED for $($xml.FullName)"
+                $fail = 1
+            }
+        }
+    }
+    finally {
+        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($fail -eq 0) { Write-Host "loca-check: $($xmls.Count) file(s) compiled cleanly." }
+    return $fail
+}
+
 function Cmd-Check {
     $fail = 0
     Write-Host "`n== format-check =="; if ((Cmd-Format -Check) -ne 0) { $fail = 1 }
@@ -644,6 +693,32 @@ function Convert-StageLoca($Divine, $Stage) {
     }
 }
 
+# After packing, list the pak and assert the members that prove the build wired
+# up: the manifest, at least one COMPILED .loca (not the .xml source), and the UI
+# page. Guards the empty/partial-pak and loca-did-not-compile regressions on top
+# of the raw size check. Tolerant of a quiet list-package (never false-fails on a
+# logging quirk); still catches a genuinely missing member.
+function Assert-PakContents($Divine, $Pak) {
+    $listing = (& $Divine --game bg3 --action list-package --source $Pak 2>&1 | Out-String)
+    $listExit = $LASTEXITCODE
+    if ($listExit -ne 0) {
+        throw "verify-pak: list-package failed (exit ${listExit}): $listing"
+    }
+    if ([string]::IsNullOrWhiteSpace($listing)) {
+        Write-Warning "verify-pak: list-package produced no output; skipping the membership check."
+        return
+    }
+    foreach ($member in @("meta.lsx", "Examine.xaml")) {
+        if ($listing -notmatch [regex]::Escape($member)) {
+            throw "verify-pak: packed .pak is missing expected member '$member'"
+        }
+    }
+    if ($listing -notmatch "NameYourSummons\.loca") {
+        throw "verify-pak: packed .pak has no compiled .loca - localisation did not compile"
+    }
+    Write-Host "verify-pak: meta.lsx, Examine.xaml, and a compiled .loca are present."
+}
+
 # Pack the mod into build/ via divine.exe, exactly like the Modder's Multitool
 # Create Package. Pass -Clean (via `./make.ps1 build -Clean`) to wipe build/ first.
 function Cmd-Build {
@@ -690,6 +765,8 @@ function Cmd-Build {
     if ((Get-Item $pak).Length -le 64) {
         throw "Packed .pak is empty ($((Get-Item $pak).Length) bytes) - divine found no files to include."
     }
+
+    Assert-PakContents $divine $pak
 
     if (Test-Path $zipOut) { Remove-Item $zipOut -Force }
     Compress-Archive -Path $pak -DestinationPath $zipOut
@@ -974,6 +1051,7 @@ try {
         { $_ -in "ascii-check", "ascii" } { $code = Cmd-AsciiCheck }
         { $_ -in "xaml-check", "xamlcheck" } { $code = Cmd-XamlCheck }
         { $_ -in "xaml-extract", "xamlextract" } { $code = Cmd-XamlExtract }
+        { $_ -in "loca-check", "loca" } { $code = Cmd-LocaCheck }
         "build" { $code = Cmd-Build }
         "deploy" { $code = Cmd-Deploy }
         "all" { $code = Cmd-All }
