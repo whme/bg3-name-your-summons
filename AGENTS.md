@@ -487,10 +487,12 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 lint          # luacheck
 ./make.ps1 typecheck     # lua-language-server --check
 ./make.ps1 test          # LuaUnit suite
+./make.ps1 validate-xml  # well-formedness of every XAML / meta.lsx / loca.xml (System.Xml)
+./make.ps1 ascii-check   # reject non-ASCII typography in tracked text (CI twin of the pre-commit hook)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
-./make.ps1 all           # format + lint + typecheck + test (verify locally)
-./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+./make.ps1 all           # format + lint + typecheck + test + validate-xml + ascii-check (verify locally)
+./make.ps1 check         # the read-only twin of `all` (what CI runs)
 ./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md (changelogging)
 ./make.ps1 prepare-release      # bump version, changelog, branch, commit, push, open PR
 ./make.ps1 create-release-tag   # tag the release commit and push (fires release.yml)
@@ -507,6 +509,8 @@ writing it.)
 | Lint | luacheck | `.luacheckrc` | `./make.ps1 lint` |
 | Type check | lua-language-server | `.luarc.json` | `./make.ps1 typecheck` |
 | Unit tests | LuaUnit | `spec/` | `./make.ps1 test` |
+| XML well-formedness | System.Xml | (none) | `./make.ps1 validate-xml` |
+| Typography | regex | (mirrors `.githooks/pre-commit`) | `./make.ps1 ascii-check` |
 
 Notes:
 

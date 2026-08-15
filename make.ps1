@@ -8,10 +8,12 @@
 #   ./make.ps1 lint          run luacheck
 #   ./make.ps1 typecheck     run lua-language-server --check
 #   ./make.ps1 test          run the LuaUnit suite
+#   ./make.ps1 validate-xml  well-formedness of every XAML / meta.lsx / loca.xml
+#   ./make.ps1 ascii-check   reject non-ASCII typography in tracked text
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
-#   ./make.ps1 all           format + lint + typecheck + test (verify locally)
-#   ./make.ps1 check         format-check + lint + typecheck + test (what CI runs)
+#   ./make.ps1 all           format + lint + typecheck + test + validate-xml + ascii-check
+#   ./make.ps1 check         format-check + lint + typecheck + test + validate-xml + ascii-check
 #   ./make.ps1 changelog     assemble news/ fragments into CHANGELOG.md (changelogging)
 #   ./make.ps1 prepare-release      bump version, changelog, branch, commit, push, open PR
 #   ./make.ps1 create-release-tag   tag the release commit and push (fires release.yml)
@@ -285,12 +287,82 @@ function Cmd-Test {
     return $LASTEXITCODE
 }
 
+# Well-formedness of every shipped XML asset (XAML, meta.lsx, loca.xml) via
+# System.Xml, so it needs no external tool and runs on both the Ubuntu gate and a
+# Windows box (xmllint is not on Windows by default). This proves the XML parses,
+# NOT that the Noesis semantics hold (unknown ls:/se: control, bad binding,
+# unresolved StaticResource) - those only fail in game.
+function Cmd-ValidateXml {
+    $targets = @()
+    $guiDir = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/GUI"
+    if (Test-Path $guiDir) {
+        $targets += Get-ChildItem -Path $guiDir -Filter "*.xaml" -Recurse -ErrorAction SilentlyContinue
+    }
+    $locaDir = Join-Path $Root "NameYourSummons/Localization"
+    if (Test-Path $locaDir) {
+        $targets += Get-ChildItem -Path $locaDir -Filter "*.loca.xml" -Recurse -ErrorAction SilentlyContinue
+    }
+    $meta = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/meta.lsx"
+    if (Test-Path $meta) { $targets += Get-Item $meta }
+
+    $fail = 0
+    foreach ($f in $targets) {
+        try {
+            $doc = New-Object System.Xml.XmlDocument
+            $doc.XmlResolver = $null # never fetch external DTDs/entities
+            $doc.Load($f.FullName)
+        }
+        catch {
+            Write-Host "validate-xml: NOT well-formed: $($f.FullName)"
+            Write-Host "  $($_.Exception.Message)"
+            $fail = 1
+        }
+    }
+    if ($fail -eq 0) { Write-Host "validate-xml: $($targets.Count) XML file(s) well-formed." }
+    return $fail
+}
+
+# CI/local port of the .githooks/pre-commit typography rule: reject decorative
+# Unicode punctuation in tracked text (see AGENTS.md "Typography"). The hook scans
+# staged blobs; this scans the tracked working tree, so CI - which has no staging
+# area - enforces the same rule. Keep this extension list in sync with the hook's
+# is_text(). loca.xml is excluded on purpose: translations legitimately carry
+# non-ASCII punctuation (CJK dashes/quotes/ellipsis, French non-breaking space).
+function Cmd-AsciiCheck {
+    # U+00A0 U+00B7 U+00D7 U+00F7 U+2013 U+2014 U+2018 U+2019 U+201C U+201D
+    # U+2022 U+2026 U+2190-U+21FF arrows U+2260 U+2264 U+2265 U+26A0
+    $forbidden = [regex]"[\u00A0\u00B7\u00D7\u00F7\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026\u2190-\u21FF\u2260\u2264\u2265\u26A0]"
+    $exts = @("*.lua", "*.md", "*.json", "*.lsx", "*.txt", "*.toml", "*.sh", "*.yml", "*.yaml", "*.xaml", "*.ps1")
+    $files = & git ls-files @exts ".gitignore" ".githooks/*"
+    $fail = 0
+    foreach ($file in $files) {
+        if ([string]::IsNullOrWhiteSpace($file)) { continue }
+        $full = Join-Path $Root $file
+        if (-not (Test-Path $full)) { continue }
+        $lineNo = 0
+        foreach ($line in [System.IO.File]::ReadAllLines($full)) {
+            $lineNo++
+            if ($forbidden.IsMatch($line)) {
+                if ($fail -eq 0) {
+                    Write-Host "ascii-check: forbidden Unicode punctuation (use ASCII, see AGENTS.md):"
+                }
+                Write-Host "  ${file}:${lineNo}"
+                $fail = 1
+            }
+        }
+    }
+    if ($fail -eq 0) { Write-Host "ascii-check: no forbidden punctuation in tracked text." }
+    return $fail
+}
+
 function Cmd-Check {
     $fail = 0
     Write-Host "`n== format-check =="; if ((Cmd-Format -Check) -ne 0) { $fail = 1 }
     Write-Host "`n== lint =="; if ((Cmd-Lint) -ne 0) { $fail = 1 }
     Write-Host "`n== typecheck =="; if ((Cmd-Typecheck) -ne 0) { $fail = 1 }
     Write-Host "`n== test =="; if ((Cmd-Test) -ne 0) { $fail = 1 }
+    Write-Host "`n== validate-xml =="; if ((Cmd-ValidateXml) -ne 0) { $fail = 1 }
+    Write-Host "`n== ascii-check =="; if ((Cmd-AsciiCheck) -ne 0) { $fail = 1 }
     return $fail
 }
 
@@ -302,6 +374,8 @@ function Cmd-All {
     Write-Host "`n== lint =="; if ((Cmd-Lint) -ne 0) { $fail = 1 }
     Write-Host "`n== typecheck =="; if ((Cmd-Typecheck) -ne 0) { $fail = 1 }
     Write-Host "`n== test =="; if ((Cmd-Test) -ne 0) { $fail = 1 }
+    Write-Host "`n== validate-xml =="; if ((Cmd-ValidateXml) -ne 0) { $fail = 1 }
+    Write-Host "`n== ascii-check =="; if ((Cmd-AsciiCheck) -ne 0) { $fail = 1 }
     return $fail
 }
 
@@ -709,7 +783,7 @@ function Cmd-CreateReleaseTag {
 function Show-Help {
     Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
         if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 20 | Out-Host
+    } | Select-Object -First 26 | Out-Host
 }
 
 # ---------------------------------------------------------------------------
@@ -730,6 +804,8 @@ try {
         "lint" { $code = Cmd-Lint }
         "typecheck" { $code = Cmd-Typecheck }
         "test" { $code = Cmd-Test }
+        { $_ -in "validate-xml", "xml-check" } { $code = Cmd-ValidateXml }
+        { $_ -in "ascii-check", "ascii" } { $code = Cmd-AsciiCheck }
         "build" { $code = Cmd-Build }
         "deploy" { $code = Cmd-Deploy }
         "all" { $code = Cmd-All }
