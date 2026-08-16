@@ -15,6 +15,8 @@
 #   ./make.ps1 loca-check    compile every .loca.xml with divine (Windows only)
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
+#   ./make.ps1 story-check   Osiris lint (StoryCompiler; needs -Bg3Data; no-op if none)
+#   ./make.ps1 stats-check   stats lint (StatParser; needs -Bg3Data; no-op if none)
 #   ./make.ps1 all           format + lint + typecheck + test + validate-xml + ascii-check
 #   ./make.ps1 check         format-check + lint + typecheck + test + validate-xml + ascii-check
 #   ./make.ps1 changelog     assemble news/ fragments into CHANGELOG.md (changelogging)
@@ -819,6 +821,49 @@ function Cmd-Deploy {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# Game-data-backed gates (local / self-hosted). Each needs the installed game's
+# data and no-ops cleanly when its content or -Bg3Data is absent. They are NOT
+# part of the hosted-CI gates - the runners have no game.
+# ---------------------------------------------------------------------------
+
+# Osiris story lint via LSLib StoryCompiler --check-only. Scaffolded: no-op until
+# a Story/ tree exists, and skips (does not fail) when -Bg3Data is unset, since a
+# real check needs the base game's Osiris headers.
+function Cmd-StoryCheck {
+    $storyRoot = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/Story"
+    if (-not (Test-Path $storyRoot)) { Write-Host "story-check: no Story/ - nothing to check (no-op)."; return 0 }
+    $goals = Get-ChildItem -Path $storyRoot -Filter "*.txt" -Recurse -ErrorAction SilentlyContinue
+    if (-not $goals) { Write-Host "story-check: no Osiris goal files - nothing to check."; return 0 }
+    if (-not $Bg3Data) {
+        Write-Host "story-check: Story/ present but -Bg3Data is not set - skipping."
+        Write-Host "  Pass -Bg3Data <Data folder> to enable the Osiris check."
+        return 0
+    }
+    $storyCompiler = Get-LslibTool "StoryCompiler.exe"
+    Write-Host "story-check: StoryCompiler --check-only ..."
+    & $storyCompiler --game bg3 --check-only --mod NameYourSummons --game-data-path $Bg3Data | Out-Host
+    return $LASTEXITCODE
+}
+
+# Stats validation via LSLib StatParser. Scaffolded like story-check. The exact
+# argument set may need tuning against the first real stats content.
+function Cmd-StatsCheck {
+    $statsRoot = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/Stats"
+    if (-not (Test-Path $statsRoot)) { Write-Host "stats-check: no Stats/ - nothing to check (no-op)."; return 0 }
+    $statFiles = Get-ChildItem -Path $statsRoot -Filter "*.txt" -Recurse -ErrorAction SilentlyContinue
+    if (-not $statFiles) { Write-Host "stats-check: no stat files - nothing to check."; return 0 }
+    if (-not $Bg3Data) {
+        Write-Host "stats-check: Stats/ present but -Bg3Data is not set - skipping."
+        Write-Host "  Pass -Bg3Data <Data folder> to enable the stats check."
+        return 0
+    }
+    $statParser = Get-LslibTool "StatParser.exe"
+    Write-Host "stats-check: StatParser ..."
+    & $statParser --game-data-path $Bg3Data --mod NameYourSummons | Out-Host
+    return $LASTEXITCODE
+}
+
 # Assemble the pending news/ fragments into CHANGELOG.md via changelogging.
 # The version (source of truth: meta.lsx) is synced into changelogging.toml
 # first so the new section is headed with the version being released.
@@ -1054,6 +1099,8 @@ try {
         { $_ -in "loca-check", "loca" } { $code = Cmd-LocaCheck }
         "build" { $code = Cmd-Build }
         "deploy" { $code = Cmd-Deploy }
+        { $_ -in "story-check", "story" } { $code = Cmd-StoryCheck }
+        { $_ -in "stats-check", "stats" } { $code = Cmd-StatsCheck }
         "all" { $code = Cmd-All }
         { $_ -in "check", "ci" } { $code = Cmd-Check }
         "changelog" { $code = Cmd-Changelog }

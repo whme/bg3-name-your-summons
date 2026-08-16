@@ -494,6 +494,8 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 loca-check    # compile every .loca.xml with divine (Windows only - see below)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
+./make.ps1 story-check   # Osiris lint via StoryCompiler --check-only (needs -Bg3Data; no-op if no Story/)
+./make.ps1 stats-check   # stats lint via StatParser (needs -Bg3Data; no-op if no Stats/)
 ./make.ps1 all           # format + lint + typecheck + test + validate-xml + ascii-check (verify locally)
 ./make.ps1 check         # the read-only twin of `all` (what CI runs)
 ./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md (changelogging)
@@ -555,6 +557,15 @@ into false results). Both `xaml-extract` and the CI job read the salt from
 `$env:NYS_XAML_ORACLE_SALT`; the extract salt and the CI secret of the same name
 MUST match, or every game reference fails to resolve. No install path is ever
 assumed - `-Bg3Data` is explicit.
+
+`story-check` and `stats-check` share that local-only, game-data-backed bucket
+and are scaffolded now for content that does not exist yet: `story-check` runs
+LSLib `StoryCompiler --check-only` once a `Mods/NameYourSummons/Story/` tree
+exists, and `stats-check` runs LSLib `StatParser` once a
+`Mods/NameYourSummons/Stats/` tree exists (both tools ship in the vendored
+`ExportTool` zip, located via `Get-LslibTool`). Like `xaml-check`, each no-ops
+cleanly when its content or `-Bg3Data` is absent, so they never run on the
+hosted runners.
 
 Notes:
 
