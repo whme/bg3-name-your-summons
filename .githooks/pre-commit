@@ -72,6 +72,13 @@ if [ -n "$PS_EXE" ] && [ -f make.ps1 ]; then
         echo "pre-commit: malformed XML asset - see './make.ps1 validate-xml'" >&2
         status=1
     fi
+    # XAML resource/control/asset references vs the committed HMAC oracle. Skips
+    # cleanly without $NYS_XAML_ORACLE_SALT (or -Bg3Data), so it enforces only for
+    # a committer who has the salt set; CI runs it with the secret. No divine.
+    if ! "$PS_EXE" -NoProfile -File ./make.ps1 xaml-check ; then
+        echo "pre-commit: unresolved XAML reference - see './make.ps1 xaml-check'" >&2
+        status=1
+    fi
 fi
 
 exit "$status"
