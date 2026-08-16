@@ -1,14 +1,10 @@
 -- SPDX-License-Identifier: MIT
--- Guards the shipped .loca.xml tables and their agreement with LocaKeys. The
--- existing locakeys_spec covers the Lua table in isolation; this covers the XML
--- the game actually loads and the drift between the two:
---   - no duplicate contentuid within a file (divine convert-loca accepts dupes),
---   - every language table exposes the same contentuid set (no missing/added
---     translation between languages),
---   - every LocaKeys handle is translated in every language.
--- Note: XAML inline handles are deliberately NOT asserted against our loca -
--- the pages also bind the game's own vanilla handles, which resolve at runtime
--- and cannot be told apart from a genuine typo offline.
+-- Guards the shipped .loca.xml tables and their agreement with LocaKeys. Unlike
+-- locakeys_spec, which sees only the Lua table, this checks the XML the game
+-- loads and the drift between the two - including duplicate contentuids, which
+-- divine convert-loca silently accepts.
+-- XAML inline handles are deliberately NOT asserted against our loca: the pages
+-- also bind the game's own vanilla handles, indistinguishable from a typo offline.
 
 local lu = require("luaunit")
 
@@ -17,8 +13,7 @@ local LocaKeys = Ext.Require("Shared/LocaKeys.lua")
 -- Run from the repo root (spec/run.lua), so these are repo-relative.
 local LOCA_DIR = "./NameYourSummons/Localization/"
 
--- The shipped language folders. Adding a language means adding it here too, so a
--- new table is held to the same parity/duplicate guarantees as the rest.
+-- Add a language here too, so its table gets the same parity/duplicate guarantees.
 local LANGUAGES = {
 	"Chinese",
 	"English",
@@ -51,8 +46,7 @@ local function countContentuids(content)
 	return counts
 end
 
--- Parse each language once at load into a uid -> count map: the count feeds the
--- duplicate check, its keys are the membership set for the parity tests.
+-- Parse each language once into a uid -> count map (count for the dup check, keys for parity).
 local perLang = {}
 for _, lang in ipairs(LANGUAGES) do
 	local content = readFile(LOCA_DIR .. lang .. "/NameYourSummons.loca.xml")
