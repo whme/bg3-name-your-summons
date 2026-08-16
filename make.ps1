@@ -713,7 +713,7 @@ function Assert-PakContents($Divine, $Pak) {
             throw "verify-pak: packed .pak is missing expected member '$member'"
         }
     }
-    if ($listing -notmatch "NameYourSummons\.loca") {
+    if ($listing -notmatch "NameYourSummons\.loca(\s|$)") {
         throw "verify-pak: packed .pak has no compiled .loca - localisation did not compile"
     }
     Write-Host "verify-pak: meta.lsx, Examine.xaml, and a compiled .loca are present."
