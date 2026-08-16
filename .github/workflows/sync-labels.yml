@@ -20,7 +20,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
 
       - name: Sync labels
         uses: crazy-max/ghaction-github-labeler@v6
