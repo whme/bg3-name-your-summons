@@ -10,6 +10,7 @@
 #   ./make.ps1 test          run the LuaUnit suite
 #   ./make.ps1 validate-xml  well-formedness of every XAML / meta.lsx / loca.xml
 #   ./make.ps1 ascii-check   reject non-ASCII typography in tracked text
+#   ./make.ps1 xaml-check    resolve mod XAML keys/controls/pack assets vs the installed game (local-only)
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
 #   ./make.ps1 all           format + lint + typecheck + test + validate-xml + ascii-check
@@ -27,6 +28,9 @@
 param(
     [Parameter(Position = 0)]
     [string]$Command = "help",
+    # Installed game's Data folder, for the local game-data gates (xaml-check,
+    # story-check, stats-check): ./make.ps1 xaml-check -Bg3Data 'C:\...\Data'.
+    [string]$Bg3Data,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
@@ -291,7 +295,8 @@ function Cmd-Test {
 # System.Xml, so it needs no external tool and runs on both the Ubuntu gate and a
 # Windows box (xmllint is not on Windows by default). This proves the XML parses,
 # NOT that the Noesis semantics hold (unknown ls:/se: control, bad binding,
-# unresolved StaticResource) - those only fail in game.
+# unresolved StaticResource) - see xaml-check for the game-data-backed pass that
+# resolves those against the installed game (local-only; not on the CI gate).
 function Cmd-ValidateXml {
     $targets = @()
     $guiDir = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/GUI"
@@ -353,6 +358,99 @@ function Cmd-AsciiCheck {
     }
     if ($fail -eq 0) { Write-Host "ascii-check: no forbidden punctuation in tracked text." }
     return $fail
+}
+
+# Locate the installed game's Game.pak (the UI pak). -Bg3Data points at the Data
+# folder for a non-default Steam library or GOG install.
+function Find-GamePak {
+    if ($Bg3Data) {
+        $pak = Join-Path $Bg3Data "Game.pak"
+        if (Test-Path $pak) { return $pak }
+    }
+    $default = "C:\Program Files (x86)\Steam\steamapps\common\Baldurs Gate 3\Data\Game.pak"
+    if (Test-Path $default) { return $default }
+    return $null
+}
+
+# Game-data-backed reference pass over the mod's XAML overrides: resolves every
+# StaticResource/DynamicResource key, ls:/se:/noesis: control, and pack:// asset
+# the mod references against the REAL game UI unpacked from Game.pak by divine,
+# catching the "unresolved resource / typo'd asset" class validate-xml cannot.
+# Local-only: it needs the installed game + divine, so it is NOT in all/check and
+# the CI gate (no paks) never runs it; a machine without the game skips cleanly.
+function Cmd-XamlCheck {
+    $gamePak = Find-GamePak
+    if (-not $gamePak) {
+        Write-Host "xaml-check: Baldur's Gate 3 not found - pass -Bg3Data <Data folder> to enable. Skipping."
+        return 0
+    }
+    $modXaml = Get-ChildItem (Join-Path $Root "NameYourSummons") -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
+    if (-not $modXaml) { Write-Host "xaml-check: no mod XAML found."; return 0 }
+
+    $divine = Get-Divine
+    $cache = Join-Path $ToolsDir "_bg3ui/Game"
+    # Extract fresh each run so a game patch that removes a XAML cannot leave a
+    # stale definition behind and mask a real miss. Fast (<1s).
+    if (Test-Path $cache) { Remove-Item -Recurse -Force $cache }
+    New-Item -ItemType Directory -Force $cache | Out-Null
+    & $divine -g bg3 -a extract-package -s $gamePak -d $cache -x "*.xaml" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "xaml-check: divine failed to extract Game.pak (exit $LASTEXITCODE)."; return 1 }
+    $gameXaml = Get-ChildItem $cache -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
+    # An empty reference set would flag every real game key/control as a miss, so
+    # treat it as an extraction failure rather than emit a cascade of false errors.
+    if (-not $gameXaml) { Write-Host "xaml-check: divine extracted no game XAML - cannot validate."; return 1 }
+
+    # A key resolves if defined anywhere (mod-local x:Key is legitimate); a control
+    # is only proven to exist by the GAME using it, so its universe is game XAML
+    # alone - the mod using a control cannot vouch for the control existing.
+    $defined = [System.Collections.Generic.HashSet[string]]::new()
+    $gameControls = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($f in @($gameXaml)) {
+        $text = [System.IO.File]::ReadAllText($f.FullName)
+        foreach ($m in [regex]::Matches($text, 'x:Key="([^"]+)"')) { [void]$defined.Add($m.Groups[1].Value) }
+        foreach ($m in [regex]::Matches($text, '(?:<|x:Type\s+)((?:ls|se|noesis):[A-Za-z0-9_]+)')) { [void]$gameControls.Add($m.Groups[1].Value) }
+    }
+    foreach ($f in @($modXaml)) {
+        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f.FullName), 'x:Key="([^"]+)"')) { [void]$defined.Add($m.Groups[1].Value) }
+    }
+
+    # pack:// assets: the mod uses the Core assembly, whose content root is
+    # Public/Game/GUI/. The URI ends in .png but the packed texture is .DDS, so
+    # match on the path with the extension stripped.
+    $packPaths = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($line in (& $divine -g bg3 -a list-package -s $gamePak 2>$null)) {
+        $p = ($line -split "`t")[0]
+        if ($p) { [void]$packPaths.Add(([System.IO.Path]::ChangeExtension($p, $null)).TrimEnd('.').ToLowerInvariant()) }
+    }
+    if ($packPaths.Count -eq 0) { Write-Host "xaml-check: divine list-package returned no entries - cannot validate assets."; return 1 }
+
+    $keyErrors = @()
+    $assetErrors = @()
+    $controlWarnings = @()
+    foreach ($f in $modXaml) {
+        $text = [System.IO.File]::ReadAllText($f.FullName)
+        foreach ($m in [regex]::Matches($text, '(?:Static|Dynamic)Resource\s+([A-Za-z0-9_]+)')) {
+            $key = $m.Groups[1].Value
+            if (-not $defined.Contains($key)) { $keyErrors += "$($f.Name): unresolved resource key '$key'" }
+        }
+        foreach ($m in [regex]::Matches($text, '<((?:ls|se|noesis):[A-Za-z0-9_]+)')) {
+            $ctl = $m.Groups[1].Value
+            if (-not $gameControls.Contains($ctl)) { $controlWarnings += "$($f.Name): control '$ctl' not seen in game XAML" }
+        }
+        foreach ($m in [regex]::Matches($text, 'pack://application:,,,/Core;component/([^"'' <>]+)')) {
+            $rel = ([System.IO.Path]::ChangeExtension($m.Groups[1].Value, $null)).TrimEnd('.')
+            if (-not $packPaths.Contains("public/game/gui/$rel".ToLowerInvariant())) {
+                $assetErrors += "$($f.Name): missing pack asset 'Core;component/$($m.Groups[1].Value)'"
+            }
+        }
+    }
+
+    foreach ($w in ($controlWarnings | Select-Object -Unique)) { Write-Host "xaml-check: WARNING $w" }
+    $errors = @($keyErrors) + @($assetErrors) | Select-Object -Unique
+    foreach ($e in $errors) { Write-Host "xaml-check: ERROR $e" }
+    if ($errors.Count -gt 0) { return 1 }
+    Write-Host "xaml-check: $($modXaml.Count) mod XAML file(s) resolve against $($gameXaml.Count) game XAML - keys, controls, and pack assets OK."
+    return 0
 }
 
 function Cmd-Check {
@@ -783,7 +881,7 @@ function Cmd-CreateReleaseTag {
 function Show-Help {
     Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
         if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 26 | Out-Host
+    } | Select-Object -First 27 | Out-Host
 }
 
 # ---------------------------------------------------------------------------
@@ -806,6 +904,7 @@ try {
         "test" { $code = Cmd-Test }
         { $_ -in "validate-xml", "xml-check" } { $code = Cmd-ValidateXml }
         { $_ -in "ascii-check", "ascii" } { $code = Cmd-AsciiCheck }
+        { $_ -in "xaml-check", "xamlcheck" } { $code = Cmd-XamlCheck }
         "build" { $code = Cmd-Build }
         "deploy" { $code = Cmd-Deploy }
         "all" { $code = Cmd-All }

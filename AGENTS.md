@@ -489,6 +489,7 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 validate-xml  # well-formedness of every XAML / meta.lsx / loca.xml (System.Xml)
 ./make.ps1 ascii-check   # reject non-ASCII typography in tracked text (CI twin of the pre-commit hook)
+./make.ps1 xaml-check    # resolve mod XAML keys/controls/pack assets vs the installed game (local-only)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
 ./make.ps1 all           # format + lint + typecheck + test + validate-xml + ascii-check (verify locally)
@@ -511,6 +512,15 @@ writing it.)
 | Unit tests | LuaUnit | `spec/` | `./make.ps1 test` |
 | XML well-formedness | System.Xml | (none) | `./make.ps1 validate-xml` |
 | Typography | regex | (mirrors `.githooks/pre-commit`) | `./make.ps1 ascii-check` |
+
+`xaml-check` is deliberately absent from that table and from `all`/`check`: it
+resolves the mod's XAML `Static`/`DynamicResource` keys, `ls:`/`se:` controls,
+and `pack://` assets against the game's own UI unpacked from `Game.pak` by
+`divine`, so it needs the installed game and is local-only (CI has no paks; it
+skips cleanly when the game is absent). Pass `-Bg3Data <Data folder>` to point it
+at a non-default install. It catches typo'd resources/assets that
+`validate-xml` (well-formedness only) cannot, but only the game can confirm the
+runtime binding semantics.
 
 Notes:
 
