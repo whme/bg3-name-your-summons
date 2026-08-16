@@ -118,18 +118,33 @@ For each addition, ask - and then act:
 Keep the result readable: no abbreviations, descriptive variable names, and
 additions that stay legible.
 
-**Comments and docstrings, to a strict standard - this is where inline comments
-get cut, so do it deliberately:**
+**Comments and docstrings, to a strict standard - this is where narration gets
+cut, so do it deliberately:**
 
-- Good code needs no inline comment. Keep one ONLY for something the code cannot
-  convey - almost always a BG3SE quirk, a timing reason, or a replication
-  invariant. Delete every comment that paraphrases the next line, narrates a
-  step, or banners a section.
-- A kept comment is at most one line - a line, not a sentence.
+Start from zero, not from "is this comment nice to have". Good code needs no
+comment and no explanatory prose in a docstring; the default for every comment
+and every line of docstring prose is DELETE. A comment earns its place ONLY by
+explaining something the code genuinely cannot tell the reader - almost always a
+BG3SE quirk, an empirical timing reason, or a replication invariant. That is the
+sole exception. Everything else goes.
+
+- **Narration is never a valid reason to keep a comment or docstring prose.** A
+  comment that restates, paraphrases, summarizes, or narrates what the code
+  does - even accurately, even readably - is not "documentation", it is noise,
+  and it gets removed. "It describes the function" is not a justification; the
+  code already describes the function. Do not talk yourself into keeping it
+  because it reads well or seems harmless.
+- Delete every comment that paraphrases the next line, narrates a step, restates
+  a name, or banners a section. Delete docstring sentences that describe what the
+  function/module does when the signature and name already convey it.
+- A kept comment is at most one line - a line, not a sentence - and states the
+  WHY the code cannot, never the WHAT it already shows.
 - Keep the EmmyLua `---@param` / `---@return` annotations that make SE objects
-  navigable, but make each as short and precise as possible.
-- Challenge EXISTING comments touched by the change against the same limits and
-  cut or shorten anything that fails.
+  navigable (these are type hints, not prose), but make each as short and
+  precise as possible. A one-line `---` summary is fine only when the name does
+  not already say it; cut any longer narrative description.
+- Challenge EXISTING comments and docstrings touched by the change against the
+  same bar and cut anything that fails - do not grandfather them in.
 
 Enforce ASCII punctuation (see `AGENTS.md`): flag and fix any em-dash, arrow, or
 smart quote in the change.
@@ -209,8 +224,9 @@ applicable box unchecked.
       each, or "n/a - change does not touch it".
 - [ ] Every added character challenged; unneeded code removed, rest simplified.
       Evidence: the per-edit verdicts.
-- [ ] Inline comments trimmed to the strict standard; ASCII punctuation
-      enforced. Evidence: what was cut, or "none to cut".
+- [ ] Comments and docstring prose cut to the strict standard - every narrating
+      or paraphrasing comment removed, only code-cannot-tell explanations kept;
+      ASCII punctuation enforced. Evidence: what was cut, or "none to cut".
 - [ ] Commit message checked against the `commit` skill and fixed if needed.
 - [ ] Verification done: `./make.ps1 all` run or each gate reasoned through;
       in-game checks named.
