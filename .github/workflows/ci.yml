@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
