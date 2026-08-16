@@ -360,29 +360,22 @@ function Cmd-AsciiCheck {
     return $fail
 }
 
-# Locate the installed game's Game.pak (the UI pak). -Bg3Data points at the Data
-# folder for a non-default Steam library or GOG install.
-function Find-GamePak {
-    if ($Bg3Data) {
-        $pak = Join-Path $Bg3Data "Game.pak"
-        if (Test-Path $pak) { return $pak }
-    }
-    $default = "C:\Program Files (x86)\Steam\steamapps\common\Baldurs Gate 3\Data\Game.pak"
-    if (Test-Path $default) { return $default }
-    return $null
-}
-
 # Game-data-backed reference pass over the mod's XAML overrides: resolves every
 # StaticResource/DynamicResource key, ls:/se:/noesis: control, and pack:// asset
 # the mod references against the REAL game UI unpacked from Game.pak by divine,
 # catching the "unresolved resource / typo'd asset" class validate-xml cannot.
 # Local-only: it needs the installed game + divine, so it is NOT in all/check and
-# the CI gate (no paks) never runs it; a machine without the game skips cleanly.
+# the CI gate (no paks) never runs it. No install path is assumed: -Bg3Data must
+# point at the game's Data folder, else the gate fails with a clear message.
 function Cmd-XamlCheck {
-    $gamePak = Find-GamePak
-    if (-not $gamePak) {
-        Write-Host "xaml-check: Baldur's Gate 3 not found - pass -Bg3Data <Data folder> to enable. Skipping."
-        return 0
+    if (-not $Bg3Data) {
+        Write-Host "xaml-check: pass -Bg3Data <the game's Data folder> to enable this local gate."
+        return 1
+    }
+    $gamePak = Join-Path $Bg3Data "Game.pak"
+    if (-not (Test-Path $gamePak)) {
+        Write-Host "xaml-check: no Game.pak under -Bg3Data '$Bg3Data' - point it at the game's Data folder."
+        return 1
     }
     $modXaml = Get-ChildItem (Join-Path $Root "NameYourSummons") -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
     if (-not $modXaml) { Write-Host "xaml-check: no mod XAML found."; return 0 }
@@ -433,7 +426,7 @@ function Cmd-XamlCheck {
             $key = $m.Groups[1].Value
             if (-not $defined.Contains($key)) { $keyErrors += "$($f.Name): unresolved resource key '$key'" }
         }
-        foreach ($m in [regex]::Matches($text, '<((?:ls|se|noesis):[A-Za-z0-9_]+)')) {
+        foreach ($m in [regex]::Matches($text, '(?:<|x:Type\s+)((?:ls|se|noesis):[A-Za-z0-9_]+)')) {
             $ctl = $m.Groups[1].Value
             if (-not $gameControls.Contains($ctl)) { $controlWarnings += "$($f.Name): control '$ctl' not seen in game XAML" }
         }

@@ -516,11 +516,11 @@ writing it.)
 `xaml-check` is deliberately absent from that table and from `all`/`check`: it
 resolves the mod's XAML `Static`/`DynamicResource` keys, `ls:`/`se:` controls,
 and `pack://` assets against the game's own UI unpacked from `Game.pak` by
-`divine`, so it needs the installed game and is local-only (CI has no paks; it
-skips cleanly when the game is absent). Pass `-Bg3Data <Data folder>` to point it
-at a non-default install. It catches typo'd resources/assets that
-`validate-xml` (well-formedness only) cannot, but only the game can confirm the
-runtime binding semantics.
+`divine`, so it needs the installed game and is local-only (CI has no paks). It
+requires `-Bg3Data <Data folder>` pointing at the game's `Data` directory and
+fails with a clear message if that is missing; no install path is assumed. It
+catches typo'd resources/assets that `validate-xml` (well-formedness only)
+cannot, but only the game can confirm the runtime binding semantics.
 
 Notes:
 
