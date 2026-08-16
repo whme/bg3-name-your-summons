@@ -10,7 +10,8 @@
 #   ./make.ps1 test          run the LuaUnit suite
 #   ./make.ps1 validate-xml  well-formedness of every XAML / meta.lsx / loca.xml
 #   ./make.ps1 ascii-check   reject non-ASCII typography in tracked text
-#   ./make.ps1 xaml-check    resolve mod XAML keys/controls/pack assets vs the installed game (local-only)
+#   ./make.ps1 xaml-check    resolve mod XAML keys/controls/pack assets vs the game (or the committed oracle in CI)
+#   ./make.ps1 xaml-extract  regenerate the committed xaml-check oracle from the installed game
 #   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
 #   ./make.ps1 all           format + lint + typecheck + test + validate-xml + ascii-check
@@ -28,7 +29,7 @@
 param(
     [Parameter(Position = 0)]
     [string]$Command = "help",
-    # Installed game's Data folder for xaml-check, e.g.
+    # Installed game's Data folder for xaml-check / xaml-extract, e.g.
     # ./make.ps1 xaml-check -Bg3Data 'C:\...\Data'.
     [string]$Bg3Data,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -41,6 +42,8 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 
 $Root = $PSScriptRoot
 $ToolsDir = Join-Path $Root ".tools"
+# Committed HMAC oracle that lets xaml-check run in CI without a game install.
+$OracleFile = Join-Path $Root "xaml-oracle.txt"
 
 # Pinned tool versions - bump deliberately; CI caches .tools by this file's hash.
 $V = @{
@@ -360,62 +363,132 @@ function Cmd-AsciiCheck {
     return $fail
 }
 
-# Game-data-backed reference pass over the mod's XAML overrides: resolves every
-# StaticResource/DynamicResource key, ls:/se:/noesis: control, and pack:// asset
-# the mod references against the REAL game UI unpacked from Game.pak by divine,
-# catching the "unresolved resource / typo'd asset" class validate-xml cannot.
-# Local-only: it needs the installed game + divine, so it is NOT in all/check and
-# the CI gate (no paks) never runs it. No install path is assumed: -Bg3Data must
-# point at the game's Data folder, else the gate fails with a clear message.
-function Cmd-XamlCheck {
-    if (-not $Bg3Data) {
-        Write-Host "xaml-check: pass -Bg3Data <the game's Data folder> to enable this local gate."
-        return 1
+# Unpack the game's UI XAML from Game.pak and build the reference universe the mod
+# resolves against: every x:Key, every ls:/se:/noesis: control name, and every GUI
+# asset path (the Core content root Public/Game/GUI/, extension-stripped and
+# lowercased since the URI says .png but the pak holds .DDS). Returns $null on any
+# extraction failure so the caller reports it rather than flagging a false cascade.
+function Get-GameUniverse([string]$GamePak) {
+    $divine = Get-Divine
+    $cache = Join-Path $ToolsDir "_bg3ui/Game"
+    # Extract fresh each run so a patch that removes a XAML cannot leave a stale
+    # definition behind and mask a real miss. Fast (<1s).
+    if (Test-Path $cache) { Remove-Item -Recurse -Force $cache }
+    New-Item -ItemType Directory -Force $cache | Out-Null
+    & $divine -g bg3 -a extract-package -s $GamePak -d $cache -x "*.xaml" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "xaml-check: divine failed to extract Game.pak (exit $LASTEXITCODE)."; return $null }
+    $gameXaml = Get-ChildItem $cache -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
+    if (-not $gameXaml) { Write-Host "xaml-check: divine extracted no game XAML - cannot validate."; return $null }
+
+    $keys = [System.Collections.Generic.HashSet[string]]::new()
+    $controls = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($f in @($gameXaml)) {
+        $text = [System.IO.File]::ReadAllText($f.FullName)
+        foreach ($m in [regex]::Matches($text, 'x:Key="([^"]+)"')) { [void]$keys.Add($m.Groups[1].Value) }
+        foreach ($m in [regex]::Matches($text, '(?:<|x:Type\s+)((?:ls|se|noesis):[A-Za-z0-9_]+)')) { [void]$controls.Add($m.Groups[1].Value) }
     }
+
+    $assets = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($line in (& $divine -g bg3 -a list-package -s $GamePak 2>$null)) {
+        $p = (($line -split "`t")[0]).ToLowerInvariant()
+        if ($p -like "public/game/gui/*") { [void]$assets.Add(([System.IO.Path]::ChangeExtension($p, $null)).TrimEnd('.')) }
+    }
+    if ($assets.Count -eq 0) { Write-Host "xaml-check: no GUI assets from list-package - cannot validate assets."; return $null }
+    return @{ Keys = $keys; Controls = $controls; Assets = $assets }
+}
+
+# 128-bit keyed digest of one identifier. Truncating HMAC-SHA-256 to 16 bytes
+# keeps the committed oracle lean; collision odds for a membership test are
+# negligible. The salt makes the oracle irreversible - short game identifiers
+# would otherwise be trivially recovered from a bare hash by dictionary attack.
+function Get-OracleDigest([System.Security.Cryptography.HMAC]$Hmac, [string]$Value) {
+    $digest = $Hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Value))
+    return [System.BitConverter]::ToString($digest, 0, 16).Replace('-', '').ToLowerInvariant()
+}
+
+# Local step (needs the installed game + divine): hash the game's UI identifier
+# universe into the committed HMAC oracle so xaml-check can run in CI without a
+# game install. Regenerate after a game patch. The salt lives in
+# $env:NYS_XAML_ORACLE_SALT and must match the one CI uses.
+function Cmd-XamlExtract {
+    if (-not $Bg3Data) { Write-Host "xaml-extract: pass -Bg3Data <the game's Data folder>."; return 1 }
     $gamePak = Join-Path $Bg3Data "Game.pak"
-    if (-not (Test-Path $gamePak)) {
-        Write-Host "xaml-check: no Game.pak under -Bg3Data '$Bg3Data' - point it at the game's Data folder."
-        return 1
-    }
+    if (-not (Test-Path $gamePak)) { Write-Host "xaml-extract: no Game.pak under -Bg3Data '$Bg3Data'."; return 1 }
+    $salt = $env:NYS_XAML_ORACLE_SALT
+    if (-not $salt) { Write-Host "xaml-extract: set `$env:NYS_XAML_ORACLE_SALT to the shared oracle salt first."; return 1 }
+
+    $universe = Get-GameUniverse $gamePak
+    if (-not $universe) { return 1 }
+
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new([System.Text.Encoding]::UTF8.GetBytes($salt))
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($k in $universe.Keys) { $lines.Add("key " + (Get-OracleDigest $hmac $k)) }
+    foreach ($c in $universe.Controls) { $lines.Add("ctl " + (Get-OracleDigest $hmac $c)) }
+    foreach ($a in $universe.Assets) { $lines.Add("asset " + (Get-OracleDigest $hmac $a)) }
+    $hmac.Dispose()
+
+    $header = @(
+        '# Name Your Summons xaml-check oracle. Keyed HMAC-SHA-256 (128-bit) of the',
+        "# game's UI resource keys, ls:/se:/noesis: control names, and GUI asset paths,",
+        '# salted by $env:NYS_XAML_ORACLE_SALT. Contains NO readable game data.',
+        "# Regenerate after a game patch: ./make.ps1 xaml-extract -Bg3Data '<Data>'."
+    )
+    Set-Content -Path $OracleFile -Value ($header + ($lines | Sort-Object)) -Encoding ascii
+    Write-Host "xaml-extract: wrote $($lines.Count) entries ($($universe.Keys.Count) keys, $($universe.Controls.Count) controls, $($universe.Assets.Count) assets) to $OracleFile."
+    return 0
+}
+
+# Resolve the mod's XAML StaticResource/DynamicResource keys, ls:/se:/noesis:
+# controls, and pack:// assets against the game's real UI, catching the "unresolved
+# resource / typo'd asset" class validate-xml cannot. The universe comes either
+# live from -Bg3Data (exact, always current) or from the committed HMAC oracle +
+# $env:NYS_XAML_ORACLE_SALT (the CI path, no game install). With neither available
+# (e.g. a fork with no secret) it skips cleanly so it never blocks a build it
+# cannot run. Only the game can confirm the runtime binding semantics.
+function Cmd-XamlCheck {
     $modXaml = Get-ChildItem (Join-Path $Root "NameYourSummons") -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
     if (-not $modXaml) { Write-Host "xaml-check: no mod XAML found."; return 0 }
 
-    $divine = Get-Divine
-    $cache = Join-Path $ToolsDir "_bg3ui/Game"
-    # Extract fresh each run so a game patch that removes a XAML cannot leave a
-    # stale definition behind and mask a real miss. Fast (<1s).
-    if (Test-Path $cache) { Remove-Item -Recurse -Force $cache }
-    New-Item -ItemType Directory -Force $cache | Out-Null
-    & $divine -g bg3 -a extract-package -s $gamePak -d $cache -x "*.xaml" 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Host "xaml-check: divine failed to extract Game.pak (exit $LASTEXITCODE)."; return 1 }
-    $gameXaml = Get-ChildItem $cache -Recurse -Filter "*.xaml" -ErrorAction SilentlyContinue
-    # An empty reference set would flag every real game key/control as a miss, so
-    # treat it as an extraction failure rather than emit a cascade of false errors.
-    if (-not $gameXaml) { Write-Host "xaml-check: divine extracted no game XAML - cannot validate."; return 1 }
-
-    # A key resolves if defined anywhere (mod-local x:Key is legitimate); a control
-    # is only proven to exist by the GAME using it, so its universe is game XAML
-    # alone - the mod using a control cannot vouch for the control existing.
-    $defined = [System.Collections.Generic.HashSet[string]]::new()
-    $gameControls = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($f in @($gameXaml)) {
-        $text = [System.IO.File]::ReadAllText($f.FullName)
-        foreach ($m in [regex]::Matches($text, 'x:Key="([^"]+)"')) { [void]$defined.Add($m.Groups[1].Value) }
-        foreach ($m in [regex]::Matches($text, '(?:<|x:Type\s+)((?:ls|se|noesis):[A-Za-z0-9_]+)')) { [void]$gameControls.Add($m.Groups[1].Value) }
+    $salt = $env:NYS_XAML_ORACLE_SALT
+    if ($Bg3Data) {
+        $gamePak = Join-Path $Bg3Data "Game.pak"
+        if (-not (Test-Path $gamePak)) { Write-Host "xaml-check: no Game.pak under -Bg3Data '$Bg3Data'."; return 1 }
+        $universe = Get-GameUniverse $gamePak
+        if (-not $universe) { return 1 }
+        $keyMember = { param($v) $universe.Keys.Contains($v) }
+        $controlMember = { param($v) $universe.Controls.Contains($v) }
+        $assetMember = { param($v) $universe.Assets.Contains($v) }
+        $source = "the installed game"
     }
+    elseif ((Test-Path $OracleFile) -and $salt) {
+        $keyHashes = [System.Collections.Generic.HashSet[string]]::new()
+        $controlHashes = [System.Collections.Generic.HashSet[string]]::new()
+        $assetHashes = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($line in [System.IO.File]::ReadAllLines($OracleFile)) {
+            $parts = $line -split ' ', 2
+            switch ($parts[0]) {
+                "key" { [void]$keyHashes.Add($parts[1]) }
+                "ctl" { [void]$controlHashes.Add($parts[1]) }
+                "asset" { [void]$assetHashes.Add($parts[1]) }
+            }
+        }
+        $hmac = [System.Security.Cryptography.HMACSHA256]::new([System.Text.Encoding]::UTF8.GetBytes($salt))
+        $keyMember = { param($v) $keyHashes.Contains((Get-OracleDigest $hmac $v)) }
+        $controlMember = { param($v) $controlHashes.Contains((Get-OracleDigest $hmac $v)) }
+        $assetMember = { param($v) $assetHashes.Contains((Get-OracleDigest $hmac $v)) }
+        $source = "the committed oracle"
+    }
+    else {
+        Write-Host "xaml-check: no -Bg3Data and no oracle+salt - skipping (pass -Bg3Data or set NYS_XAML_ORACLE_SALT)."
+        return 0
+    }
+
+    # A key resolves if it is defined in the mod's own XAML (mod-local x:Key is
+    # legitimate) or exists in the game universe.
+    $modKeys = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($f in @($modXaml)) {
-        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f.FullName), 'x:Key="([^"]+)"')) { [void]$defined.Add($m.Groups[1].Value) }
+        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f.FullName), 'x:Key="([^"]+)"')) { [void]$modKeys.Add($m.Groups[1].Value) }
     }
-
-    # pack:// assets: the mod uses the Core assembly, whose content root is
-    # Public/Game/GUI/. The URI ends in .png but the packed texture is .DDS, so
-    # match on the path with the extension stripped.
-    $packPaths = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($line in (& $divine -g bg3 -a list-package -s $gamePak 2>$null)) {
-        $p = ($line -split "`t")[0]
-        if ($p) { [void]$packPaths.Add(([System.IO.Path]::ChangeExtension($p, $null)).TrimEnd('.').ToLowerInvariant()) }
-    }
-    if ($packPaths.Count -eq 0) { Write-Host "xaml-check: divine list-package returned no entries - cannot validate assets."; return 1 }
 
     $keyErrors = @()
     $assetErrors = @()
@@ -424,15 +497,15 @@ function Cmd-XamlCheck {
         $text = [System.IO.File]::ReadAllText($f.FullName)
         foreach ($m in [regex]::Matches($text, '(?:Static|Dynamic)Resource\s+([A-Za-z0-9_]+)')) {
             $key = $m.Groups[1].Value
-            if (-not $defined.Contains($key)) { $keyErrors += "$($f.Name): unresolved resource key '$key'" }
+            if (-not $modKeys.Contains($key) -and -not (& $keyMember $key)) { $keyErrors += "$($f.Name): unresolved resource key '$key'" }
         }
         foreach ($m in [regex]::Matches($text, '(?:<|x:Type\s+)((?:ls|se|noesis):[A-Za-z0-9_]+)')) {
             $ctl = $m.Groups[1].Value
-            if (-not $gameControls.Contains($ctl)) { $controlWarnings += "$($f.Name): control '$ctl' not seen in game XAML" }
+            if (-not (& $controlMember $ctl)) { $controlWarnings += "$($f.Name): control '$ctl' not seen in game XAML" }
         }
         foreach ($m in [regex]::Matches($text, 'pack://application:,,,/Core;component/([^"'' <>]+)')) {
             $rel = ([System.IO.Path]::ChangeExtension($m.Groups[1].Value, $null)).TrimEnd('.')
-            if (-not $packPaths.Contains("public/game/gui/$rel".ToLowerInvariant())) {
+            if (-not (& $assetMember "public/game/gui/$rel".ToLowerInvariant())) {
                 $assetErrors += "$($f.Name): missing pack asset 'Core;component/$($m.Groups[1].Value)'"
             }
         }
@@ -442,7 +515,7 @@ function Cmd-XamlCheck {
     $errors = @($keyErrors) + @($assetErrors) | Select-Object -Unique
     foreach ($e in $errors) { Write-Host "xaml-check: ERROR $e" }
     if ($errors.Count -gt 0) { return 1 }
-    Write-Host "xaml-check: $($modXaml.Count) mod XAML file(s) resolve against $($gameXaml.Count) game XAML - keys, controls, and pack assets OK."
+    Write-Host "xaml-check: $($modXaml.Count) mod XAML file(s) resolve against $source - keys, controls, and pack assets OK."
     return 0
 }
 
@@ -900,6 +973,7 @@ try {
         { $_ -in "validate-xml", "xml-check" } { $code = Cmd-ValidateXml }
         { $_ -in "ascii-check", "ascii" } { $code = Cmd-AsciiCheck }
         { $_ -in "xaml-check", "xamlcheck" } { $code = Cmd-XamlCheck }
+        { $_ -in "xaml-extract", "xamlextract" } { $code = Cmd-XamlExtract }
         "build" { $code = Cmd-Build }
         "deploy" { $code = Cmd-Deploy }
         "all" { $code = Cmd-All }

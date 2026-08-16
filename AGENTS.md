@@ -489,7 +489,8 @@ lua-language-server's `runtime.version` are all pinned to 5.4.
 ./make.ps1 test          # LuaUnit suite
 ./make.ps1 validate-xml  # well-formedness of every XAML / meta.lsx / loca.xml (System.Xml)
 ./make.ps1 ascii-check   # reject non-ASCII typography in tracked text (CI twin of the pre-commit hook)
-./make.ps1 xaml-check    # resolve mod XAML keys/controls/pack assets vs the installed game (local-only)
+./make.ps1 xaml-check    # resolve mod XAML keys/controls/pack assets vs the game or the committed oracle
+./make.ps1 xaml-extract  # regenerate the committed xaml-check oracle from the installed game
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip); -Clean wipes first
 ./make.ps1 deploy        # build, then copy the .pak into BG3's %LOCALAPPDATA% Mods folder
 ./make.ps1 all           # format + lint + typecheck + test + validate-xml + ascii-check (verify locally)
@@ -513,14 +514,24 @@ writing it.)
 | XML well-formedness | System.Xml | (none) | `./make.ps1 validate-xml` |
 | Typography | regex | (mirrors `.githooks/pre-commit`) | `./make.ps1 ascii-check` |
 
-`xaml-check` is deliberately absent from that table and from `all`/`check`: it
-resolves the mod's XAML `Static`/`DynamicResource` keys, `ls:`/`se:` controls,
-and `pack://` assets against the game's own UI unpacked from `Game.pak` by
-`divine`, so it needs the installed game and is local-only (CI has no paks). It
-requires `-Bg3Data <Data folder>` pointing at the game's `Data` directory and
-fails with a clear message if that is missing; no install path is assumed. It
-catches typo'd resources/assets that `validate-xml` (well-formedness only)
-cannot, but only the game can confirm the runtime binding semantics.
+`xaml-check` resolves the mod's XAML `Static`/`DynamicResource` keys,
+`ls:`/`se:`/`noesis:` controls, and `pack://` assets against the game's real UI,
+catching typo'd resources/assets that `validate-xml` (well-formedness only)
+cannot. It gets the game's identifier universe one of two ways: live from
+`-Bg3Data <Data folder>` (the game's `Data` directory, unpacked by `divine` -
+exact and always current), or from a committed HMAC oracle so it can also run in
+CI with no game install. With neither available (a fork with no secret) it skips
+cleanly, so it is not in `all`/`check` but does run as its own CI job. Only the
+game can confirm the runtime binding semantics.
+
+The oracle (`xaml-oracle.txt`) is keyed HMAC-SHA-256 (128-bit) digests of every
+game key/control/asset identifier - no readable game data, so committing it does
+not redistribute Larian's copyrighted XAML. `xaml-extract` regenerates it from
+the installed game and must be re-run after a game patch (a stale oracle drifts
+into false results). Both `xaml-extract` and the CI job read the salt from
+`$env:NYS_XAML_ORACLE_SALT`; the extract salt and the CI secret of the same name
+MUST match, or every game reference fails to resolve. No install path is ever
+assumed - `-Bg3Data` is explicit.
 
 Notes:
 

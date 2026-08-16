@@ -67,3 +67,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./make.ps1 ascii-check
+
+  # Resolves the mod's XAML against the committed HMAC oracle (no game install
+  # needed). Skips cleanly when the salt secret is absent - e.g. a fork PR - so it
+  # never blocks a build it cannot run. Regenerate the oracle with xaml-extract.
+  xaml-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./make.ps1 xaml-check
+        env:
+          NYS_XAML_ORACLE_SALT: ${{ secrets.NYS_XAML_ORACLE_SALT }}
