@@ -57,7 +57,7 @@ jobs:
           path: ./artifacts
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/NameYourSummons-${{ github.ref_name }}.zip
 
