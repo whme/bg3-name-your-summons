@@ -91,3 +91,18 @@ EOF
 Never pass `--no-verify` unless the user has explicitly asked for it. If the
 pre-commit hook fails, fix the offending characters and create a new commit -
 do not `--amend` to "retry" a commit that never happened.
+
+## Before you finish
+
+Verify all of these before treating the commit as done - they are the parts most
+often dropped:
+
+- [ ] Exactly ONE `Co-authored-by:` trailer naming the model in use, in the
+      footer. Mandatory for AI-generated commits and the single most-forgotten
+      item - do not skip it.
+- [ ] ASCII punctuation only: no em-dash, arrow, or smart quote anywhere in the
+      message.
+- [ ] Subject imperative, first word capitalized, no trailing period, under ~72
+      chars; any body explains WHY, wrapped at ~72-76 chars.
+- [ ] No `--no-verify`, and no `--amend` used to retry a commit the hook
+      rejected (that never happened, so amend would rewrite the PREVIOUS commit).

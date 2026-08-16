@@ -36,6 +36,13 @@ the review comments".
 - **Push to update the PR.** Local commits alone do not count.
 - No force-push to `main`. No `--no-verify`. No `git commit --amend` to rewrite
   commits that have already been pushed for review.
+- Exception - the sanctioned rebase patchset: rebasing the PR's OWN branch onto
+  its base branch (`origin/<baseRefName>`, not a hardcoded `origin/main`) and
+  `--force-with-lease` pushing it (the Gerrit "new patchset" flow the
+  [`../scrutinize/SKILL.md`](../scrutinize/SKILL.md) skill performs) IS allowed,
+  because GitHub records it as a visible force-push event with a compare link.
+  Still never force-push `main`, never plain `--force`, and never force-push to
+  hide review history.
 - Commit changes per [`../commit/SKILL.md`](../commit/SKILL.md) - including the
   mandatory `Co-authored-by:` trailer.
 
@@ -135,5 +142,6 @@ intentionally deferred - never silently skip one.
 - Resolving without replying, or replying without resolving.
 - Pushing before committing per [`../commit/SKILL.md`](../commit/SKILL.md)
   (skips the mandatory `Co-authored-by:` trailer).
-- Force-pushing to shared branches to "clean up history" mid-review.
+- Force-pushing to "clean up history" mid-review (distinct from the sanctioned
+  rebase patchset above), or force-pushing `main`.
 - Using `--amend` on commits that have already been pushed.
