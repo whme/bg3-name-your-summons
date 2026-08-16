@@ -55,3 +55,15 @@ jobs:
           path: .tools
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
       - run: ./make.ps1 test
+
+  validate-xml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./make.ps1 validate-xml
+
+  ascii-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./make.ps1 ascii-check

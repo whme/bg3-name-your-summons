@@ -24,7 +24,7 @@ FORBIDDEN='[\x{00A0}\x{00B7}\x{00D7}\x{00F7}\x{2013}\x{2014}\x{2018}\x{2019}\x{2
 # images, archives) is skipped as binary.
 is_text() {
     case "$1" in
-        *.lua|*.md|*.json|*.lsx|*.txt|*.toml|*.sh|*.yml|*.yaml) return 0 ;;
+        *.lua|*.md|*.json|*.lsx|*.txt|*.toml|*.sh|*.yml|*.yaml|*.xaml|*.ps1) return 0 ;;
         .githooks/*|.gitignore) return 0 ;;
         *) return 1 ;;
     esac
@@ -64,6 +64,12 @@ if [ -n "$PS_EXE" ] && [ -f make.ps1 ]; then
     fi
     if ! "$PS_EXE" -NoProfile -File ./make.ps1 lint ; then
         echo "pre-commit: luacheck reported lints" >&2
+        status=1
+    fi
+    # Well-formedness of the XAML / meta.lsx / loca.xml assets (System.Xml, no
+    # downloads). loca-check / build are left to CI - they pull divine.
+    if ! "$PS_EXE" -NoProfile -File ./make.ps1 validate-xml ; then
+        echo "pre-commit: malformed XML asset - see './make.ps1 validate-xml'" >&2
         status=1
     fi
 fi
