@@ -30,7 +30,7 @@ Resolve `$ARGUMENTS` to the exact set of changes. Pick the single matching case:
 
 - A GitHub PR reference like `GH PR 12` -> take the number `N`, get the diff
   with `gh pr diff N` and the metadata with
-  `gh pr view N --json number,title,body,state,headRefName,baseRefName,url,author,files,commits`.
+  `gh pr view N --json number,title,body,state,headRefName,baseRefName,url,author,files,commits,labels`.
   Do NOT use a bare `gh pr view N`: its default view fetches classic project
   cards and fails with a "Projects (classic) is being deprecated" GraphQL error.
 - A commit hash -> `git show <hash>`.
@@ -153,7 +153,9 @@ Apply the edits directly. For each, state in one line what you challenged and
 the verdict (removed as unneeded / simpler / more elegant / tightened prose). If
 something is genuinely needed as-is, say so rather than inventing a change.
 
-## 7. Scrutinize the commit message
+## 7. Scrutinize the commit message and, for a PR, its description
+
+### Commit message
 
 Judge the message against the `commit` skill:
 
@@ -167,6 +169,31 @@ Judge the message against the `commit` skill:
 Fix any failure as part of the publish step below - UNLESS the commit is already
 merged into `origin/main`, in which case flag it rather than rewriting published
 history.
+
+### PR description (PR targets)
+
+Hold the PR's title and body to the SAME bar. Invoke the `github-pr` skill for
+the authoritative "PR description format" spec (mirroring how the commit part
+above defers to `commit`), then judge the PR metadata from section 1:
+
+- **Title** = the commit-subject rules: imperative, first word capitalized, no
+  trailing period, no appended PR number, under ~72 chars.
+- **Body** explains WHY and, when relevant, the observable in-game effect and
+  how it was verified in game (or the console command still needed - a
+  docs/CI/internal change has neither), is ASCII only, does not narrate the diff,
+  and matches the commit body it was `--fill`ed from - flag any drift (edited on
+  GitHub, stale after later commits, verification note lost).
+- **News fragment**: a `news/<id>.<type>.md` file is added in the diff OR the
+  `no-news-fragment-needed` label is present (from the section-1 `labels`). If
+  neither, `news-fragment-check` fails the PR: for a user-facing change add the
+  `news/<id>.<type>.md` fragment; for a docs/CI/internal change add the
+  `no-news-fragment-needed` label.
+
+Fixes land in the publish step below, with one exception: a missing news file
+fragment is a repo file, so add it HERE with the other code edits - the publish
+step then commits and pushes it in the patchset. The title/body correction and
+the `no-news-fragment-needed` label are GitHub-side edits made in the publish
+step.
 
 If the change adds tests, challenge each: is it necessary, does it add value
 beyond existing coverage, can it fold into another test or parametrize? Drop
@@ -193,9 +220,17 @@ that still needs in-game verification, naming the console command (`!nys_diag`,
   `git push --force-with-lease origin HEAD:<headRefName>` (the `headRefName`
   from the `gh pr view --json` metadata). Use `--force-with-lease`, never plain
   `--force`, so a concurrent push by someone else aborts instead of being
-  clobbered; never force-push `main`. Do this without being asked. Then
+  clobbered; never force-push `main`. Do this without being asked. Then, if the
+  PR title or body drifted from the mandated format (section 7), correct it
+  autonomously with `gh pr edit <N> --title ... --body ...` - a low-risk,
+  reversible, GitHub-visible edit, done without asking, the same autonomy as the
+  patchset push. A missing news file fragment was created back in section 7, so
+  the commit step above already carried it into the patchset; a missing
+  `no-news-fragment-needed` label is added now
+  (`gh pr edit <N> --add-label no-news-fragment-needed`). Then
   `git checkout <original-branch>`, report the new patchset's commit hash and
-  the force-push compare link, and confirm the PR reflects the scrutiny.
+  the force-push compare link, and confirm the PR - code, description, and news
+  fragment - reflects the scrutiny.
 - **Commit on a branch:** amend the scrutinized commit (`git commit --amend`,
   keeping the message unless you corrected it) rather than stacking a follow-up,
   then `git push` (force-push, confirming with the user first, only if already
@@ -228,6 +263,10 @@ applicable box unchecked.
       or paraphrasing comment removed, only code-cannot-tell explanations kept;
       ASCII punctuation enforced. Evidence: what was cut, or "none to cut".
 - [ ] Commit message checked against the `commit` skill and fixed if needed.
+- [ ] (PR) PR title and description scrutinized against the `github-pr` mandated
+      format and corrected via `gh pr edit` if drifted; news fragment present or
+      the `no-news-fragment-needed` label added. Evidence: conforms as-is / what
+      was fixed.
 - [ ] Verification done: `./make.ps1 all` run or each gate reasoned through;
       in-game checks named.
 - [ ] Published: committed via the `commit` skill and, for a PR with something

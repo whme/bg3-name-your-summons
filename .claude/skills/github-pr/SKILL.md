@@ -22,6 +22,34 @@ the PR description, so a well-formed commit (see
 [`../commit/SKILL.md`](../commit/SKILL.md)) produces a well-formed PR
 automatically.
 
+### PR description format (the mandated layout)
+
+Because `--fill` derives them from the commit, a PR's title and description are
+held to the SAME bar as the commit message. A well-formed PR has:
+
+- **Title** = the commit subject rules from
+  [`../commit/SKILL.md`](../commit/SKILL.md): imperative mood, first word
+  capitalized, optional lowercase scope prefix, no trailing period, no PR number
+  appended (squash-merge adds that), under ~72 chars.
+- **Description** = the commit body: wrapped prose explaining WHY the change is
+  made and, when relevant, the observable in-game effect and how it was verified
+  in game (or the console command a reviewer should run) - not how, which the
+  diff shows. A docs/CI/internal change has no in-game effect to note (see
+  `CONTRIBUTING.md`). ASCII punctuation only. It should match the commit body it
+  was filled from; note any drift.
+- **News fragment**: the PR must add a `news/<id>.<type>.md` fragment (type one
+  of `feature`, `bugfix`, `security`, `deprecation`, `removal`) OR carry the
+  `no-news-fragment-needed` label, or the `news-fragment-check` workflow fails
+  it. This is part of a well-formed PR's contents.
+
+When a PR has drifted from this - edited on GitHub, stale after later commits,
+missing the verification note or the news fragment - bring it back into line:
+
+```sh
+gh pr edit <N> --title '<subject>' --body '<body>'
+gh pr edit <N> --add-label no-news-fragment-needed   # when the label is right
+```
+
 ## Addressing review feedback on an existing PR
 
 Use this whenever you are asked to address feedback, update a PR, or "handle
