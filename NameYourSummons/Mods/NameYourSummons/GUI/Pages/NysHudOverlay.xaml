@@ -1,0 +1,22 @@
+<!-- Persistent overlay merged into the always-active PlayerHUD state (ModType="Extend"); Lua
+     wires it once. Its b:DataTrigger on the examine target invokes NysDetectCommand so Lua can
+     detect a manual Examine open. See AGENTS.md "Native Examine rename" and rule 5. -->
+<ls:UIWidget x:Name="NYS_HudOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ls="clr-namespace:ls;assembly=Code"
+             xmlns:b="http://schemas.microsoft.com/xaml/behaviors">
+    <ls:UIWidget.Template>
+        <ControlTemplate>
+            <Grid x:Name="NYS_HudOverlayRoot" Background="Transparent" IsHitTestVisible="False">
+                <b:Interaction.Triggers>
+                    <b:DataTrigger Binding="{Binding CurrentPlayer.UIData.ExamineTarget.CharacterType}" Value="Summon">
+                        <b:InvokeCommandAction Command="{Binding DataContext.NysDetectCommand, ElementName=NYS_HudVmHost}"/>
+                    </b:DataTrigger>
+                </b:Interaction.Triggers>
+                <!-- Lua sets this element's DataContext to a VM carrying NysDetectCommand. -->
+                <Grid x:Name="NYS_HudVmHost"/>
+            </Grid>
+        </ControlTemplate>
+    </ls:UIWidget.Template>
+</ls:UIWidget>

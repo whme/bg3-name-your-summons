@@ -78,12 +78,22 @@ the game.
      nested DataContext + a `Command` binding; the field commits via per-element
      key/focus subscriptions. These work on the FIRST panel; do NOT hit-test with a
      global mouse hook.
-  5. Lifecycle of a game panel - there is no open event and no closable command, so
-     keep exactly ONE cheap global mouse hook as the detector (presence of the
-     `Examine` node = open), the sole sanctioned exception to rule 4. Anchor every
-     scan at `ContentRoot` / `Examine` (never a whole-tree walk) and read the
-     DataContext property bag (`GetAllProperties`); the direct `GetProperty` is
-     only ever for one known object (the HUD command surface, a matched entity handle).
+  5. Detecting a game panel open (Examine) - there is no way for the overridden page itself
+     to tell Lua it opened. BG3SE has no panel-open event; a XAML-instantiated SE type
+     (`Ext.UI.RegisterType`) comes back a propertyless `BaseComponent` so its `WriteCallback`
+     never fires; there is no ECS / netmsg / Osiris signal for a client-side Examine; and Ext
+     resource dictionaries are not writable from Lua. Detect it from a persistent widget WE
+     own instead: merge our own `NysHudOverlay` into the always-active `PlayerHUD` game state
+     with `ModType="Extend"` (in both `StateMachines/*.xaml`) so it is always in the tree, and
+     wire it once. Inside it a `b:DataTrigger` on
+     `CurrentPlayer.UIData.ExamineTarget.CharacterType == "Summon"` invokes a `Command` on a VM
+     Lua sets as a child element's `DataContext` (the game raises `b:DataTrigger` on that path;
+     an `ls:LSTextBox.Text` OneWay binding does NOT - an input control ignores binding-driven
+     text). NEVER use a global input hook as a lifecycle detector: the old per-click scan walked
+     whatever tree was on screen and crashed on character creation's foreign tree (#99). Scans
+     run only in response to that signal, are anchored at `ContentRoot` / `Examine`, and read the
+     DataContext property bag (`GetAllProperties`); the direct `GetProperty` is only ever for one
+     known object (the HUD command surface, a matched entity handle).
 - **Native Examine rename** (`Client/NativeRenameUI.lua` + `GUI/`): the Examine
   panel gets an editable name field (`NYS_NameInput`) and a settings gear
   (`NYS_SettingsButton`) via an `Examine.xaml` override (a state override in
@@ -97,22 +107,26 @@ the game.
   rapid typing saves once, NOT on a focus-loss blur - the blur (`LostFocus` /
   `LostKeyboardFocus`) is not reliably delivered, especially on controller, so a rename
   must never hinge on it. Saving is decoupled from advancing a multi-summon queue (see
-  below), and also flushed when the gear opens or the panel closes. The one global input
-  hook is `Ext.Events.MouseButtonInput`, used SOLELY as the panel lifecycle detector,
-  because `Ext.UI.GetStateMachine()` is stubbed to `nullptr` and there is no open event.
-  Every scan is anchored at `ContentRoot` / `Examine` and reads the property bag;
-  `GetProperty` warns per miss and costs 238-510 ms to open Examine when used to scan, so
-  it is reserved for one known object (the HUD command surface, a matched entity handle).
-  A `!nys_uidebug` client console command toggles verbose tracing.
+  below), and also flushed when the gear opens or the panel closes. Panel lifecycle uses the
+  persistent HUD overlay of rule 5 (`installHudDetector`): on its `NysDetectCommand` signal
+  `onExamineDetected` reconciles the tree (`pollLifecycle`) on a short bounded retry - the panel
+  widget lags the target by up to ~`EXAMINE_SETTLE_MS` - and force-fresh-wires manual panels so a
+  re-open cannot reuse stale field subscriptions. A slow heartbeat (`HUD_WIRE_HEARTBEAT_MS`)
+  re-wires every overlay host (one per split-screen viewport) across HUD rebuilds; while an
+  on-summon prompt is pending a self-disarming `SAFETY_RECONCILE_MS` loop guards the world-pause
+  against a missed close. Scans run only from those paths and only in `Running`/`Paused`
+  (`scanAllowed`), anchored at `ContentRoot` / `Examine` and reading the property bag; the direct
+  `GetProperty` (238-510 ms per Examine open when scanning) is reserved for one known object (the
+  HUD command surface, a matched entity handle).
   **Non-interactive by default; editing is opt-in.** The name field (`NYS_NameInput`)
   defaults to `IsReadOnly`, `Focusable`, and `IsHitTestVisible` all off in the XAML, so it
   renders as the native plain name - no caret, no hover border, not clickable. That is the
   correct look for a **forbidden** summon (a story-bound one - `Util.IsStorySummon` - with
-  the opt-in off) with NO Lua action needed, which is what makes it work despite a
-  manually-opened Examine panel not repainting a Lua-driven change until the next real
-  click. `enableEditing` flips those three flags on for an on-summon prompt or a click on a
-  renamable manually-examined summon; they are checked at INPUT time, not painted, so this
-  needs no repaint. A forbidden summon is never enabled: `isForbiddenSummon` reads the root
+  the opt-in off) with NO Lua action needed. `enableEditing` flips those three flags on in
+  `wirePanel` for any renamable summon - an on-summon prompt OR a manually examined one - so a
+  single click edits; a forbidden summon or non-summon stays plain text. The flags are checked
+  at INPUT time, not painted, so this needs no repaint. A forbidden summon is never enabled:
+  `isForbiddenSummon` reads the root
   template off the client entity (`Ext.Entity.Get(uuid).OriginalTemplate.OriginalTemplate`)
   and tests `Util.IsStorySummon` against `cachedAllowStory` - a copy of `AllowStorySummons`
   seeded on `SessionLoaded` and kept fresh by the server's `Channels.SettingsChanged`
@@ -258,10 +272,7 @@ the game.
   queued while it waited) when a retract swaps `current` mid-settle. A failure to open Examine
   (command/handle missing or `Execute` throwing) skips to the next, so the pause never
   deadlocks. Noesis objects are fetched fresh and tested with truthiness (never `== nil`,
-  never cached - a stale handle crashes on use). A `!nys_uidebug` client console command
-  toggles verbose tracing (each line carries a live
-  `[examine=.. field=.. wired=.. | current=.. answered=.. awaitingOpen=.. queued=..]`
-  snapshot of the real UI).
+  never cached - a stale handle crashes on use).
 - **Controller support.** The controller UI is a SEPARATE layout: the game
   loads a different page (`Examine_c.xaml`), so the keyboard override alone leaves
   our controls absent on a controller. Support mirrors the keyboard side:
@@ -292,15 +303,11 @@ the game.
   focusable text boxes) so merely NAVIGATING onto it just highlights it - the on-screen
   keyboard opens on accept, not on focus. Lua deltas (`NativeRenameUI.lua`): `examineNode`
   accepts `Examine` OR `Examine_c`; `isControllerPanel` (the `Examine_c` node is
-  present) tells the layouts apart; a global `Ext.Events.ControllerButtonInput` hook
-  (`onControllerButton`) is the controller counterpart of the mouse hook -
-  `MouseButtonInput` never fires on a controller and there is no panel-open event. It
-  only reconciles lifecycle and, unlike the mouse hook, ALWAYS schedules one post-settle re-poll:
-  the button that OPENS Examine fires the hook while the panel is still mid-open, and a
-  player who then navigates with the left STICK (no further button events) would
-  otherwise never get the panel wired - so we do NOT poll the stick axis (that would
-  scan on every stick movement during normal play). `wirePanel` auto-enables editing for
-  a renamable manually-examined summon on controller (there is no click to start it).
+  present) tells the layouts apart; lifecycle needs no controller-specific detector -
+  `Controller.xaml` extends the same `PlayerHUD` state with `NysHudOverlay`, so its
+  `b:DataTrigger` detects the controller Examine open exactly as on keyboard, with no input hook
+  or stick-axis polling. `wirePanel` auto-enables editing for a renamable summon (keyboard and
+  controller alike).
   **Advancing a queued multi-summon is the explicit Confirm button.** The
   `NYS_ConfirmButton` (`confirmCurrent` -> `onFieldEnter`) is the sole advance trigger on BOTH
   layouts, stacked above Skip and focusable via `FocusableButtonStyleMinimal`; the field blur is
@@ -325,8 +332,7 @@ the game.
   `TickBox` inside is a non-interactive state indicator), and the dropdown is three focusable
   choice buttons (the current value bold/accent) reusing the same `NysSelectX` commands. The
   toggles are driven by per-boolean `Nys*Command`s added to `NativeConfigUI`'s viewmodels
-  (the keyboard page still uses the mouse `TwoWay`/pill path, unchanged). Trace with
-  `!nys_uidebug`.
+  (the keyboard page still uses the mouse `TwoWay`/pill path, unchanged).
 
 ## Project Structure
 
@@ -345,6 +351,7 @@ NameYourSummons/                     <- pak this folder
           NameWriter.lua             the two writes that do the renaming
           SummonClassifier.lua       pure tag-name -> creature-type category + per-type setting keys
           LocaKeys.lua               UI localisation handles: semantic key -> { handle, en } + L(key)
+          Trace.lua                  full-detail JSONL tracing to a per-state file (nys-trace-*.jsonl); !nys_trace toggles
           Util.lua                   uuid / sanitising / key / loca-handle helpers
         Server/
           Store.lua                  ModVar persistence
@@ -358,8 +365,9 @@ NameYourSummons/                     <- pak this folder
       metadata.lsf                   UI-mod marker (empty config)
       Pages/Examine.xaml             keyboard Examine override: injects the editable name field, settings gear, and native settings overlay (NYS_SettingsPanel) for summons
       Pages/Examine_c.xaml           controller Examine override: the same controls injected into the game's controller Examine layout, controller-navigable via ls:MoveFocus.Focusable
-      StateMachines/Keyboard.xaml    overrides only the Examine state so it loads our Examine.xaml
-      StateMachines/Controller.xaml  overrides only the Examine state so the controller layout loads our Examine_c.xaml
+      Pages/NysHudOverlay.xaml       persistent overlay merged into the always-active PlayerHUD; its b:DataTrigger on the examine target is how the mod detects a manual Examine open (see "Native UI" rule 5)
+      StateMachines/Keyboard.xaml    overrides the Examine state to load Examine.xaml, and extends PlayerHUD with NysHudOverlay
+      StateMachines/Controller.xaml  overrides the Examine state to load Examine_c.xaml, and extends PlayerHUD with NysHudOverlay
   Localization/<Language>/           UI string tables (pak root, sibling of Mods/); one folder per language
     NameYourSummons.loca.xml         .loca.xml source (committed); make.ps1 build compiles it to binary .loca
 ```
@@ -462,10 +470,19 @@ Diagnostic console commands (server state unless noted):
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
 | `!nys_clear` | wipe all saved names |
+| `!nys_trace` | toggle full-detail JSONL tracing to `nys-trace-<state>.jsonl` (registered in BOTH states; run from the matching console context) |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to
 paste that output when a name will not stick.
+
+`Shared/Trace.lua` writes every channel payload (both directions), watcher
+decision, store write, and swallowed pcall failure as one JSON line per event to
+`nys-trace-client.jsonl` / `nys-trace-server.jsonl` in
+`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Script Extender\`, flushed per
+line so the record survives a crash. It is OFF by default; toggle it on with
+`!nys_trace` (in both states) when reproducing an issue, then ask the user for
+both files instead of pasted console excerpts.
 
 ## Tooling and Quality Gates
 

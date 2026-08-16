@@ -72,6 +72,24 @@ _G.Ext = {
 	}),
 	Osiris = { RegisterListener = function() end },
 	RegisterConsoleCommand = function() end,
+	IsServer = function()
+		return false
+	end,
+	IO = {
+		SaveFile = function()
+			return true
+		end,
+		LoadFile = function()
+			return nil
+		end,
+	},
+	Json = {
+		-- A shape-preserving stand-in: specs assert on decoded entries via
+		-- Trace.EntryFor, not on real JSON text.
+		Stringify = function(data)
+			return "<json:" .. tostring(data) .. ">"
+		end,
+	},
 }
 
 _G.Osi = setmetatable({}, {

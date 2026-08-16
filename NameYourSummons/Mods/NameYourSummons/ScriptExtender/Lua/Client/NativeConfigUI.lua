@@ -29,6 +29,7 @@
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 local Loca = Ext.Require("Shared/LocaKeys.lua")
@@ -281,6 +282,7 @@ local function onSettingWrite(context)
 	if suppressWrite then
 		return
 	end
+	Trace.Log("config", "onSettingWrite", { Viewport = viewportOf(context) })
 	recomputeEnabled(context)
 	pushSettings(viewportOf(context))
 end
@@ -291,6 +293,7 @@ local function pushIfLive(context)
 	if suppressWrite then
 		return
 	end
+	Trace.Log("config", "pushIfLive", { Viewport = viewportOf(context) })
 	pushSettings(viewportOf(context))
 end
 
@@ -313,6 +316,11 @@ local function onNameWrite(context)
 	if text == "" or text == session.originalNames[id] then
 		return
 	end
+	Trace.Log(
+		"config",
+		"onNameWrite commit",
+		{ Viewport = viewportOf(context), Key = meta.Key, Slot = meta.Slot, Name = text }
+	)
 	session.originalNames[id] = text
 	Channels.RenameName:SendToServer({ Key = meta.Key, Slot = meta.Slot, Name = text })
 end
@@ -630,8 +638,10 @@ end
 --- bind it as the DataContext, then load everything under a new generation.
 ---@param id integer
 function populate(id)
+	Trace.Log("config", "populate", { Viewport = id })
 	local vm = buildViewModel(id)
 	if not vm then
+		Trace.Log("config", "populate: no viewmodel", { Viewport = id })
 		return
 	end
 	local panel = panelFinder and panelFinder(id, "NYS_SettingsPanel")
@@ -676,6 +686,7 @@ end
 --- idempotent.
 ---@param id integer
 function NativeConfigUI.Flush(id)
+	Trace.Log("config", "Flush", { Viewport = id })
 	flushStaged(id)
 	sessions[id] = nil
 end

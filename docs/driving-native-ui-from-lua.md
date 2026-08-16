@@ -166,6 +166,80 @@ The live implementation (`Client/NativeRenameUI.lua`) guards every call with
 `pcall` and fetches each handle fresh; the resource is planted in
 `GUI/Pages/Examine.xaml`.
 
+## The inverse: getting a Lua callback when a game panel opens
+
+BG3SE raises no widget/panel lifecycle event (no "panel opened", `GetStateMachine()`
+is stubbed to `nullptr`), and the page you override cannot signal Lua on its own:
+
+- A type declared in XAML from `Ext.UI.RegisterType` (`<se:MyType/>`) is instantiated
+  by the XAML parser as a bare `BaseComponent` WITHOUT the registered properties, so
+  its `WriteCallback` never fires. The callback only reaches instances Lua itself
+  created with `Ext.UI.Instantiate` and set as a `DataContext`.
+- `Ext.UI.GetRoot().Resources` is not a mutable dictionary from Lua, so a Lua-owned VM
+  cannot be injected for a `{DynamicResource}` binding either.
+
+So do not try to make the overridden page announce itself. Instead **own a persistent
+widget in an always-active game state**, wire it once, and read the panel state from a
+game binding inside it.
+
+1. Merge your own widget into an always-active state via `ModType="Extend"` in the
+   state machine (the base game uses `Extend` to add to a state without replacing it).
+   The in-game HUD is the `PlayerHUD` state (unpack `Game.pak`
+   `Mods/MainUI/GUI/StateMachines/*.xaml` with `divine` to confirm), present on both
+   keyboard and controller:
+
+   ```xml
+   <ls:State Name="PlayerHUD" ModType="Extend" Layout="Player" Owner="Player">
+       <ls:State.Widgets>
+           <ls:StateWidget Filename="MyOverlay.xaml" Layer="HUD" IgnoreHitTest="True"/>
+       </ls:State.Widgets>
+   </ls:State>
+   ```
+
+2. In that overlay, put a `b:DataTrigger` on a game DataContext path that changes when
+   the panel opens, invoking a `Command` on a VM you set as a child element's
+   `DataContext` (the overlay root inherits the player context, so `CurrentPlayer.*`
+   resolves - the same path the Examine page uses):
+
+   ```xml
+   <Grid x:Name="MyOverlayRoot" IsHitTestVisible="False">
+       <b:Interaction.Triggers>
+           <b:DataTrigger Binding="{Binding CurrentPlayer.UIData.ExamineTarget.CharacterType}" Value="Summon">
+               <b:InvokeCommandAction Command="{Binding DataContext.MyDetectCommand, ElementName=MyVmHost}"/>
+           </b:DataTrigger>
+       </b:Interaction.Triggers>
+       <Grid x:Name="MyVmHost"/>   <!-- Lua sets this element's DataContext to the VM -->
+   </Grid>
+   ```
+
+3. Wire it from Lua: find the host, instantiate the VM, hook the command, set it as the
+   host's `DataContext`. The overlay is always present, so wire once - but the HUD is
+   rebuilt on session load AND on input-mode switch (keyboard <-> controller) with no
+   event, so re-wire on a slow heartbeat, detecting an already-wired host by a marker
+   prop (do not latch a one-time flag):
+
+   ```lua
+   Ext.UI.RegisterType("MyDetectVM", {
+       MyDetectCommand = { Type = "Command" },
+       Wired = { Type = "Bool", Notify = true },
+   })
+   -- heartbeat: if the current host lacks our marker, Instantiate the VM, SetHandler on
+   -- MyDetectCommand, set Wired=true, and assign it as host.DataContext.
+   ```
+
+Gotchas:
+- The game raises `b:DataTrigger` on a real binding path, but an `ls:LSTextBox.Text`
+  OneWay binding does NOT update from the source (an input control ignores
+  binding-driven text) - do not use a text box as a passive signal readout.
+- The panel WIDGET lags the DataContext being set by up to a few hundred ms, so the
+  command handler should reconcile on a short bounded retry, not a single fixed delay.
+- A `DataTrigger` on `== "Summon"` fires on the transition INTO that value, not on
+  close or a same-type swap; if you need those, force-fresh your per-panel wiring on
+  each signal rather than relying on the trigger alone.
+
+This is how `NativeRenameUI` detects a manual Examine open (`GUI/Pages/NysHudOverlay.xaml`
++ the `PlayerHUD` `Extend` in both state machines) without any input hook.
+
 ## Recipe
 
 1. Identify the command in the game's XAML (extract it with `divine.exe`; see
