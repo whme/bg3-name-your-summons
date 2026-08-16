@@ -62,7 +62,7 @@ jobs:
           subject-path: artifacts/NameYourSummons-${{ github.ref_name }}.zip
 
       - name: Create draft release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
