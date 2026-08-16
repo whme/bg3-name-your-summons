@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: MIT
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 
 local Store = {}
 
@@ -91,6 +92,7 @@ end
 ---@param key string
 ---@param name string
 function Store.Set(key, name)
+	Trace.Log("store", "Set", { Key = key, Name = name })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	t[key] = name
@@ -100,6 +102,7 @@ end
 
 ---@param key string
 function Store.Forget(key)
+	Trace.Log("store", "Forget", { Key = key })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	t[key] = nil
@@ -127,6 +130,7 @@ end
 ---@param key string
 ---@param name string
 function Store.AppendUnique(key, name)
+	Trace.Log("store", "AppendUnique", { Key = key, Name = name })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	local list = asList(t[key])
@@ -140,6 +144,7 @@ end
 ---@param key string
 ---@param list string[]
 function Store.SetUnique(key, list)
+	Trace.Log("store", "SetUnique", { Key = key, List = list })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	t[key] = list
@@ -151,6 +156,7 @@ end
 ---@param slot integer
 ---@param name string
 function Store.SetSlot(key, slot, name)
+	Trace.Log("store", "SetSlot", { Key = key, Slot = slot, Name = name })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	local list = asList(t[key])
@@ -167,6 +173,7 @@ end
 ---@param key string
 ---@param slot integer
 function Store.ForgetSlot(key, slot)
+	Trace.Log("store", "ForgetSlot", { Key = key, Slot = slot })
 	local v = vars()
 	local t = v[VAR_NAMES] or {}
 	local list = asList(t[key])
@@ -236,8 +243,10 @@ end
 function Store.SetSetting(key, value)
 	local validate = WRITABLE_SETTINGS[key]
 	if not validate or not validate(value) then
+		Trace.Log("store", "SetSetting rejected", { Key = key, Value = value })
 		return false
 	end
+	Trace.Log("store", "SetSetting", { Key = key, Value = value })
 	local v = vars()
 	local t = v[VAR_SETTINGS] or {}
 	t[key] = value

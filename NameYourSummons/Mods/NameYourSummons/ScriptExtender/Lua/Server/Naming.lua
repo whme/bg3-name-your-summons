@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: MIT
 local Util = Ext.Require("Shared/Util.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Writer = Ext.Require("Shared/NameWriter.lua")
 
@@ -34,6 +35,7 @@ end
 function Naming.Apply(ref, name)
 	local e = Writer.Resolve(ref)
 	if not e then
+		Trace.Log("naming", "Apply failed: entity not found", { Ref = tostring(ref), Name = name })
 		return false, "entity not found"
 	end
 
@@ -46,14 +48,17 @@ function Naming.Apply(ref, name)
 
 	-- Must come first: an unregistered handle renders as nothing at all.
 	if not Writer.RegisterLoca(handle, name) then
+		Trace.Log("naming", "Apply failed: loca registration", { Ref = tostring(ref), Handle = handle })
 		return false, "could not register localisation handle"
 	end
 
 	-- Runtime loca registers at version 0; a stale version makes the lookup miss.
 	local ok, err = Writer.SetDisplayName(e, handle, 0, true)
 	if not ok then
+		Trace.Log("naming", "Apply failed: SetDisplayName", { Ref = tostring(ref), Error = tostring(err) })
 		return false, err
 	end
+	Trace.Log("naming", "Applied name", { Ref = tostring(ref), Name = name, Handle = handle })
 
 	-- Remote peers have their own localisation table and have not seen this handle.
 	pcall(function()
@@ -110,6 +115,7 @@ function Naming.Restore(ref, rootTemplate)
 
 	local uuid = e.Uuid and tostring(e.Uuid.EntityUuid) or tostring(ref)
 	Util.Log(("Restored %s to its original name"):format(uuid))
+	Trace.Log("naming", "Restored original name", { Summon = uuid, Template = rootTemplate })
 	return true
 end
 

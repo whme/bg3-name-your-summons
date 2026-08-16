@@ -43,5 +43,13 @@
             </ls:State.Events>
         </ls:State>
 
+        <!-- Merge NysHudOverlay into the always-active PlayerHUD (ModType="Extend" adds, does not
+             replace) for examine detection. Attributes mirror the base controller state. -->
+        <ls:State Name="PlayerHUD" ModType="Extend" Layout="Adaptive" Owner="Player">
+            <ls:State.Widgets>
+                <ls:StateWidget Filename="NysHudOverlay.xaml" Layer="HUD" IgnoreHitTest="True"/>
+            </ls:State.Widgets>
+        </ls:State>
+
     </ls:StateMachine.States>
 </ls:StateMachine>

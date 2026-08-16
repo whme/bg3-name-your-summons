@@ -1,11 +1,16 @@
 -- SPDX-License-Identifier: MIT
 local Util = Ext.Require("Shared/Util.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 local Store = Ext.Require("Server/Store.lua")
 local Naming = Ext.Require("Server/Naming.lua")
 local Classifier = Ext.Require("Shared/SummonClassifier.lua")
 
 local Watcher = {}
+
+local function twatch(msg, data)
+	Trace.Log("watcher", msg, data)
+end
 
 -- Keys already asked about this session, so a dismissed prompt is not re-shown on
 -- every re-cast.
@@ -212,8 +217,10 @@ end
 ---@param savedName string|nil
 ---@param slot integer|nil  the unique-set index this prompt replaces, if re-asking
 local function sendPrompt(key, summonGuid, rootTemplate, ownerUuid, ownerRaw, scope, savedName, slot)
+	twatch("sendPrompt scheduled", { Key = key, Summon = summonGuid, Scope = scope, Slot = slot })
 	Ext.Timer.WaitFor(400, function()
 		if (pending[key] or 0) == 0 then
+			twatch("sendPrompt aborted, prompt retracted during defer", { Key = key })
 			return
 		end
 		pauseFor(ownerUuid)
@@ -244,6 +251,7 @@ end
 ---@param rootTemplate string
 local function resolveGroup(key, batch, ownerUuid, ownerRaw, rootTemplate)
 	local saved = Store.Get(key)
+	twatch("resolveGroup", { Key = key, Batch = batch, Saved = saved })
 	if saved == nil then
 		return
 	end
@@ -381,6 +389,7 @@ function pauseFor(ownerUuid)
 			paused = true
 		end
 	end
+	twatch("pauseFor", { Owner = ownerUuid, Paused = paused })
 end
 
 --- Lift the pause once nothing is waiting on a name. A summon the party controls is
@@ -406,6 +415,7 @@ local function unpauseIfIdle()
 		end
 	end
 	paused = false
+	twatch("unpauseIfIdle: pause lifted")
 end
 
 --- Split a storage key into the owner/template fields the client groups by.
@@ -429,7 +439,9 @@ end
 ---@param attempt integer|nil
 function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	attempt = attempt or 1
+	twatch("HandleSummon", { Summon = summonGuid, Template = rootTemplate, Attempt = attempt })
 	if not Osi.Exists(summonGuid) or Osi.Exists(summonGuid) == 0 then
+		twatch("HandleSummon: summon no longer exists", { Summon = summonGuid })
 		return
 	end
 
@@ -437,11 +449,13 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	if not ownerRaw or ownerRaw == "" then
 		-- The owner link is not wired up yet on some summon paths; retry briefly.
 		if attempt < 5 then
+			twatch("HandleSummon: no owner yet, retrying", { Summon = summonGuid, Attempt = attempt })
 			Ext.Timer.WaitFor(200, function()
 				Watcher.HandleSummon(summonGuid, rootTemplate, attempt + 1)
 			end)
 		else
 			Util.Warn("Gave up waiting for an owner on " .. tostring(summonGuid))
+			twatch("HandleSummon: gave up waiting for owner", { Summon = summonGuid })
 		end
 		return
 	end
@@ -455,12 +469,14 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	-- An already-named summon: reapply the saved name(s) and, with PromptForNamed on,
 	-- re-ask. resolveGroup honours the current mode, so a mode change applies next summon.
 	if saved ~= nil then
+		twatch("HandleSummon: known key -> scheduleResolve", { Key = key, Summon = summonGuid })
 		rememberType(key, summonGuid)
 		scheduleResolve(key, Util.ToUuid(summonGuid), ownerUuid, ownerRaw, rootTemplate)
 		return
 	end
 
 	if not ownerIsPlayer(ownerUuid) then
+		twatch("HandleSummon: owner is not a party member", { Key = key, Owner = ownerUuid })
 		return
 	end
 	-- Record the type regardless of prompt settings, so a summon skipped or later
@@ -468,6 +484,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	rememberType(key, summonGuid)
 
 	if not settings.PromptOnSummon then
+		twatch("HandleSummon: PromptOnSummon off", { Key = key })
 		return
 	end
 
@@ -476,11 +493,13 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	-- requiring both would make the opt-in look broken).
 	local isStory = Util.IsStorySummon(rootTemplate)
 	if isStory and not settings.AllowStorySummons then
+		twatch("HandleSummon: story summon, opt-in off", { Key = key })
 		return
 	end
 
 	-- Only prompt for enabled summon types; opted-in story summons bypass this.
 	if not isStory and not Classifier.IsEligible(Naming.TagNamesOf(summonGuid), settings) then
+		twatch("HandleSummon: creature type not enabled", { Key = key })
 		return
 	end
 
@@ -491,6 +510,7 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	if mode == "unique" then
 		local uuid = Util.ToUuid(summonGuid)
 		if askedUnique[uuid] then
+			twatch("HandleSummon: unique creature already asked", { Key = key, Summon = uuid })
 			return
 		end
 		askedUnique[uuid] = true
@@ -506,10 +526,13 @@ function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 		-- prompt and leave the group unnamed WITHOUT storing a skip, so a mode change
 		-- re-prompts it next cast.
 		if mode == "skip" and (pending[key] or 0) > 0 then
+			twatch("HandleSummon: skip-mode sibling -> retract", { Key = key })
 			pending[key] = nil
 			retract(key, ownerRaw)
 			unpauseIfIdle()
 			scheduleMultiSkipReset(key)
+		else
+			twatch("HandleSummon: already asked this session", { Key = key, Mode = mode })
 		end
 		return
 	end
@@ -522,10 +545,11 @@ end
 -- There is no "summon created" Osiris event; EnteredLevel fires for every object
 -- spawning into a level and hands us the root template (the stable half of the key).
 function Watcher.Register()
-	Ext.Osiris.RegisterListener("EnteredLevel", 3, "after", function(objectGuid, rootTemplate, _level)
+	Ext.Osiris.RegisterListener("EnteredLevel", 3, "after", function(objectGuid, rootTemplate, level)
 		if not isSummon(objectGuid) then
 			return
 		end
+		twatch("summon entered level", { Summon = objectGuid, Template = rootTemplate, Level = level })
 		-- Defer: a summon's owner link and display name are not populated on the tick
 		-- it enters the level.
 		Ext.Timer.WaitFor(100, function()
@@ -567,6 +591,7 @@ function Watcher.ReapplyExisting()
 	end
 
 	Util.Log(("Reapply: named %d of %d live summon(s)."):format(applied, #summons))
+	twatch("ReapplyExisting done", { Applied = applied, LiveSummons = #summons, ApplyNames = applyNames })
 end
 
 function Watcher.RegisterNet()

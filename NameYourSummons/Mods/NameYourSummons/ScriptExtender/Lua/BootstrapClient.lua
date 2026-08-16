@@ -1,6 +1,10 @@
 -- SPDX-License-Identifier: MIT
 local Util = Ext.Require("Shared/Util.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 Ext.Require("Shared/Channels.lua")
+
+Trace.Register()
+Trace.Log("bootstrap", "client bootstrap")
 
 local Loca = Ext.Require("Client/Loca.lua")
 local NativeConfigUI = Ext.Require("Client/NativeConfigUI.lua")
@@ -32,5 +36,15 @@ NativeRenameUI.SetPanelCloseHandler(NativeConfigUI.Flush)
 NativeRenameUI.Register()
 
 Ext.Events.SessionLoaded:Subscribe(function()
+	Trace.Log("session", "client SessionLoaded")
 	Util.Log("Client ready. Examine a summon and click the gear to manage saved names.")
+end)
+
+pcall(function()
+	Ext.Events.GameStateChanged:Subscribe(function(e)
+		Trace.Log("gamestate", "client GameStateChanged", {
+			FromState = tostring(e.FromState),
+			ToState = tostring(e.ToState),
+		})
+	end)
 end)

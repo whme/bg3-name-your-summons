@@ -20,5 +20,6 @@ require("name_writer_spec")
 require("classifier_spec")
 require("locakeys_spec")
 require("loca_xml_spec")
+require("trace_spec")
 
 os.exit(lu.LuaUnit.run())

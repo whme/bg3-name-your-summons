@@ -15,9 +15,9 @@
     - Controls we add are driven by per-element MVVM, not global mouse hit-testing:
       the gear's Command binds to a viewmodel on its nested DataContext; the field
       commits via its own per-element subscriptions.
-    - There is no panel-open event (Ext.UI.GetStateMachine() is nil), so one global
-      mouse hook and one controller-button hook are the sole lifecycle detectors
-      (panels present in the tree = open).
+    - Manual-open detection is a persistent HUD overlay's DataTrigger, not an input
+      hook (installHudDetector; see AGENTS.md rule 5). The old per-click tree scan
+      crashed on character creation's foreign tree (#99).
     - Close a panel from Lua with closeExaminePanel: drive its CustomEvent command
       with a boxed string planted as a XAML resource.
     - Never compare a Noesis object with `== nil` (its __eq crashes on an expired
@@ -25,6 +25,7 @@
 ]]
 
 local Util = Ext.Require("Shared/Util.lua")
+local Trace = Ext.Require("Shared/Trace.lua")
 local Channels = Ext.Require("Shared/Channels.lua")
 
 local NativeRenameUI = {}
@@ -33,14 +34,6 @@ local NativeRenameUI = {}
 -- the settings overlay without a circular require. Both take the panel's PlayerId.
 local onGearClickHandler -- fun(id) - called when a panel's gear is clicked
 local panelCloseHandler -- fun(id) - called when a panel closes (commit its staged config edits)
-
--- Verbose tracing of the gear/field/naming flow; toggle with `!nys_uidebug`.
-local diagEnabled = false
-local function log(...)
-	if diagEnabled then
-		Util.Log("NYS-UI:", ...)
-	end
-end
 
 local UUID_PATTERN = "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
 
@@ -66,12 +59,33 @@ local EXAMINE_SETTLE_MS = 400
 -- saves once, not per keystroke.
 local TEXT_COMMIT_DEBOUNCE_MS = 20
 
+-- Period of the reconcile loop that guards the world-pause while a prompt is pending.
+local SAFETY_RECONCILE_MS = 1000
+
 local function safe(fn, ...)
 	local ok, res = pcall(fn, ...)
 	if ok then
 		return res
 	end
+	if Trace.Enabled() then
+		Trace.Log("swallowed", "safe() caught", { Error = tostring(res) })
+	end
 	return nil
+end
+
+---@return string|nil  the client game state ("Running", "Paused", ...), nil when unreadable
+local function gameStateName()
+	local state = safe(Ext.Utils.GetGameState)
+	return state ~= nil and tostring(state) or nil
+end
+
+--- Scan only while the world is up: a VisualChild walk on a foreign tree (character creation, #99)
+--- or a half-torn-down level can access-violate past pcall. Fails closed on any other or unreadable
+--- state; the next heartbeat retries.
+---@return boolean
+local function scanAllowed()
+	local state = gameStateName()
+	return state == "Running" or state == "Paused"
 end
 
 -- Hoisted out of the per-node walk to avoid a closure per access. VisualChild is 1-based.
@@ -106,7 +120,8 @@ end
 ---@param predicate fun(node:any):boolean
 ---@return any|nil
 local function findNode(node, depth, predicate)
-	if node == nil or depth > SEARCH_DEPTH_LIMIT then
+	-- `not node`, never `== nil`: an expired Noesis node throws via __eq.
+	if not node or depth > SEARCH_DEPTH_LIMIT then
 		return nil
 	end
 	if predicate(node) then
@@ -126,7 +141,7 @@ end
 ---@param name string
 ---@return any|nil
 local function findFrom(root, name)
-	if root == nil then
+	if not root then
 		return nil
 	end
 	return findNode(root, 0, function(node)
@@ -317,7 +332,6 @@ local function panelState(id)
 	if not st then
 		st = {
 			id = id,
-			controller = false,
 			wired = false,
 			fieldSubs = {}, -- { { field = node, handle = h }, ... }
 			lastSent = nil,
@@ -336,30 +350,6 @@ local function panelState(id)
 	return st
 end
 
---- A snapshot of a viewport's state for tracing (skipped unless tracing is on).
----@param id integer
----@return string
-local function uiState(id)
-	if not diagEnabled then
-		return ""
-	end
-	local st = panels[id]
-	if not st then
-		return "[id=" .. tostring(id) .. " no-state]"
-	end
-	return string.format(
-		"[id=%s examine=%s field=%s wired=%s | current=%s answered=%s awaitingOpen=%s queued=%d]",
-		tostring(id),
-		tostring(examineNodeById(id) ~= nil),
-		tostring(liveFieldIn(id) ~= nil),
-		tostring(st.wired),
-		st.current and st.current.SummonUuid or "none",
-		tostring(st.answered),
-		tostring(st.awaitingOpen),
-		#st.queue
-	)
-end
-
 --- Refresh the cached AllowStorySummons setting (async; for the NEXT open).
 local function refreshSettingsCache()
 	pcall(function()
@@ -371,8 +361,9 @@ local function refreshSettingsCache()
 	end)
 end
 
--- Forward declarations for the mutually-recursive on-summon flow.
-local showNext, openExamine, answerSession, getExamineCommand, entityHandleFor
+-- Forward declarations for the mutually-recursive on-summon flow (and the wire/unwire
+-- pair, which reference each other via the deferred swap-rewire).
+local showNext, openExamine, answerSession, getExamineCommand, entityHandleFor, unwirePanel
 
 ---------------------------------------------------------------------------
 -- Rename primitives
@@ -449,7 +440,6 @@ local function enableEditing(id)
 	end
 	setFieldEditable(field, true)
 	st.editEnabled = true
-	log("enableEditing", uiState(id))
 end
 
 --- Revert viewport `id`'s field to plain text (a summon that became forbidden while open).
@@ -461,7 +451,6 @@ local function disableEditing(id)
 	if field then
 		setFieldEditable(field, false)
 	end
-	log("disableEditing", uiState(id))
 end
 
 --- Reset per-summon state for a viewport's new `current` request.
@@ -478,7 +467,6 @@ local function abortRemaining(st)
 	if not st.current and #st.queue == 0 then
 		return
 	end
-	log("abortRemaining: current =", st.current and st.current.SummonUuid or "none", "queued =", #st.queue)
 	if st.current and not st.answered then
 		answerSession(st.current, "", true)
 	end
@@ -520,12 +508,10 @@ local function commitField(id, field)
 	end
 	local raw = nodeText(field)
 	local name = Util.Sanitise(raw)
-	log("commitField: text =", name, "lastSent =", st.lastSent)
 	if name == "" or name == st.lastSent then
 		return
 	end
 	local uuid = examinedSummonUuidIn(id)
-	log("commitField: id =", id, "examined uuid =", uuid, "session =", st.current and st.current.SummonUuid or "none")
 	if uuid == nil then
 		return
 	end
@@ -534,7 +520,6 @@ local function commitField(id, field)
 			st.lastSent = name
 			st.answered = true
 		end
-		log("commitField: on-summon answered =", st.answered)
 		return
 	end
 	if submitRename(uuid, raw) then
@@ -566,13 +551,11 @@ local function flushName(id)
 		if answerSession(st.current, name) then
 			st.lastSent = name
 			st.answered = true
-			log("flushName: answered on-summon", id, name)
 		end
 	elseif field then
 		local uuid = examinedSummonUuidIn(id)
 		if uuid and submitRename(uuid, raw) then
 			st.lastSent = name
-			log("flushName: renamed", id, name)
 		end
 	end
 end
@@ -608,7 +591,6 @@ local function onFieldEnter(id)
 			st.lastSent = name
 		end
 	end
-	log("onFieldEnter: advancing", uiState(id))
 	showNext(id)
 end
 
@@ -628,7 +610,6 @@ local function skipCurrent(id)
 	if not st or not st.current or st.awaitingOpen then
 		return
 	end
-	log("skipCurrent:", st.current.SummonUuid)
 	if answerSession(st.current, "", true) then
 		showNext(id)
 	end
@@ -638,7 +619,6 @@ end
 --- Opening the gear leaves the field, so commit any typed name first.
 ---@param id integer
 local function onGearClick(id)
-	log("onGearClick -> settings overlay for viewport", id)
 	flushName(id)
 	if onGearClickHandler then
 		onGearClickHandler(id)
@@ -675,7 +655,9 @@ local function wirePanel(id)
 	if st.wired then
 		return
 	end
-	local field = liveFieldIn(id)
+	-- One anchored walk for the panel node; every named lookup below searches its subtree.
+	local examine = examineNodeById(id)
+	local field = findFrom(examine, "NYS_NameInput")
 	if not field then
 		return
 	end
@@ -691,6 +673,7 @@ local function wirePanel(id)
 			st.fieldSubs[#st.fieldSubs + 1] = { field = field, handle = handle }
 		end
 	end
+
 	-- Save the name on every text change - the one commit path, since the field's blur is
 	-- not reliably delivered (esp. on controller). Saving does NOT advance a multi-summon
 	-- queue (commitField never calls showNext), so the next creature still needs the button.
@@ -716,7 +699,7 @@ local function wirePanel(id)
 	end)
 
 	-- Gear: nested DataContext = a fresh NYS_GearVM whose command opens THIS viewport's settings.
-	local gear = findNamedIn(id, "NYS_SettingsButton")
+	local gear = findFrom(examine, "NYS_SettingsButton")
 	if gear then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(GEAR_VM)
@@ -734,7 +717,7 @@ local function wirePanel(id)
 	end
 
 	-- Skip: nested DataContext = a fresh NYS_SkipVM; NysShowSkip hides it for single summons.
-	local skip = findNamedIn(id, "NYS_SkipButton")
+	local skip = findFrom(examine, "NYS_SkipButton")
 	if skip then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(SKIP_VM)
@@ -756,7 +739,7 @@ local function wirePanel(id)
 
 	-- Confirm: nested DataContext = a fresh NYS_ConfirmVM; the multi-summon advance trigger,
 	-- revealed on the same condition as Skip (a next summon is queued).
-	local confirm = findNamedIn(id, "NYS_ConfirmButton")
+	local confirm = findFrom(examine, "NYS_ConfirmButton")
 	if confirm then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(CONFIRM_VM)
@@ -777,14 +760,11 @@ local function wirePanel(id)
 	end
 
 	st.wired = true
-	log("wirePanel: wired", #st.fieldSubs, "field subs", uiState(id))
 
-	-- An on-summon prompt (current ~= nil) is the server asking for a name, so enable editing
-	-- now; a manually examined summon stays plain text until a click, except on controller
-	-- where there is no click.
+	-- Enable editing for any renamable summon (on-summon or manual); forbidden/non-summon stays plain.
 	local summonUuid = examinedSummonUuidIn(id)
 	st.forbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
-	if st.current ~= nil or (not st.forbidden and st.controller) then
+	if st.current ~= nil or (summonUuid ~= nil and not st.forbidden) then
 		enableEditing(id)
 	end
 end
@@ -792,7 +772,7 @@ end
 --- Drop viewport `id`'s per-element wiring (its field element is destroyed on close/swap,
 --- so unsubscribe is best-effort).
 ---@param id integer
-local function unwirePanel(id)
+function unwirePanel(id)
 	local st = panels[id]
 	if not st then
 		return
@@ -818,7 +798,6 @@ local function rewireStale(exclude)
 	for id in pairs(openIds) do
 		local st = panels[id]
 		if st and not st.awaitingOpen and not (exclude and exclude[id]) then
-			log("rewire panel (relayout):", id)
 			unwirePanel(id)
 			wirePanel(id)
 		end
@@ -833,7 +812,6 @@ local function closePanel(id)
 	if not st then
 		return
 	end
-	log("closePanel:", id, uiState(id))
 	-- Closing is a definitive "done": commit a typed-but-unblurred name (the field is gone,
 	-- so this uses the text tracked via TextChanged) before aborting the rest.
 	flushName(id)
@@ -849,6 +827,9 @@ end
 --- mid-open) and tear down any that closed. Returns the set of open ids.
 ---@return table
 local function pollLifecycle()
+	if not scanAllowed() then
+		return {}
+	end
 	local present = {}
 	local newIds = nil
 	forEachExamineNode(function(node)
@@ -860,7 +841,6 @@ local function pollLifecycle()
 				newIds[id] = true
 			end
 			local st = panelState(id)
-			st.controller = widgetName(node) == "Examine_c"
 			if not st.awaitingOpen then
 				wirePanel(id)
 			end
@@ -884,48 +864,35 @@ local function pollLifecycle()
 	return present
 end
 
---- Global left-click hook - a lifecycle detector only (there is no panel-open event; it
---- does NOT hit-test the per-element gear/close/field bindings). The mouse cannot say which
---- viewport was clicked, so starting editing enables it on every open renamable manual panel.
----@param e any
-local function onMouseButton(e)
-	local pressed = safe(function()
-		return e.Pressed
-	end)
-	local button = safe(function()
-		return e.Button
-	end)
-	if pressed ~= true or button ~= 1 then
-		return
-	end
-	local present = pollLifecycle()
-	for id in pairs(present) do
-		local st = panels[id]
-		if st and st.current == nil and not st.editEnabled and not st.forbidden then
-			enableEditing(id)
+local safetyArmed = false
+
+--- Whether any viewport still has an unanswered prompt (current or queued).
+---@return boolean
+local function anyPromptPending()
+	for _, st in pairs(panels) do
+		if st.current ~= nil or #st.queue > 0 then
+			return true
 		end
 	end
-	-- A click may start a close animation not yet reflected in the tree; reconcile once
-	-- after it settles. One-shot, not a poll loop.
-	if next(present) ~= nil or next(panels) ~= nil then
-		Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
-	end
+	return false
 end
 
---- Global controller-button hook - the controller counterpart of onMouseButton
---- (MouseButtonInput never fires on a controller). It ALWAYS re-polls after a settle because
---- the button that OPENS Examine fires this while the panel is still mid-open, and a
---- stick-only navigation produces no further events.
----@param e any
-local function onControllerButton(e)
-	local pressed = safe(function()
-		return e.Pressed
-	end)
-	if pressed ~= true then
+--- Reconcile on a slow clock while a prompt is pending so a missed close cannot leave the server
+--- paused forever; self-disarms once nothing is pending.
+local function armSafetyReconcile()
+	if safetyArmed then
 		return
 	end
-	pollLifecycle()
-	Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
+	safetyArmed = true
+	local function tick()
+		if not anyPromptPending() then
+			safetyArmed = false
+			return
+		end
+		pollLifecycle()
+		Ext.Timer.WaitForRealtime(SAFETY_RECONCILE_MS, tick)
+	end
+	Ext.Timer.WaitForRealtime(SAFETY_RECONCILE_MS, tick)
 end
 
 -- Opening Examine on a specific creature and viewport.
@@ -1036,7 +1003,6 @@ end
 function openExamine(req)
 	local command = getExamineCommand(req.ViewportChar)
 	local handle = entityHandleFor(req.SummonUuid)
-	log("openExamine:", req.SummonUuid, "command =", command and true or false, "handle =", handle and true or false)
 	local canExec = nil
 	local opened = command
 		and handle
@@ -1066,7 +1032,6 @@ end
 function showNext(id)
 	local st = panelState(id)
 	st.current = table.remove(st.queue, 1)
-	log("showNext:", id, "next =", st.current and st.current.SummonUuid or "none", "queued =", #st.queue)
 	if not st.current then
 		return
 	end
@@ -1167,8 +1132,97 @@ function NativeRenameUI.SetPanelCloseHandler(fn)
 	panelCloseHandler = fn
 end
 
--- Event names confirmed against bg3se source (LuaClient.cpp ThrowEvent "MouseButtonInput");
--- the IDE helper's "EclLua*" names are stale for this build, and Ext.Events is not enumerable.
+local DETECT_VM = "NYS_DetectVM"
+local HUD_WIRE_HEARTBEAT_MS = 1000
+local hudInstalled = false
+local reconcileGen = 0 -- bumped per signal so a newer change supersedes older retries
+
+--- Detected by a `NysWired` Bool marker prop, not the Command (reading a Command back is unreliable).
+---@param host any
+---@return boolean
+local function hostIsWired(host)
+	local dc = host and safe(function()
+		return host.DataContext
+	end)
+	return (dc and dcProp(dc, "NysWired")) == true
+end
+
+--- The panel widget lags the examine target, so reconcile on a short bounded retry (gen-deduped).
+--- Manual panels are unwired first so a re-open re-subscribes; an active on-summon session is left alone.
+local function onExamineDetected()
+	reconcileGen = reconcileGen + 1
+	local gen = reconcileGen
+	for id, st in pairs(panels) do
+		if st.wired and st.current == nil then
+			unwirePanel(id)
+		end
+	end
+	local function pass(triesLeft)
+		if gen ~= reconcileGen then
+			return
+		end
+		pollLifecycle()
+		if triesLeft > 0 then
+			Ext.Timer.WaitForRealtime(100, function()
+				pass(triesLeft - 1)
+			end)
+		end
+	end
+	pass(6)
+end
+
+---@param host any
+local function wireHost(host)
+	local vm = safe(function()
+		return Ext.UI.Instantiate(DETECT_VM)
+	end)
+	if not vm then
+		return
+	end
+	pcall(function()
+		vm.NysDetectCommand:SetHandler(onExamineDetected)
+	end)
+	pcall(function()
+		vm.NysWired = true
+	end)
+	pcall(function()
+		host.DataContext = vm
+	end)
+end
+
+--- Split-screen gives each viewport its own PlayerHUD, so its own NysHudOverlay: wire every host
+--- or a player's manual Examine goes undetected.
+local function ensureOverlaysWired()
+	findNode(contentRoot(), 0, function(node)
+		if widgetName(node) == "NYS_HudVmHost" and not hostIsWired(node) then
+			wireHost(node)
+		end
+		return false -- always false: visit every host, wiring as a side effect
+	end)
+end
+
+--- The HUD is rebuilt with no event on session load and input-mode switch, so a heartbeat is the
+--- only reliable re-wire.
+local function installHudDetector()
+	if hudInstalled then
+		return
+	end
+	hudInstalled = true
+	pcall(function()
+		Ext.UI.RegisterType(DETECT_VM, {
+			NysDetectCommand = { Type = "Command" },
+			NysWired = { Type = "Bool", Notify = true },
+		})
+	end)
+	local function heartbeat()
+		if scanAllowed() then
+			ensureOverlaysWired()
+		end
+		Ext.Timer.WaitForRealtime(HUD_WIRE_HEARTBEAT_MS, heartbeat)
+	end
+	heartbeat()
+end
+
 function NativeRenameUI.Register()
 	pcall(function()
 		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" } })
@@ -1181,14 +1235,6 @@ function NativeRenameUI.Register()
 			CONFIRM_VM,
 			{ NysConfirmCommand = { Type = "Command" }, NysShowConfirm = { Type = "Bool" } }
 		)
-	end)
-
-	pcall(function()
-		Ext.Events.MouseButtonInput:Subscribe(onMouseButton)
-	end)
-	-- Controller-layout lifecycle detector; wrapped so a wrong event name cannot tear down the module.
-	pcall(function()
-		Ext.Events.ControllerButtonInput:Subscribe(onControllerButton)
 	end)
 
 	-- Seed cachedAllowStory: a fresh boot has not loaded persisted ModVars at Register, so
@@ -1226,7 +1272,6 @@ function NativeRenameUI.Register()
 			if not st.awaitingOpen and st.current == nil then
 				local examined = examinedSummonUuidIn(id)
 				if examined ~= nil and Util.ToUuid(examined) == Util.ToUuid(data.SummonUuid) then
-					log("SummonRenamed: refreshing viewport", id, "field to", data.Name)
 					setFieldTextIn(id, data.Name)
 				end
 			end
@@ -1240,9 +1285,9 @@ function NativeRenameUI.Register()
 			return
 		end
 		local id = viewportIdForChar(data.ViewportChar) or 1
-		log("AskName:", data.SummonUuid, "viewport =", id, "scope =", data.Scope)
 		local st = panelState(id)
 		table.insert(st.queue, data)
+		armSafetyReconcile()
 		if st.current == nil and not st.awaitingOpen then
 			showNext(id)
 		else
@@ -1272,6 +1317,8 @@ function NativeRenameUI.Register()
 					st.current = nil
 					st.answered = false
 					closeExaminePanel(id)
+					-- Nothing pending, so no other tick follows; reconcile once the close settles.
+					Ext.Timer.WaitForRealtime(2 * EXAMINE_SETTLE_MS, pollLifecycle)
 				end
 			else
 				refreshQueueButtons(id)
@@ -1279,11 +1326,7 @@ function NativeRenameUI.Register()
 		end
 	end)
 
-	-- Toggle verbose UI tracing from the client console: `!nys_uidebug`.
-	Ext.RegisterConsoleCommand("nys_uidebug", function()
-		diagEnabled = not diagEnabled
-		Util.Log("NYS-UI: tracing", diagEnabled and "ON" or "OFF")
-	end)
+	installHudDetector()
 end
 
 return NativeRenameUI
