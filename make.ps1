@@ -306,14 +306,14 @@ function Cmd-ValidateXml {
     if (Test-Path $meta) { $targets += Get-Item $meta }
 
     $fail = 0
-    foreach ($f in $targets) {
+    foreach ($file in $targets) {
         try {
             $doc = New-Object System.Xml.XmlDocument
             $doc.XmlResolver = $null # never fetch external DTDs/entities
-            $doc.Load($f.FullName)
+            $doc.Load($file.FullName)
         }
         catch {
-            Write-Host "validate-xml: NOT well-formed: $($f.FullName)"
+            Write-Host "validate-xml: NOT well-formed: $($file.FullName)"
             Write-Host "  $($_.Exception.Message)"
             $fail = 1
         }

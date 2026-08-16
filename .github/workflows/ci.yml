@@ -62,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./make.ps1 validate-xml
 
-  ascii:
+  ascii-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
