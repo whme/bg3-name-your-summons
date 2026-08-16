@@ -444,7 +444,14 @@ worktree), silently emitting an empty pak - `make.ps1 build` stages the mod into
 a dot-free temp dir to dodge this. In that stage it also compiles every
 `Localization/**/*.loca.xml` into the binary `.loca` the game loads (via
 `divine --action convert-loca`) and drops the `.xml`, so only compiled tables ship.
-For iteration the folder is symlinked into the
+It also stamps the STAGED `meta.lsx` `Version64` build field with the build time
+as Unix epoch seconds (UTC) (`Set-StagedBuildTimestamp`), so each packed `.pak`
+self-identifies when it was built (`build`, `deploy`, and the `release.yml` pack
+all inherit this). Only the staged copy is stamped - the committed `meta.lsx`
+keeps build 0, so the semver flow is untouched and the artifact filename stays
+`X.Y.Z`. The `Version64` build field is 31 bits, so epoch seconds overflow it on
+2038-01-19; past that the stamp is omitted (a warning) rather than corrupting the
+version. For iteration the folder is symlinked into the
 game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
 
 Releasing: the mod version is a packed `Version64` int64 in `meta.lsx` (the

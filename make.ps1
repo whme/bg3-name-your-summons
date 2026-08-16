@@ -646,6 +646,27 @@ function Set-ModVersion([string]$MetaPath, [string]$SemVer) {
     [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# Stamp the staged meta.lsx build field with epoch seconds; returns it, or 0.
+# The 31-bit build field overflows on 2038-01-19, so past that omit rather than
+# corrupt the version.
+function Set-StagedBuildTimestamp([string]$MetaPath) {
+    $epoch = [int64][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    if ($epoch -gt 2147483647) {
+        Write-Warning "Unix epoch seconds ($epoch) exceed the 31-bit Version64 build field; build number omitted."
+        return 0
+    }
+    $semver = (Get-ModVersion $MetaPath) -split "\." | Select-Object -First 3
+    $packed = (ConvertTo-Version64 ($semver -join ".")) -bor $epoch
+    $content = Get-Content -Raw -Path $MetaPath
+    $updated = [regex]::Replace(
+        $content,
+        '(id="Version64" type="int64" value=")\d+(")',
+        "`${1}$packed`${2}"
+    )
+    [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
+    return $epoch
+}
+
 # ---------------------------------------------------------------------------
 # Git helpers for the release commands - each throws on a non-zero git exit so
 # a failed step aborts the release rather than silently continuing.
@@ -755,6 +776,11 @@ function Cmd-Build {
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item -Path (Join-Path $sourceDir "*") -Destination $stage -Recurse -Force
         Convert-StageLoca $divine $stage
+        $stampedEpoch = Set-StagedBuildTimestamp (Join-Path $stage "Mods/$modName/meta.lsx")
+        if ($stampedEpoch -gt 0) {
+            $stampedUtc = [System.DateTimeOffset]::FromUnixTimeSeconds($stampedEpoch).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Write-Host "Build number: $stampedEpoch (UTC $stampedUtc)"
+        }
         & $divine --game bg3 --action create-package --source $stage --destination $pak --loglevel warn
         if ($LASTEXITCODE -ne 0) {
             throw "divine.exe failed with exit code $LASTEXITCODE. If it complained about a missing runtime, install the .NET 8 Desktop Runtime: https://dotnet.microsoft.com/download/dotnet/8.0"
