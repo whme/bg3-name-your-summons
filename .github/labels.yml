@@ -22,3 +22,7 @@
 - name: "no-news-fragment-needed"
   color: "ededed"
   description: "Change does not require a news fragment (docs, CI, internal)"
+
+- name: "dependencies"
+  color: "0366d6"
+  description: "Dependency updates (e.g. Dependabot)"

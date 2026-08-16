@@ -1,0 +1,56 @@
+#
+#   Dependabot Auto-Merge
+#
+# Enables GitHub auto-merge on Dependabot PRs so they merge themselves
+# once the repository's required status checks pass. This workflow does
+# NOT merge immediately and does NOT bypass branch protection - it only
+# flips the auto-merge flag, leaving the merge decision to the "CI gate"
+# ruleset on `main`.
+#
+# Guards: author is dependabot[bot]; base is main; not a draft; carries
+# the `dependencies` label (set by Dependabot per .github/dependabot.yml).
+#
+# `pull_request_target` checks out and runs no PR-controlled code, so the
+# trigger is safe; the injected GITHUB_TOKEN is left with no permissions
+# because only the PAT is used. Auto-merge is enabled with a PAT
+# (AUTOMERGE_TOKEN) rather than GITHUB_TOKEN: GitHub suppresses workflow
+# runs for GITHUB_TOKEN-triggered events, so a merge attributed to it
+# would never re-fire CI on main. The PAT needs contents:write,
+# pull-requests:write, workflows:write (fine-grained, repo-scoped).
+
+name: Dependabot Auto-Merge
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, ready_for_review]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set +e
+          output=$(gh pr merge --auto --squash "$PR_URL" 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s' "$output" | grep -qiE 'resource not accessible|auto[- ]merge is not allowed|auto[- ]merge is not enabled|bad credentials|requires authentication|gh: command not found'; then
+            echo "::error::Persistent failure enabling auto-merge on $PR_URL - see log above."
+            exit 1
+          fi
+          echo "::notice::Could not enable auto-merge on $PR_URL (likely transient: conflicts, ineligible base, or checks pending). The next PR event will retry."
