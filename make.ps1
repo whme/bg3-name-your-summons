@@ -842,7 +842,7 @@ function Cmd-StoryCheck {
     }
     $storyCompiler = Get-LslibTool "StoryCompiler.exe"
     Write-Host "story-check: StoryCompiler --check-only ..."
-    & $storyCompiler --game bg3 --check-only --json --mod NameYourSummons --game-data-path $Bg3Data | Out-Host
+    & $storyCompiler --game bg3 --check-only --mod NameYourSummons --game-data-path $Bg3Data | Out-Host
     return $LASTEXITCODE
 }
 
@@ -851,8 +851,8 @@ function Cmd-StoryCheck {
 function Cmd-StatsCheck {
     $statsRoot = Join-Path $Root "NameYourSummons/Mods/NameYourSummons/Stats"
     if (-not (Test-Path $statsRoot)) { Write-Host "stats-check: no Stats/ - nothing to check (no-op)."; return 0 }
-    $txts = Get-ChildItem -Path $statsRoot -Filter "*.txt" -Recurse -ErrorAction SilentlyContinue
-    if (-not $txts) { Write-Host "stats-check: no stat files - nothing to check."; return 0 }
+    $statFiles = Get-ChildItem -Path $statsRoot -Filter "*.txt" -Recurse -ErrorAction SilentlyContinue
+    if (-not $statFiles) { Write-Host "stats-check: no stat files - nothing to check."; return 0 }
     if (-not $Bg3Data) {
         Write-Host "stats-check: Stats/ present but -Bg3Data is not set - skipping."
         Write-Host "  Pass -Bg3Data <Data folder> to enable the stats check."

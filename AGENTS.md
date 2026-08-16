@@ -562,7 +562,7 @@ assumed - `-Bg3Data` is explicit.
 and are scaffolded now for content that does not exist yet: `story-check` runs
 LSLib `StoryCompiler --check-only` once a `Mods/NameYourSummons/Story/` tree
 exists, and `stats-check` runs LSLib `StatParser` once a
-`Mods/NameYourSummons/Stats/` tree exists (both DLLs ship in the vendored
+`Mods/NameYourSummons/Stats/` tree exists (both tools ship in the vendored
 `ExportTool` zip, located via `Get-LslibTool`). Like `xaml-check`, each no-ops
 cleanly when its content or `-Bg3Data` is absent, so they never run on the
 hosted runners.
