@@ -563,9 +563,11 @@ Notes:
   direct engine calls so it stays testable** - push unavoidable ECS / net /
   native-UI / timing code into the thin, untested glue (`SummonWatcher`, `Naming`,
   `NativeRenameUI`, `Channels`). When you add such logic, add a spec for it.
-- The `.githooks/pre-commit` hook runs `./make.ps1 format-check` and `lint` when a
-  PowerShell is available, so the ASCII-punctuation check still works without
-  one. CI enforces every gate unconditionally.
+- The `.githooks/pre-commit` hook runs `./make.ps1 format-check`, `lint`,
+  `validate-xml`, and `xaml-check` when a PowerShell is available, so the
+  ASCII-punctuation check still works without one. `xaml-check` skips unless the
+  committer has `$env:NYS_XAML_ORACLE_SALT` set. CI enforces every gate
+  unconditionally.
 
 ## Code Standards
 
