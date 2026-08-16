@@ -28,8 +28,8 @@
 param(
     [Parameter(Position = 0)]
     [string]$Command = "help",
-    # Installed game's Data folder, for the local game-data gates (xaml-check,
-    # story-check, stats-check): ./make.ps1 xaml-check -Bg3Data 'C:\...\Data'.
+    # Installed game's Data folder for xaml-check, e.g.
+    # ./make.ps1 xaml-check -Bg3Data 'C:\...\Data'.
     [string]$Bg3Data,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
@@ -879,9 +879,11 @@ function Cmd-CreateReleaseTag {
 }
 
 function Show-Help {
-    Get-Content $PSCommandPath | Select-Object -Skip 2 | ForEach-Object {
-        if ($_ -match "^#") { $_ -replace "^# ?", "" } else { return }
-    } | Select-Object -First 27 | Out-Host
+    # Print the header banner (lines 3+); the first non-comment line ends it.
+    foreach ($line in (Get-Content $PSCommandPath | Select-Object -Skip 2)) {
+        if ($line -notmatch "^#") { break }
+        Write-Host ($line -replace "^# ?", "")
+    }
 }
 
 # ---------------------------------------------------------------------------
