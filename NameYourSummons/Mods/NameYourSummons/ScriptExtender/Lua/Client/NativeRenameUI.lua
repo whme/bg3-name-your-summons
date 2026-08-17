@@ -1376,12 +1376,10 @@ local function installHudDetector()
 		return
 	end
 	hudInstalled = true
-	pcall(function()
-		Ext.UI.RegisterType(DETECT_VM, {
-			NysDetectCommand = { Type = "Command" },
-			NysWired = { Type = "Bool", Notify = true },
-		})
-	end)
+	Util.RegisterUiTypeOnce(DETECT_VM, {
+		NysDetectCommand = { Type = "Command" },
+		NysWired = { Type = "Bool", Notify = true },
+	})
 	-- Each wrapped so an event name stale on this build cannot tear down the module; the rest bind.
 	pcall(function()
 		Ext.Events.EclLuaMouseButton:Subscribe(function()
@@ -1536,18 +1534,12 @@ function NativeRenameUI.Register()
 	pcall(function()
 		Ext.RegisterConsoleCommand("nys_uidump", dumpUiStructure)
 	end)
-	pcall(function()
-		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" } })
-	end)
-	pcall(function()
-		Ext.UI.RegisterType(SKIP_VM, { NysSkipCommand = { Type = "Command" }, NysShowSkip = { Type = "Bool" } })
-	end)
-	pcall(function()
-		Ext.UI.RegisterType(
-			CONFIRM_VM,
-			{ NysConfirmCommand = { Type = "Command" }, NysShowConfirm = { Type = "Bool" } }
-		)
-	end)
+	Util.RegisterUiTypeOnce(GEAR_VM, { NysGearCommand = { Type = "Command" } })
+	Util.RegisterUiTypeOnce(SKIP_VM, { NysSkipCommand = { Type = "Command" }, NysShowSkip = { Type = "Bool" } })
+	Util.RegisterUiTypeOnce(
+		CONFIRM_VM,
+		{ NysConfirmCommand = { Type = "Command" }, NysShowConfirm = { Type = "Bool" } }
+	)
 
 	-- Seed cachedAllowStory: a fresh boot has not loaded persisted ModVars at Register, so
 	-- SessionLoaded honours a saved opt-in; the immediate call covers a Lua `reset` reload.

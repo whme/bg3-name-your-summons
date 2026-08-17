@@ -173,4 +173,22 @@ function Util.VersionString()
 	return (ok and type(version) == "string") and version or "unknown"
 end
 
+--- Register a UI viewmodel type only if it is not already registered. The UI type registry is
+--- process-global and survives the Lua VM resets that happen on every context switch / reload, so
+--- re-registering makes SE warn "Registering type X when it already exists". GetTypeInfo returns nil
+--- for an unregistered type. Fails safe: if the check is unavailable it registers as before.
+---@param name string
+---@param props table
+function Util.RegisterUiTypeOnce(name, props)
+	local ok, info = pcall(function()
+		return Ext.Types.GetTypeInfo(name)
+	end)
+	if ok and info ~= nil then
+		return
+	end
+	pcall(function()
+		Ext.UI.RegisterType(name, props)
+	end)
+end
+
 return Util

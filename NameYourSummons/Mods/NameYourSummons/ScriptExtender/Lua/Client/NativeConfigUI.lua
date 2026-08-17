@@ -482,55 +482,53 @@ end
 -- Viewmodel type registration.
 
 local function registerTypes()
-	pcall(function()
-		Ext.UI.RegisterType(SETTINGS_VM, {
-			NysViewport = { Type = "String" },
-			NysIsOpen = { Type = "Bool", Notify = true },
-			NysTypesExpanded = { Type = "Bool", Notify = true },
-			NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysPromptForNamed = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysPauseOnPrompt = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysAllowStorySummons = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
-			NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
-			NysNameEverySummonEnabled = { Type = "Bool", Notify = true },
-			NysModeValue = { Type = "String", Notify = true, WriteCallback = pushIfLive },
-			NysModeOpen = { Type = "Bool", Notify = true },
-			NysSelectSkipCommand = { Type = "Command" },
-			NysSelectSharedCommand = { Type = "Command" },
-			NysSelectUniqueCommand = { Type = "Command" },
-			NysTypeToggles = { Type = "Collection" },
-			NysSavedNames = { Type = "Collection" },
-			NysHasSavedNames = { Type = "Bool", Notify = true },
-			NysRefreshCommand = { Type = "Command" },
-			NysCloseCommand = { Type = "Command" },
-			NysToggleTypesCommand = { Type = "Command" },
-			-- Controller-only: a checkbox is a focusable button toggled by accept (no mouse
-			-- click on the TickBox), one command per boolean.
-			NysTogglePromptOnSummonCommand = { Type = "Command" },
-			NysTogglePromptForNamedCommand = { Type = "Command" },
-			NysTogglePauseOnPromptCommand = { Type = "Command" },
-			NysToggleAllowStoryCommand = { Type = "Command" },
-			NysToggleNameEveryCommand = { Type = "Command" },
-		})
-		Ext.UI.RegisterType(TOGGLE_VM, {
-			NysViewport = { Type = "String" },
-			NysLabel = { Type = "String" },
-			NysChecked = { Type = "Bool", Notify = true, WriteCallback = pushIfLive },
-			NysEnabled = { Type = "Bool", Notify = true },
-			NysToggleCommand = { Type = "Command" },
-		})
-		Ext.UI.RegisterType(NAME_ROW_VM, {
-			NysViewport = { Type = "String" },
-			NysRowId = { Type = "String" },
-			NysOwnerLabel = { Type = "String" },
-			NysRowLabel = { Type = "String" },
-			NysNameText = { Type = "String", Notify = true, WriteCallback = onNameWrite },
-			NysNameEnabled = { Type = "Bool", Notify = true },
-			NysForgetLabel = { Type = "String", Notify = true },
-			NysForgetCommand = { Type = "Command" },
-		})
-	end)
+	Util.RegisterUiTypeOnce(SETTINGS_VM, {
+		NysViewport = { Type = "String" },
+		NysIsOpen = { Type = "Bool", Notify = true },
+		NysTypesExpanded = { Type = "Bool", Notify = true },
+		NysPromptOnSummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+		NysPromptForNamed = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+		NysPauseOnPrompt = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+		NysAllowStorySummons = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+		NysPromptForNamedEnabled = { Type = "Bool", Notify = true },
+		NysNameEverySummon = { Type = "Bool", Notify = true, WriteCallback = onSettingWrite },
+		NysNameEverySummonEnabled = { Type = "Bool", Notify = true },
+		NysModeValue = { Type = "String", Notify = true, WriteCallback = pushIfLive },
+		NysModeOpen = { Type = "Bool", Notify = true },
+		NysSelectSkipCommand = { Type = "Command" },
+		NysSelectSharedCommand = { Type = "Command" },
+		NysSelectUniqueCommand = { Type = "Command" },
+		NysTypeToggles = { Type = "Collection" },
+		NysSavedNames = { Type = "Collection" },
+		NysHasSavedNames = { Type = "Bool", Notify = true },
+		NysRefreshCommand = { Type = "Command" },
+		NysCloseCommand = { Type = "Command" },
+		NysToggleTypesCommand = { Type = "Command" },
+		-- Controller-only: a checkbox is a focusable button toggled by accept (no mouse
+		-- click on the TickBox), one command per boolean.
+		NysTogglePromptOnSummonCommand = { Type = "Command" },
+		NysTogglePromptForNamedCommand = { Type = "Command" },
+		NysTogglePauseOnPromptCommand = { Type = "Command" },
+		NysToggleAllowStoryCommand = { Type = "Command" },
+		NysToggleNameEveryCommand = { Type = "Command" },
+	})
+	Util.RegisterUiTypeOnce(TOGGLE_VM, {
+		NysViewport = { Type = "String" },
+		NysLabel = { Type = "String" },
+		NysChecked = { Type = "Bool", Notify = true, WriteCallback = pushIfLive },
+		NysEnabled = { Type = "Bool", Notify = true },
+		NysToggleCommand = { Type = "Command" },
+	})
+	Util.RegisterUiTypeOnce(NAME_ROW_VM, {
+		NysViewport = { Type = "String" },
+		NysRowId = { Type = "String" },
+		NysOwnerLabel = { Type = "String" },
+		NysRowLabel = { Type = "String" },
+		NysNameText = { Type = "String", Notify = true, WriteCallback = onNameWrite },
+		NysNameEnabled = { Type = "Bool", Notify = true },
+		NysForgetLabel = { Type = "String", Notify = true },
+		NysForgetCommand = { Type = "Command" },
+	})
 end
 
 --- Build a fresh viewmodel (empty collections) for viewport `id` and wire its commands.

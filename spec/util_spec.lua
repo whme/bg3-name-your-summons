@@ -252,6 +252,61 @@ function TestUtilLogging:testDebugEnabledReflectsSetter()
 	lu.assertFalse(Util.DebugEnabled())
 end
 
+TestRegisterUiTypeOnce = {}
+
+--- Run `fn` with Ext.Types.GetTypeInfo / Ext.UI.RegisterType swapped for stubs,
+--- restoring them afterwards (even on error). Returns the recorded RegisterType calls.
+---@param getTypeInfo function
+---@param fn function
+---@return { name: string, props: table }[]
+local function withTypeStubs(getTypeInfo, fn)
+	local origTypes, origUi = Ext.Types, Ext.UI
+	local registered = {}
+	Ext.Types = { GetTypeInfo = getTypeInfo }
+	Ext.UI = {
+		RegisterType = function(name, props)
+			registered[#registered + 1] = { name = name, props = props }
+		end,
+	}
+	local ok, err = pcall(fn)
+	Ext.Types, Ext.UI = origTypes, origUi
+	if not ok then
+		error(err)
+	end
+	return registered
+end
+
+function TestRegisterUiTypeOnce:testSkipsWhenTypeAlreadyExists()
+	local registered = withTypeStubs(function()
+		return { Name = "NYS_Existing" }
+	end, function()
+		Util.RegisterUiTypeOnce("NYS_Existing", { Foo = { Type = "Bool" } })
+	end)
+	lu.assertEquals(#registered, 0)
+end
+
+function TestRegisterUiTypeOnce:testRegistersWhenTypeMissing()
+	local props = { Foo = { Type = "Bool" } }
+	local registered = withTypeStubs(function()
+		return nil
+	end, function()
+		Util.RegisterUiTypeOnce("NYS_New", props)
+	end)
+	lu.assertEquals(#registered, 1)
+	lu.assertEquals(registered[1].name, "NYS_New")
+	lu.assertEquals(registered[1].props, props)
+end
+
+function TestRegisterUiTypeOnce:testRegistersWhenLookupUnavailable()
+	local registered = withTypeStubs(function()
+		error("GetTypeInfo unavailable")
+	end, function()
+		Util.RegisterUiTypeOnce("NYS_Fallback", { Foo = { Type = "Bool" } })
+	end)
+	lu.assertEquals(#registered, 1)
+	lu.assertEquals(registered[1].name, "NYS_Fallback")
+end
+
 TestVersionString = {}
 
 function TestVersionString:testFormatsMajorMinorRevision()
