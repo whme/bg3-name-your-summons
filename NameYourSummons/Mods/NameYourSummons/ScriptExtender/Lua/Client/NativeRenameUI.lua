@@ -81,7 +81,7 @@ end
 
 --- Scan only while the world is up: a VisualChild walk on a foreign tree (character creation, #99)
 --- or a half-torn-down level can access-violate past pcall. Fails closed on any other or unreadable
---- state; the next heartbeat retries.
+--- state; the next rewire-burst retry or trigger covers it.
 ---@return boolean
 local function scanAllowed()
 	local state = gameStateName()
@@ -136,7 +136,9 @@ local function findNode(node, depth, predicate)
 	return nil
 end
 
---- The first descendant of `root` (incl. `root`) named `name`, or nil.
+--- The first descendant of `root` (incl. `root`) named `name`, or nil. DFS - reserved for the small
+--- Examine-panel subtree (our controls sit deep inside it). NEVER call with ContentRoot: the
+--- ContentRoot landmarks are direct children, so use `childrenNamed` / `bfsByName` instead.
 ---@param root any
 ---@param name string
 ---@return any|nil
@@ -149,11 +151,66 @@ local function findFrom(root, name)
 	end)
 end
 
---- The composition root (`ContentRoot`), the anchor for every scan. Fetched fresh (a
---- stale Noesis handle crashes on use).
+--- Immediate children of `node` named `name` (one level; `node` excluded). The ContentRoot landmarks
+--- (Examine, HudIndicator, NYS_HudOverlay) are direct children - verified via `!nys_uidump` (depth 1)
+--- - so this replaces the whole-tree DFS: if a panel is not a direct child, it is simply not open.
+---@param node any
+---@param name string
+---@return any[]
+local function childrenNamed(node, name)
+	local out = {}
+	if not node then
+		return out
+	end
+	for i = 1, visualChildCount(node) do
+		local child = safe(readChild, node, i)
+		if child and widgetName(child) == name then
+			out[#out + 1] = child
+		end
+	end
+	return out
+end
+
+--- Breadth-first search of `root`'s subtree (root = depth 0) for the first node named `name` within
+--- `maxDepth` levels, stopping at the first hit. For our own shallow nested nodes (NYS_HudVmHost is 2
+--- levels under NYS_HudOverlay); bounded so it never degrades into a whole-tree walk.
+---@param root any
+---@param name string
+---@param maxDepth integer
+---@return any|nil
+local function bfsByName(root, name, maxDepth)
+	local frontier = root and { root } or {}
+	local depth = 0
+	while #frontier > 0 do
+		local nextFrontier = {}
+		for _, node in ipairs(frontier) do
+			if widgetName(node) == name then
+				return node
+			end
+			if depth < maxDepth then
+				for i = 1, visualChildCount(node) do
+					local child = safe(readChild, node, i)
+					if child then
+						nextFrontier[#nextFrontier + 1] = child
+					end
+				end
+			end
+		end
+		frontier = nextFrontier
+		depth = depth + 1
+	end
+	return nil
+end
+
+--- The composition root (`ContentRoot`), the anchor for every scan. Fetched fresh (a stale Noesis
+--- handle crashes on use) and resolved by one native `:Find` (ContentRoot IS in the UI root's
+--- namescope - verified - so no walk).
 ---@return any|nil
 local function contentRoot()
-	return findFrom(safe(Ext.UI.GetRoot), "ContentRoot")
+	local root = safe(Ext.UI.GetRoot)
+	return root and safe(function()
+		return root:Find("ContentRoot")
+	end) or nil
 end
 
 --- Read a runtime property from a viewmodel's dynamic property bag (bag only:
@@ -229,37 +286,44 @@ local function surfaceSelectedChar(dc)
 	return type(uuid) == "string" and Util.ToUuid(uuid) or nil
 end
 
+--- The open panel is a DIRECT child of ContentRoot: Examine (keyboard) or Examine_c (controller).
 ---@param name string
 ---@return boolean
 local function isExamineName(name)
 	return name == "Examine" or name == "Examine_c"
 end
 
---- Visit every open Examine/Examine_c node under ContentRoot (one per viewport with a
---- panel open). Never stops early.
+--- Visit every open Examine/Examine_c node (a direct child of ContentRoot; one per viewport with a
+--- panel open) in ONE pass over ContentRoot's children. If none are direct children, none are open.
 ---@param fn fun(node:any)
 local function forEachExamineNode(fn)
-	findNode(contentRoot(), 0, function(node)
-		if isExamineName(widgetName(node)) then
-			fn(node)
+	local cr = contentRoot()
+	if not cr then
+		return
+	end
+	for i = 1, visualChildCount(cr) do
+		local child = safe(readChild, cr, i)
+		if child and isExamineName(widgetName(child)) then
+			fn(child)
 		end
-		return false
-	end)
+	end
 end
 
---- The open Examine node belonging to viewport `id` (its CurrentPlayer.PlayerId), or nil.
+--- The open Examine node belonging to viewport `id` (its CurrentPlayer.PlayerId), or nil. One pass.
 ---@param id integer
 ---@return any|nil
 local function examineNodeById(id)
-	local found
-	findNode(contentRoot(), 0, function(node)
-		if isExamineName(widgetName(node)) and playerIdOf(node) == id then
-			found = node
-			return true
+	local cr = contentRoot()
+	if not cr then
+		return nil
+	end
+	for i = 1, visualChildCount(cr) do
+		local child = safe(readChild, cr, i)
+		if child and isExamineName(widgetName(child)) and playerIdOf(child) == id then
+			return child
 		end
-		return false
-	end)
-	return found
+	end
+	return nil
 end
 
 --- A live node by x:Name within viewport `id`'s Examine subtree, or nil.
@@ -655,12 +719,20 @@ local function wirePanel(id)
 	if st.wired then
 		return
 	end
-	-- One anchored walk for the panel node; every named lookup below searches its subtree.
+	-- ONE examine-subtree walk to our rename bar; all four controls live under it (a small subtree),
+	-- so the per-control lookups below are cheap - not four separate walks of the whole Examine panel.
 	local examine = examineNodeById(id)
-	local field = findFrom(examine, "NYS_NameInput")
+	local renameBar = findFrom(examine, "NYS_RenameBar")
+	local field = renameBar and findFrom(renameBar, "NYS_NameInput")
 	if not field then
+		Trace.Log("wire", "wirePanel: rename bar / NYS_NameInput not found", {
+			PlayerId = id,
+			HasExamineNode = examine and true or false,
+			HasRenameBar = renameBar and true or false,
+		})
 		return
 	end
+	Trace.Log("wire", "wirePanel: found rename bar + field, wiring", { PlayerId = id })
 
 	st.lastSent = Util.Sanitise(nodeText(field))
 
@@ -699,7 +771,7 @@ local function wirePanel(id)
 	end)
 
 	-- Gear: nested DataContext = a fresh NYS_GearVM whose command opens THIS viewport's settings.
-	local gear = findFrom(examine, "NYS_SettingsButton")
+	local gear = findFrom(renameBar, "NYS_SettingsButton")
 	if gear then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(GEAR_VM)
@@ -717,7 +789,7 @@ local function wirePanel(id)
 	end
 
 	-- Skip: nested DataContext = a fresh NYS_SkipVM; NysShowSkip hides it for single summons.
-	local skip = findFrom(examine, "NYS_SkipButton")
+	local skip = findFrom(renameBar, "NYS_SkipButton")
 	if skip then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(SKIP_VM)
@@ -739,7 +811,7 @@ local function wirePanel(id)
 
 	-- Confirm: nested DataContext = a fresh NYS_ConfirmVM; the multi-summon advance trigger,
 	-- revealed on the same condition as Skip (a next summon is queued).
-	local confirm = findFrom(examine, "NYS_ConfirmButton")
+	local confirm = findFrom(renameBar, "NYS_ConfirmButton")
 	if confirm then
 		local vm = safe(function()
 			return Ext.UI.Instantiate(CONFIRM_VM)
@@ -832,8 +904,12 @@ local function pollLifecycle()
 	end
 	local present = {}
 	local newIds = nil
+	local examineCount = 0
 	forEachExamineNode(function(node)
+		examineCount = examineCount + 1
 		local id = playerIdOf(node)
+		-- No examinedSummonUuidIn here: it is a per-node subtree DFS and this runs every safety tick.
+		Trace.Log("lifecycle", "examine node visited", { PlayerId = id })
 		if id ~= nil then
 			present[id] = true
 			if not openIds[id] then
@@ -846,6 +922,7 @@ local function pollLifecycle()
 			end
 		end
 	end)
+	Trace.Log("lifecycle", "pollLifecycle done", { ExamineNodesFound = examineCount })
 	for id in pairs(openIds) do
 		if not present[id] then
 			closePanel(id)
@@ -903,58 +980,76 @@ end
 ---@param matchChar string|nil
 ---@return any|nil
 function getExamineCommand(matchChar)
+	local cr = contentRoot()
 	local firstCmd, matchedCmd
-	findNode(contentRoot(), 0, function(node)
-		if widgetName(node) ~= COMMAND_SURFACE_NODE then
-			return false
-		end
+	-- HudIndicator is a direct child of ContentRoot (one per viewport in split-screen).
+	for _, node in ipairs(childrenNamed(cr, COMMAND_SURFACE_NODE)) do
 		local dc = safe(function()
 			return node.DataContext
 		end)
 		local cmd = dc and safe(function()
 			return dc:GetProperty("ExamineCommand")
 		end)
-		if not cmd then
-			return false
+		if cmd then
+			firstCmd = firstCmd or cmd
+			if matchChar and surfaceSelectedChar(dc) == Util.ToUuid(matchChar) then
+				matchedCmd = cmd
+				break
+			end
 		end
-		if not firstCmd then
-			firstCmd = cmd
-		end
-		if matchChar and surfaceSelectedChar(dc) == Util.ToUuid(matchChar) then
-			matchedCmd = cmd
-			return true
-		end
-		return false
-	end)
+	end
 	return matchedCmd or firstCmd
 end
 
---- The Noesis EntityHandle for a summon uuid, off any live per-entity DataContext.
+-- The party portrait bar (a direct child of ContentRoot) holds every party AND summon portrait; each
+-- portrait's DataContext carries the summon's EntityUUID and its Noesis EntityHandle. The bar has a
+-- different x:Name per input layout, verified via !nys_uidump (both at ContentRoot depth 1): keyboard
+-- is `PlayerPortraits`, controller is `PartyLine_c` (its subtree: HudRoot > ... > Followers >
+-- SummonPortraitRoot > [entity node]). Only one exists at a time; we try each.
+local PARTY_BAR_NAMES = { "PlayerPortraits", "PartyLine_c" }
+
+--- The Noesis EntityHandle for a summon uuid. The portrait node has NO x:Name (we match its
+--- DataContext's EntityUUID), so this cannot use `:Find` - but every summon portrait lives under the
+--- party bar, so we scan ONLY those bounded subtrees, never the whole tree. Split-screen has ONE bar
+--- per viewport (both direct children of ContentRoot), so we scan EVERY bar - the summon is under its
+--- owner's. Runs on an on-summon auto-open. nil (summon not on any bar) skips the open (no hang).
 ---@param uuid string
 ---@return any|nil
 function entityHandleFor(uuid)
+	local cr = contentRoot()
 	local handle
-	findNode(contentRoot(), 0, function(node)
-		local dc = safe(function()
-			return node.DataContext
+	local function scanBar(bar)
+		findNode(bar, 0, function(node)
+			local dc = safe(function()
+				return node.DataContext
+			end)
+			if not dc then
+				return false
+			end
+			local id = dcProp(dc, "EntityUUID")
+			if type(id) ~= "string" or Util.ToUuid(id) ~= uuid then
+				return false
+			end
+			handle = safe(function()
+				return dc:GetProperty("EntityHandle")
+			end)
+			return handle and true or false
 		end)
-		if not dc then
-			return false
+	end
+	for _, name in ipairs(PARTY_BAR_NAMES) do
+		for _, bar in ipairs(childrenNamed(cr, name)) do
+			scanBar(bar)
+			if handle then
+				return handle
+			end
 		end
-		local id = dcProp(dc, "EntityUUID")
-		if type(id) ~= "string" or Util.ToUuid(id) ~= uuid then
-			return false
-		end
-		handle = safe(function()
-			return dc:GetProperty("EntityHandle")
-		end)
-		return handle and true or false
-	end)
+	end
+	Trace.Log("open", "entityHandleFor: summon not found in any party bar", { Uuid = uuid })
 	return handle
 end
 
---- The PlayerId of the viewport currently controlling `char` (its SelectedCharacter), or
---- nil. Scans the always-present HUD surfaces plus any open Examine panels.
+--- The PlayerId of the viewport currently controlling `char` (its SelectedCharacter), or nil. Checks
+--- the HUD command surface and any open Examine panels - all direct children of ContentRoot.
 ---@param char string|nil
 ---@return integer|nil
 local function viewportIdForChar(char)
@@ -962,19 +1057,18 @@ local function viewportIdForChar(char)
 		return nil
 	end
 	local want = Util.ToUuid(char)
-	local found
-	findNode(contentRoot(), 0, function(node)
-		local name = widgetName(node)
-		if name ~= COMMAND_SURFACE_NODE and not isExamineName(name) then
-			return false
+	local cr = contentRoot()
+	for _, name in ipairs({ COMMAND_SURFACE_NODE, "Examine", "Examine_c" }) do
+		for _, node in ipairs(childrenNamed(cr, name)) do
+			if selectedCharOf(node) == want then
+				local id = playerIdOf(node)
+				if id then
+					return id
+				end
+			end
 		end
-		if selectedCharOf(node) == want then
-			found = playerIdOf(node)
-			return found ~= nil
-		end
-		return false
-	end)
-	return found
+	end
+	return nil
 end
 
 --- Answer a session over SubmitName so the server saves the name (and clears its pending
@@ -1003,6 +1097,12 @@ end
 function openExamine(req)
 	local command = getExamineCommand(req.ViewportChar)
 	local handle = entityHandleFor(req.SummonUuid)
+	Trace.Log("open", "openExamine resolving", {
+		SummonUuid = req.SummonUuid,
+		ViewportChar = req.ViewportChar,
+		HasCommand = command and true or false,
+		HasHandle = handle and true or false,
+	})
 	local canExec = nil
 	local opened = command
 		and handle
@@ -1150,6 +1250,7 @@ end
 --- The panel widget lags the examine target, so reconcile on a short bounded retry (gen-deduped).
 --- Manual panels are unwired first so a re-open re-subscribes; an active on-summon session is left alone.
 local function onExamineDetected()
+	Trace.Log("detect", "onExamineDetected (overlay DataTrigger fired)")
 	reconcileGen = reconcileGen + 1
 	local gen = reconcileGen
 	for id, st in pairs(panels) do
@@ -1177,6 +1278,7 @@ local function wireHost(host)
 		return Ext.UI.Instantiate(DETECT_VM)
 	end)
 	if not vm then
+		Trace.Log("detect", "wireHost: Instantiate(DETECT_VM) failed")
 		return
 	end
 	pcall(function()
@@ -1188,17 +1290,36 @@ local function wireHost(host)
 	pcall(function()
 		host.DataContext = vm
 	end)
+	if Trace.Enabled() then
+		Trace.Log("detect", "wireHost: set DataContext on NYS_HudVmHost", { NowWired = hostIsWired(host) })
+	end
 end
 
---- Split-screen gives each viewport its own PlayerHUD, so its own NysHudOverlay: wire every host
---- or a player's manual Examine goes undetected.
+--- Navigate directly to the overlay host(s) and wire any not yet wired; returns how many were found.
+--- Structure (verified via `!nys_uidump`): NYS_HudOverlay is a DIRECT child of ContentRoot, and
+--- NYS_HudVmHost sits 2 levels under it (NYS_HudOverlayRoot -> NYS_HudVmHost) - all in our own XAML,
+--- so no whole-tree walk. A Noesis node handle does NOT survive across ticks, so we cannot cache the
+--- host; but the WIRING PERSISTS on the live node (verified: across a 77 s session `wireHost` fired 0
+--- times after the first), so this runs ONLY on a real HUD rebuild, never on an idle timer.
+---@return integer
 local function ensureOverlaysWired()
-	findNode(contentRoot(), 0, function(node)
-		if widgetName(node) == "NYS_HudVmHost" and not hostIsWired(node) then
-			wireHost(node)
+	local found = 0
+	local cr = contentRoot()
+	for _, overlay in ipairs(childrenNamed(cr, "NYS_HudOverlay")) do
+		local host = bfsByName(overlay, "NYS_HudVmHost", 2)
+		if host then
+			found = found + 1
+			if not hostIsWired(host) then
+				wireHost(host)
+			end
 		end
-		return false -- always false: visit every host, wiring as a side effect
-	end)
+	end
+	Trace.Log(
+		"detect",
+		"ensureOverlaysWired (direct navigation)",
+		{ HasContentRoot = cr and true or false, HostsFound = found }
+	)
+	return found
 end
 
 --- The HUD is rebuilt with no event on session load and input-mode switch, so a heartbeat is the
@@ -1223,7 +1344,138 @@ local function installHudDetector()
 	heartbeat()
 end
 
+-- ----------------------------------------------------------------------------------------------
+-- UI-tree structure dump (!nys_uidump): map how to reach our landmark nodes without a whole-tree
+-- walk. Empirically `element:Find(name)` (Noesis FindNodeName) resolves a name only WITHIN one
+-- namescope (it finds ContentRoot from the UI root but NOT HudIndicator/NYS_HudVmHost from
+-- ContentRoot), which is why we navigate by structure rather than a single :Find. This dumps, per
+-- landmark: whether :Find resolves it from the UI root / ContentRoot / each named ancestor (revealing
+-- the namescope root we could :Find from), plus its DFS depth and the named-ancestor chain.
+-- ----------------------------------------------------------------------------------------------
+local UIDUMP_NAMES = {
+	"ContentRoot",
+	"HudIndicator",
+	"NYS_HudOverlay",
+	"NYS_HudVmHost",
+	"PlayerHUD",
+	"Examine",
+	"Examine_c",
+	"NYS_NameInput",
+	"NYS_SettingsButton",
+}
+
+--- Every named node under `node`, as "Name @depth (Nch)" strings (depth-tracked walk; one-shot).
+---@param node any
+---@param depth integer
+---@param out string[]
+local function collectNamed(node, depth, out)
+	if not node or depth > SEARCH_DEPTH_LIMIT then
+		return
+	end
+	local nm = widgetName(node)
+	if nm ~= "" then
+		out[#out + 1] = string.format("%s @%d (%dch)", nm, depth, visualChildCount(node))
+	end
+	for i = 1, visualChildCount(node) do
+		collectNamed(safe(readChild, node, i), depth + 1, out)
+	end
+end
+
+--- For each named ancestor of `node` (nearest first), whether `ancestor:Find(name)` resolves - so we
+--- can see the shallowest namescope from which a native :Find would reach `name`.
+---@param node any
+---@param name string
+---@return table[]
+local function ancestryReach(node, name)
+	local out = {}
+	local cur = safe(function()
+		return node.VisualParent
+	end)
+	local guard = 0
+	while cur and guard < SEARCH_DEPTH_LIMIT do
+		guard = guard + 1
+		local nm = widgetName(cur)
+		if nm ~= "" then
+			local hit = safe(function()
+				return cur:Find(name)
+			end)
+			out[#out + 1] = { Ancestor = nm, FindResolves = (hit and true) or false }
+		end
+		cur = safe(function()
+			return cur.VisualParent
+		end)
+	end
+	return out
+end
+
+local function dumpUiStructure()
+	-- Walks the whole tree (collectNamed / findFrom / ancestryReach), so gate it on a live world
+	-- the same as every other scan: a walk on a foreign tree can access-violate past pcall (#99).
+	if not scanAllowed() then
+		Util.Say(("UI dump skipped: game state is %s, need Running/Paused."):format(tostring(gameStateName())))
+		return
+	end
+	local root = safe(Ext.UI.GetRoot)
+	local cr = contentRoot()
+	Util.Say(
+		("UI dump: UIRoot=%s ContentRoot=%s state=%s -> nys-trace-client.jsonl"):format(
+			tostring(root and true or false),
+			tostring(cr and true or false),
+			tostring(gameStateName())
+		)
+	)
+	local wasTracing = Trace.Enabled()
+	Trace.SetEnabled(true) -- capture the dump even if !nys_trace was not toggled first
+	Trace.Log(
+		"uidump",
+		"begin",
+		{ HasUIRoot = root and true or false, HasContentRoot = cr and true or false, State = gameStateName() }
+	)
+
+	if cr then
+		local named = {}
+		collectNamed(cr, 0, named)
+		Trace.Log("uidump", "named nodes under ContentRoot", { Count = #named })
+		local chunk = {}
+		for i, s in ipairs(named) do
+			chunk[#chunk + 1] = s
+			if #chunk >= 50 or i == #named then
+				Trace.Log("uidump-nodes", "chunk", chunk)
+				chunk = {}
+			end
+		end
+	end
+
+	for _, name in ipairs(UIDUMP_NAMES) do
+		local fromRoot = root and safe(function()
+			return root:Find(name)
+		end)
+		local fromCr = cr and safe(function()
+			return cr:Find(name)
+		end)
+		local node = cr and findFrom(cr, name)
+		local entry = {
+			FindFromUIRoot = (fromRoot and true) or false,
+			FindFromContentRoot = (fromCr and true) or false,
+			FoundByDfs = (node and true) or false,
+		}
+		if node then
+			entry.Ancestry = ancestryReach(node, name)
+		end
+		Trace.Log("uidump-target", name, entry)
+	end
+
+	Trace.Log("uidump", "end")
+	-- The dump is flushed per line, so restore the prior trace state: the new lifecycle/detect
+	-- trace hooks would otherwise rewrite the trace file every heartbeat until !nys_trace is run.
+	Trace.SetEnabled(wasTracing)
+	Util.Say("UI dump written to nys-trace-client.jsonl. Please send that file.")
+end
+
 function NativeRenameUI.Register()
+	pcall(function()
+		Ext.RegisterConsoleCommand("nys_uidump", dumpUiStructure)
+	end)
 	pcall(function()
 		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" } })
 	end)
