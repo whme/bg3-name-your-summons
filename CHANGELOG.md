@@ -2,6 +2,23 @@
 
 <!-- changelogging: start -->
 
+## 1.1.0 (2026-08-17)
+
+### Features
+
+- Quieted the Script Extender console by default. Each Lua state now prints
+  a single startup line naming the mod version; routine logging is hidden
+  behind a new `!nys_debug` command that toggles it in both states.
+  Warnings and console-command output (`!nys_diag`, `!nys_list`,
+  `!nys_rename`, `!nys_clear`) still always show. (#106)
+
+### Bug Fixes
+
+- Fixed a crash in character creation. Name Your Summons no longer scans the
+  game's UI on every click to detect the Examine panel; it now watches a single
+  lightweight HUD signal instead, and does no UI scanning on the
+  character-creation screen or in menus. (#99)
+
 ## 1.0.0 (2026-08-10)
 
 ### Features
