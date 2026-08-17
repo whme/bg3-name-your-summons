@@ -132,13 +132,42 @@ function Util.LocaHandleFor(text)
 	return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
--- Prefix each line with a sub-second wall clock so pasted logs show event timing.
+local debugEnabled = false
+
+---@param on boolean
+function Util.SetDebug(on)
+	debugEnabled = on == true
+end
+
+---@return boolean
+function Util.DebugEnabled()
+	return debugEnabled
+end
+
+-- Timestamped so pasted debug logs show event timing; gated behind `!nys_debug`.
 function Util.Log(...)
-	Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+	if debugEnabled then
+		Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+	end
+end
+
+function Util.Say(...)
+	Ext.Utils.Print("[NameYourSummons]", ...)
 end
 
 function Util.Warn(...)
 	Ext.Utils.PrintWarning(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+end
+
+--- The installed mod version as "major.minor.revision", or "unknown" if the mod info is unreadable.
+---@return string
+function Util.VersionString()
+	local ok, version = pcall(function()
+		local mod = Ext.Mod.GetMod(ModuleUUID)
+		local v = mod.Info.ModVersion
+		return string.format("%d.%d.%d", v[1], v[2], v[3])
+	end)
+	return (ok and type(version) == "string") and version or "unknown"
 end
 
 return Util

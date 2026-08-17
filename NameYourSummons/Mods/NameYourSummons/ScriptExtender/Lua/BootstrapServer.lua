@@ -15,6 +15,14 @@ Store.Register()
 Watcher.RegisterNet()
 Watcher.RegisterConsole()
 
+-- Registered in each Lua state so one !nys_debug flips debug logging in both (issue #106).
+pcall(function()
+	Ext.RegisterConsoleCommand("nys_debug", function()
+		Util.SetDebug(not Util.DebugEnabled())
+		Util.Say("debug logging", Util.DebugEnabled() and "ON" or "OFF", "(server)")
+	end)
+end)
+
 Ext.Events.SessionLoaded:Subscribe(function()
 	Trace.Log("session", "server SessionLoaded")
 	Watcher.Register()
@@ -26,5 +34,6 @@ Ext.Events.SessionLoaded:Subscribe(function()
 			Trace.Log("error", "ReapplyExisting failed", { Error = tostring(err) })
 		end
 	end)
-	Util.Log("Server ready.")
 end)
+
+Util.Say(("Name Your Summons v%s loaded successfully (server)."):format(Util.VersionString()))
