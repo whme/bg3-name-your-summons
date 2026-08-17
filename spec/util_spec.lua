@@ -181,3 +181,87 @@ function TestAssignByOrder:testIgnoresExtraNames()
 	local out = Util.AssignByOrder({ "aaa" }, { "One", "Two", "Three" })
 	lu.assertEquals(out, { aaa = "One" })
 end
+
+TestUtilLogging = {}
+
+--- Run `fn` with the Ext print sinks swapped for counters, restoring them after (even on error).
+---@param fn function
+---@return { print: integer, warn: integer }
+local function withCapture(fn)
+	local calls = { print = 0, warn = 0 }
+	local origPrint, origWarn = Ext.Utils.Print, Ext.Utils.PrintWarning
+	Ext.Utils.Print = function()
+		calls.print = calls.print + 1
+	end
+	Ext.Utils.PrintWarning = function()
+		calls.warn = calls.warn + 1
+	end
+	local ok, err = pcall(fn)
+	Ext.Utils.Print, Ext.Utils.PrintWarning = origPrint, origWarn
+	if not ok then
+		error(err)
+	end
+	return calls
+end
+
+function TestUtilLogging:testLogSuppressedByDefault()
+	Util.SetDebug(false)
+	lu.assertEquals(
+		withCapture(function()
+			Util.Log("hidden")
+		end).print,
+		0
+	)
+end
+
+function TestUtilLogging:testLogEmittedWhenDebugOn()
+	Util.SetDebug(true)
+	lu.assertEquals(
+		withCapture(function()
+			Util.Log("shown")
+		end).print,
+		1
+	)
+	Util.SetDebug(false)
+end
+
+function TestUtilLogging:testSayAlwaysEmits()
+	Util.SetDebug(false)
+	lu.assertEquals(
+		withCapture(function()
+			Util.Say("startup")
+		end).print,
+		1
+	)
+end
+
+function TestUtilLogging:testWarnAlwaysEmits()
+	Util.SetDebug(false)
+	lu.assertEquals(
+		withCapture(function()
+			Util.Warn("failure")
+		end).warn,
+		1
+	)
+end
+
+function TestUtilLogging:testDebugEnabledReflectsSetter()
+	Util.SetDebug(true)
+	lu.assertTrue(Util.DebugEnabled())
+	Util.SetDebug(false)
+	lu.assertFalse(Util.DebugEnabled())
+end
+
+TestVersionString = {}
+
+function TestVersionString:testFormatsMajorMinorRevision()
+	lu.assertEquals(Util.VersionString(), "1.2.3")
+end
+
+function TestVersionString:testFailsSoftToUnknown()
+	local orig = Ext.Mod
+	Ext.Mod = nil
+	local v = Util.VersionString()
+	Ext.Mod = orig
+	lu.assertEquals(v, "unknown")
+end

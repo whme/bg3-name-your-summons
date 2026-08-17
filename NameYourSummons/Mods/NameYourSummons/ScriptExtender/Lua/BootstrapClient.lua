@@ -35,10 +35,19 @@ NativeRenameUI.SetGearHandler(NativeConfigUI.Open)
 NativeRenameUI.SetPanelCloseHandler(NativeConfigUI.Flush)
 NativeRenameUI.Register()
 
+-- Registered in each Lua state so one !nys_debug flips debug logging in both (issue #106).
+pcall(function()
+	Ext.RegisterConsoleCommand("nys_debug", function()
+		Util.SetDebug(not Util.DebugEnabled())
+		Util.Say("debug logging", Util.DebugEnabled() and "ON" or "OFF", "(client)")
+	end)
+end)
+
 Ext.Events.SessionLoaded:Subscribe(function()
 	Trace.Log("session", "client SessionLoaded")
-	Util.Log("Client ready. Examine a summon and click the gear to manage saved names.")
 end)
+
+Util.Say(("Name Your Summons v%s loaded successfully (client)."):format(Util.VersionString()))
 
 pcall(function()
 	Ext.Events.GameStateChanged:Subscribe(function(e)

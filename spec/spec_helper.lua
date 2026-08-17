@@ -71,6 +71,12 @@ _G.Ext = {
 		end,
 	}),
 	Osiris = { RegisterListener = function() end },
+	Mod = {
+		-- Mirrors SE's ModVersion array shape: {major, minor, revision, build}.
+		GetMod = function()
+			return { Info = { ModVersion = { 1, 2, 3, 0 } } }
+		end,
+	},
 	RegisterConsoleCommand = function() end,
 	IsServer = function()
 		return false

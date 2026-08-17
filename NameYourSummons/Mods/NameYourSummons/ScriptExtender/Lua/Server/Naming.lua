@@ -155,41 +155,41 @@ end
 function Naming.Diagnose(ref)
 	local e = Writer.Resolve(ref)
 	if not e then
-		Util.Log("Diagnose: no such entity")
+		Util.Say("Diagnose: no such entity")
 		return
 	end
 
-	Util.Log("---- NameYourSummons diagnosis ----")
+	Util.Say("---- NameYourSummons diagnosis ----")
 
 	local uuid
 	if e.Uuid then
 		uuid = tostring(e.Uuid.EntityUuid)
-		Util.Log("Uuid                     :", uuid)
+		Util.Say("Uuid                     :", uuid)
 	end
 
 	if e.DisplayName and e.DisplayName.Name and e.DisplayName.Name.Handle then
 		local h = e.DisplayName.Name.Handle.Handle
-		Util.Log(
+		Util.Say(
 			"DisplayName.Name         :",
 			tostring(h),
 			"(version " .. tostring(e.DisplayName.Name.Handle.Version) .. ")"
 		)
-		Util.Log("  resolves to            :", tostring(Ext.Loca.GetTranslatedString(h)))
+		Util.Say("  resolves to            :", tostring(Ext.Loca.GetTranslatedString(h)))
 	end
 
 	if e.CustomName then
-		Util.Log("CustomName.Name          :", tostring(e.CustomName.Name))
+		Util.Say("CustomName.Name          :", tostring(e.CustomName.Name))
 	end
 
 	if e.OriginalTemplate then
-		Util.Log("OriginalTemplate         :", tostring(e.OriginalTemplate.OriginalTemplate))
+		Util.Say("OriginalTemplate         :", tostring(e.OriginalTemplate.OriginalTemplate))
 	end
 	if uuid then
-		Util.Log("Is summon (Osiris)       :", tostring(Osi.IsSummon(uuid)))
-		Util.Log("Owner (Osiris)           :", tostring(Osi.CharacterGetOwner(uuid)))
+		Util.Say("Is summon (Osiris)       :", tostring(Osi.IsSummon(uuid)))
+		Util.Say("Owner (Osiris)           :", tostring(Osi.CharacterGetOwner(uuid)))
 	end
 
-	Util.Log("-------------------------------")
+	Util.Say("-------------------------------")
 end
 
 --- The resolved tag names on a summon, for classification. Runtime tags are GUIDs;
