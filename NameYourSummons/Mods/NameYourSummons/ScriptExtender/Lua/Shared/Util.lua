@@ -132,13 +132,45 @@ function Util.LocaHandleFor(text)
 	return string.format("hNameYourSummons%08x", Util.Hash32(text))
 end
 
--- Prefix each line with a sub-second wall clock so pasted logs show event timing.
+-- Off by default: Util.Log stays silent unless `!nys_debug` turns it on (issue #106). Warn and Say are never gated.
+local debugEnabled = false
+
+---@param on boolean
+function Util.SetDebug(on)
+	debugEnabled = on == true
+end
+
+---@return boolean
+function Util.DebugEnabled()
+	return debugEnabled
+end
+
+-- Prefixed with a sub-second wall clock so pasted debug logs show event timing.
 function Util.Log(...)
-	Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+	if debugEnabled then
+		Ext.Utils.Print(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+	end
+end
+
+-- Ungated: the startup line and user-invoked console-command output.
+function Util.Say(...)
+	Ext.Utils.Print("[NameYourSummons]", ...)
 end
 
 function Util.Warn(...)
 	Ext.Utils.PrintWarning(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
+end
+
+--- The installed mod version as "major.minor.revision", or "unknown" if unreadable. Fails soft:
+--- the ModVersion shape varies across SE builds, so read it under pcall.
+---@return string
+function Util.VersionString()
+	local ok, version = pcall(function()
+		local mod = Ext.Mod.GetMod(ModuleUUID)
+		local v = mod.Info.ModVersion
+		return string.format("%d.%d.%d", v[1], v[2], v[3])
+	end)
+	return (ok and type(version) == "string") and version or "unknown"
 end
 
 return Util

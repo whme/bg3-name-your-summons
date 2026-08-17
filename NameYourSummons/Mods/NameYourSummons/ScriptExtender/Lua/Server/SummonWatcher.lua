@@ -834,7 +834,7 @@ function Watcher.RegisterConsole()
 	Ext.RegisterConsoleCommand("nys_diag", function()
 		local summons = Naming.HostSummons()
 		if #summons == 0 then
-			Util.Log("No summons found on the host character; diagnosing the host instead.")
+			Util.Say("No summons found on the host character; diagnosing the host instead.")
 			Naming.Diagnose(Osi.GetHostCharacter())
 			return
 		end
@@ -847,17 +847,21 @@ function Watcher.RegisterConsole()
 	Ext.RegisterConsoleCommand("nys_rename", function(_cmd, ...)
 		local name = Util.Sanitise(table.concat({ ... }, " "))
 		if name == "" then
-			Util.Log("Usage: !nys_rename <name>")
+			Util.Say("Usage: !nys_rename <name>")
 			return
 		end
 		local summons = Naming.HostSummons()
 		if #summons == 0 then
-			Util.Log("The host character has no summons out.")
+			Util.Say("The host character has no summons out.")
 			return
 		end
+		local renamed = 0
 		for _, summon in ipairs(summons) do
-			Naming.Apply(summon, name)
+			if Naming.Apply(summon, name) then
+				renamed = renamed + 1
+			end
 		end
+		Util.Say(("Renamed %d summon(s) to '%s'."):format(renamed, name))
 	end)
 
 	Ext.RegisterConsoleCommand("nys_list", function()
@@ -865,15 +869,15 @@ function Watcher.RegisterConsole()
 		for key, value in pairs(Store.All()) do
 			if type(value) == "table" then
 				for i, name in ipairs(value) do
-					Util.Log(("  %-70s -> [%d] %s"):format(key, i, name))
+					Util.Say(("  %-70s -> [%d] %s"):format(key, i, name))
 					n = n + 1
 				end
 			else
-				Util.Log(("  %-70s -> %s"):format(key, value))
+				Util.Say(("  %-70s -> %s"):format(key, value))
 				n = n + 1
 			end
 		end
-		Util.Log(("%d saved name(s)."):format(n))
+		Util.Say(("%d saved name(s)."):format(n))
 	end)
 
 	-- Run the save/load reapply pass on demand, without reloading.
@@ -887,7 +891,7 @@ function Watcher.RegisterConsole()
 		end
 		askedThisSession = {}
 		askedUnique = {}
-		Util.Log("Cleared all saved summon names.")
+		Util.Say("Cleared all saved summon names.")
 	end)
 end
 

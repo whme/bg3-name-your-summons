@@ -477,6 +477,7 @@ Diagnostic console commands (server state unless noted):
 | `!nys_diag` | dump what the game thinks each summon is named |
 | `!nys_rename <name>` | rename the host's summons now, no prompt |
 | `!nys_clear` | wipe all saved names |
+| `!nys_debug` | toggle debug console logging (registered in BOTH states so one call flips both). Off by default: only the startup version line, warnings, and command output print; on shows every routine `Util.Log` |
 | `!nys_trace` | toggle full-detail JSONL tracing to `nys-trace-<state>.jsonl` (registered in BOTH states; run from the matching console context) |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
@@ -490,6 +491,13 @@ decision, store write, and swallowed pcall failure as one JSON line per event to
 line so the record survives a crash. It is OFF by default; toggle it on with
 `!nys_trace` (in both states) when reproducing an issue, then ask the user for
 both files instead of pasted console excerpts.
+
+Console logging is quiet by default (issue #106): each state prints ONE startup
+line (`Util.Say` with the mod version + "loaded successfully"); after that only
+warnings (`Util.Warn`) and user-invoked command output (`Util.Say`) print. Routine
+info (`Util.Log` - "Named ...", "Saved name ...", "Reapply ...") is gated behind
+`!nys_debug`. So new routine tracing goes through `Util.Log` (hidden unless
+debugging); anything a console command prints for the user must use `Util.Say`.
 
 ## Tooling and Quality Gates
 
