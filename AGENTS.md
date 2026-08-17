@@ -111,11 +111,35 @@ the game.
   persistent HUD overlay of rule 5 (`installHudDetector`): on its `NysDetectCommand` signal
   `onExamineDetected` reconciles the tree (`pollLifecycle`) on a short bounded retry - the panel
   widget lags the target by up to ~`EXAMINE_SETTLE_MS` - and force-fresh-wires manual panels so a
-  re-open cannot reuse stale field subscriptions. A slow heartbeat (`HUD_WIRE_HEARTBEAT_MS`)
-  re-wires every overlay host (one per split-screen viewport) across HUD rebuilds; while an
-  on-summon prompt is pending a self-disarming `SAFETY_RECONCILE_MS` loop guards the world-pause
-  against a missed close. Scans run only from those paths and only in `Running`/`Paused`
-  (`scanAllowed`), anchored at `ContentRoot` / `Examine` and reading the property bag; the direct
+  re-open cannot reuse stale field subscriptions. **NEVER walk the whole visual tree; the landmarks
+  are direct children of ContentRoot.** Verified via `!nys_uidump` (depths relative to ContentRoot=0):
+  `Examine` / `Examine_c` / `HudIndicator` / `NYS_HudOverlay` are all at depth 1, and `NYS_HudVmHost`
+  is at depth 3 (`NYS_HudOverlay` -> `NYS_HudOverlayRoot` -> host). So the ContentRoot lookups scan
+  ONLY direct children (`childrenNamed`) or navigate a couple of known levels (`bfsByName`, bounded
+  maxDepth) - if `Examine` is not a direct child, no panel is open, full stop. (`element:Find(name)` /
+  Noesis `FindNodeName` resolves only WITHIN one namescope - `GetRoot():Find("ContentRoot")` works but
+  `ContentRoot:Find("HudIndicator")` does not - so it is used only for `contentRoot` itself; per-
+  viewport CONTROLS are all under our `NYS_RenameBar`, so `wirePanel` DFS-walks the Examine subtree
+  ONCE to that bar, then resolves each control within its tiny subtree - not four separate Examine
+  walks.) The one lookup that cannot use a name is `entityHandleFor` (matches a DataContext's
+  `EntityUUID`, no x:Name); every summon portrait lives under the party portrait bar, a direct child of
+  ContentRoot whose x:Name differs by input layout (`PlayerPortraits` on keyboard, `PartyLine_c` on
+  controller - both verified via `!nys_uidump`), so it scans ONLY those bounded subtrees, never
+  ContentRoot - and tries every candidate bar (split-screen is controller-only, one bar per viewport),
+  since the summon is under its owner's.
+  **Re-wiring is event-driven, NOT a heartbeat.** The overlay wiring PERSISTS on the live node once set
+  (verified: `wireHost` fired 0 times across a 77 s session while the host stayed wired), and a Lua
+  node handle expires across ticks so it cannot be cached - together these mean we (re)wire ONLY on a
+  real HUD rebuild and never poll (a per-second walk was what SE profiled - `Dispatching user function
+  call ... took X ms`): `rewireBurst` (bounded retry - keep trying until a host is wired, then two
+  safety passes, then stop) runs at Register, on `SessionLoaded` / `ResetCompleted`, and on a
+  keyboard<->controller switch (no BG3SE input-mode event, so `onInput` bursts on a device-kind change
+  seen via `EclLuaMouseButton` / `EclLuaKeyInput` / `EclLuaControllerButton`). Steady state does zero walks.
+  While an on-summon prompt is pending a self-disarming `SAFETY_RECONCILE_MS` loop guards the
+  world-pause against a missed close. All scans run only in `Running`/`Paused` (`scanAllowed`).
+  `!nys_uidump` dumps the visual-tree landmark map (named nodes + depth + per-namescope `:Find` reach)
+  to the trace file - the authority for these depths.
+  Reads use the property bag; the direct
   `GetProperty` (238-510 ms per Examine open when scanning) is reserved for one known object (the
   HUD command surface, a matched entity handle).
   **Non-interactive by default; editing is opt-in.** The name field (`NYS_NameInput`)
@@ -479,6 +503,7 @@ Diagnostic console commands (server state unless noted):
 | `!nys_clear` | wipe all saved names |
 | `!nys_debug` | toggle debug console logging (registered in BOTH states so one call flips both). Off by default: only the startup version line, warnings, and command output print; on shows every routine `Util.Log` |
 | `!nys_trace` | toggle full-detail JSONL tracing to `nys-trace-<state>.jsonl` (registered in BOTH states; run from the matching console context) |
+| `!nys_uidump` | (client) dump the visual-tree landmark map (named nodes + depth, and per-namescope `:Find` reach for each landmark) to `nys-trace-client.jsonl`; forces tracing on. Use to plan a shallower node anchor |
 
 `!nys_diag` is the primary debugging tool: it dumps the loca handle, what it
 resolves to, `CustomName` if present, and the root template. Ask the user to

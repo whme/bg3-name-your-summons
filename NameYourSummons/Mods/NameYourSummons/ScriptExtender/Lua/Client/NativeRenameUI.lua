@@ -1233,9 +1233,9 @@ function NativeRenameUI.SetPanelCloseHandler(fn)
 end
 
 local DETECT_VM = "NYS_DetectVM"
-local HUD_WIRE_HEARTBEAT_MS = 1000
 local hudInstalled = false
 local reconcileGen = 0 -- bumped per signal so a newer change supersedes older retries
+local rewireGen = 0 -- bumped per rewire burst so an older burst's retries stop
 
 --- Detected by a `NysWired` Bool marker prop, not the Command (reading a Command back is unreliable).
 ---@param host any
@@ -1295,7 +1295,8 @@ local function wireHost(host)
 	end
 end
 
---- Navigate directly to the overlay host(s) and wire any not yet wired; returns how many were found.
+--- Navigate directly to the overlay host(s) and wire any not yet wired; returns how many are WIRED
+--- after the attempt (not merely present), so a burst keeps retrying until wiring actually takes.
 --- Structure (verified via `!nys_uidump`): NYS_HudOverlay is a DIRECT child of ContentRoot, and
 --- NYS_HudVmHost sits 2 levels under it (NYS_HudOverlayRoot -> NYS_HudVmHost) - all in our own XAML,
 --- so no whole-tree walk. A Noesis node handle does NOT survive across ticks, so we cannot cache the
@@ -1303,27 +1304,73 @@ end
 --- times after the first), so this runs ONLY on a real HUD rebuild, never on an idle timer.
 ---@return integer
 local function ensureOverlaysWired()
-	local found = 0
+	local wired = 0
 	local cr = contentRoot()
 	for _, overlay in ipairs(childrenNamed(cr, "NYS_HudOverlay")) do
 		local host = bfsByName(overlay, "NYS_HudVmHost", 2)
 		if host then
-			found = found + 1
 			if not hostIsWired(host) then
 				wireHost(host)
+			end
+			if hostIsWired(host) then
+				wired = wired + 1
 			end
 		end
 	end
 	Trace.Log(
 		"detect",
 		"ensureOverlaysWired (direct navigation)",
-		{ HasContentRoot = cr and true or false, HostsFound = found }
+		{ HasContentRoot = cr and true or false, HostsWired = wired }
 	)
-	return found
+	return wired
 end
 
---- The HUD is rebuilt with no event on session load and input-mode switch, so a heartbeat is the
---- only reliable re-wire.
+-- Re-wire after a HUD rebuild (session load / reset / input-mode switch): the rebuild has no event
+-- and the new host lags, so retry on a bounded schedule - keep trying until a host is wired, then a
+-- couple of safety passes (to catch a host that rebuilds just after), then STOP. A gen token
+-- collapses overlapping triggers into one burst.
+local REWIRE_INTERVAL_MS = 400
+local REWIRE_MAX_TRIES = 25
+
+local function rewireBurst()
+	rewireGen = rewireGen + 1
+	local gen = rewireGen
+	local safetyPasses = 2
+	local function pass(tries)
+		if gen ~= rewireGen then
+			return
+		end
+		local wired = scanAllowed() and ensureOverlaysWired() or 0
+		if wired > 0 then
+			safetyPasses = safetyPasses - 1
+			if safetyPasses < 0 then
+				return
+			end
+		end
+		if tries + 1 < REWIRE_MAX_TRIES then
+			Ext.Timer.WaitForRealtime(REWIRE_INTERVAL_MS, function()
+				pass(tries + 1)
+			end)
+		end
+	end
+	pass(0)
+end
+
+-- A keyboard/mouse<->controller switch may rebuild the HUD (dropping our overlay wiring). BG3SE has
+-- no input-mode event, but a switch always brings an input event on the newly-active device, so
+-- (re)wire on a device-kind change.
+local lastInputKind = nil
+local function onInput(kind)
+	if kind == lastInputKind then
+		return
+	end
+	lastInputKind = kind
+	Trace.Log("detect", "input-kind change -> rewire burst", { Kind = kind })
+	rewireBurst()
+end
+
+--- No idle heartbeat: the overlay wiring persists, so (re)wire only on real HUD rebuilds - here at
+--- Register, plus SessionLoaded/ResetCompleted and an input-mode switch. Polling was what SE profiled.
 local function installHudDetector()
 	if hudInstalled then
 		return
@@ -1335,13 +1382,26 @@ local function installHudDetector()
 			NysWired = { Type = "Bool", Notify = true },
 		})
 	end)
-	local function heartbeat()
-		if scanAllowed() then
-			ensureOverlaysWired()
-		end
-		Ext.Timer.WaitForRealtime(HUD_WIRE_HEARTBEAT_MS, heartbeat)
-	end
-	heartbeat()
+	-- Each wrapped so an event name stale on this build cannot tear down the module; the rest bind.
+	pcall(function()
+		Ext.Events.EclLuaMouseButton:Subscribe(function()
+			onInput("kbm")
+		end)
+	end)
+	pcall(function()
+		Ext.Events.EclLuaKeyInput:Subscribe(function()
+			onInput("kbm")
+		end)
+	end)
+	pcall(function()
+		Ext.Events.EclLuaControllerButton:Subscribe(function()
+			onInput("pad")
+		end)
+	end)
+	pcall(function()
+		Ext.Events.ResetCompleted:Subscribe(rewireBurst)
+	end)
+	rewireBurst()
 end
 
 -- ----------------------------------------------------------------------------------------------
@@ -1492,8 +1552,12 @@ function NativeRenameUI.Register()
 	-- Seed cachedAllowStory: a fresh boot has not loaded persisted ModVars at Register, so
 	-- SessionLoaded honours a saved opt-in; the immediate call covers a Lua `reset` reload.
 	refreshSettingsCache()
+	-- A session load rebuilds the HUD, dropping our overlay wiring, so re-wire on it too.
 	pcall(function()
-		Ext.Events.SessionLoaded:Subscribe(refreshSettingsCache)
+		Ext.Events.SessionLoaded:Subscribe(function()
+			refreshSettingsCache()
+			rewireBurst()
+		end)
 	end)
 
 	-- The setting changed; refresh the cache and re-evaluate every open panel so a summon
