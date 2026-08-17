@@ -764,12 +764,50 @@ dn.Name.Handle.Handle = handle
 - Multiplayer is wired (`SendToClient(payload, ownerGuid)` targets only the
   summoner) but untested; flag changes that could affect the co-op path.
 
-## Commit Messages
+## Commit conventions
 
-Follow the conventions in
-[`.claude/skills/commit/SKILL.md`](.claude/skills/commit/SKILL.md).
-AI-generated commits MUST include a `Co-authored-by:` trailer naming the
-model.
+Use the `/workflows:commit` skill (the `workflows@whmade` marketplace plugin);
+it reads this section and applies these specifics on top of its generic flow.
+
+Commit messages use the three-block layout: a single-line subject, an optional
+wrapped body, and a footer of Git trailers, each block separated by a blank
+line.
+
+- **Scope prefix**: an optional lowercase `scope:` prefix when the change is
+  confined to one area, using only scopes that match the code layout (e.g.
+  `server:`, `client:`, `NameWriter:`, `prompt:`). Do not invent scopes. After
+  the prefix, follow the casing `git log` uses.
+- **Subject**: imperative mood, first word capitalized when unscoped, no
+  trailing period, under ~72 chars. Do not pre-append a PR number in
+  parentheses - GitHub's squash-merge adds that when the PR lands.
+- **Body**: explain WHY the change is made and the observable in-game behaviour
+  before/after when relevant (names not sticking, a summon reverting to its
+  default name, a crash). This project cannot be unit-tested, so the body is
+  where the reasoning lives. Wrap at ~72-76 chars; use `-` for bullet lists.
+- **Punctuation**: ASCII only - see the typography rule in `## Code Standards`.
+  No em-dashes, arrows, or smart quotes anywhere in the message.
+- **Issue/PR references**: one per line in the footer, never in the subject or
+  body prose. Use the non-closing `GitHub: #<number>` style; use `Closes
+  #<number>` only when the change fully resolves an issue.
+- **AI co-authorship (MANDATORY for AI-generated commits)**: exactly one
+  `Co-authored-by:` trailer naming the model in use, with email
+  `<noreply@anthropic.com>` and lowercase `Co-authored-by:` - e.g.
+  `Co-authored-by: Claude Opus 4.7 <noreply@anthropic.com>`.
+
+Example:
+
+```
+server: re-register loca handles before reapplying names
+
+Loading a save dropped every custom summon name: runtime localisation
+entries do not survive a restart, so the reapply pass pointed each
+summon at a handle that no longer resolved and the name rendered as
+nothing. Re-register every saved name's handle on SessionLoaded, before
+the reapply pass runs.
+
+GitHub: #12
+Co-authored-by: Claude Opus 4.7 <noreply@anthropic.com>
+```
 
 ## User Interaction
 
@@ -778,12 +816,32 @@ model.
 - Because you cannot test in game, surface the exact console command
   (`!nys_diag`, `!nys_rename`, etc.) the user should run to confirm a change.
 
-## GitHub Pull Requests
+## Pull requests
 
-Both PR creation and addressing review feedback are covered in
-[`.claude/skills/github-pr/SKILL.md`](.claude/skills/github-pr/SKILL.md).
-When addressing feedback: reply to every unresolved review comment, mark each
-thread resolved once addressed, and push to update the PR.
+Use the `/workflows:github-pr` skill (the `workflows@whmade` marketplace
+plugin) for both PR creation and addressing review feedback; it reads this
+section and applies these specifics on top of its generic flow.
+
+- **Create from the commit**: `gh pr create --fill` derives the title and body
+  from the latest commit, so a well-formed commit (see `## Commit conventions`)
+  yields a well-formed PR. Hold the title and body to the same bar as the
+  commit message.
+- **PR body**: for a user-facing change, note the in-game verification done (or
+  the console command a reviewer should run - `!nys_diag`, `!nys_rename`, ...).
+  A docs/CI/internal change has no in-game effect to note.
+- **News fragment**: every PR MUST add a `news/<id>.<type>.md` fragment (type
+  one of `feature`, `bugfix`, `security`, `deprecation`, `removal`) OR carry
+  the `no-news-fragment-needed` label, or the `news-fragment-check` workflow
+  fails it.
+- **Addressing feedback**: reply to every unresolved review thread - even when
+  the fix is "done in commit abc123" - and resolve each thread only after the
+  fix is pushed and a reply is posted. Push to update the PR; local commits
+  alone do not count.
+- **Sanctioned rebase patchset**: rebasing the PR's OWN branch onto its base
+  branch (`origin/<baseRefName>` - a patch-release PR targets a
+  `X.Y-maintenance` branch, not `main`) and `--force-with-lease` pushing it is
+  allowed. Never force-push `main`, never plain `--force`, and never `--amend`
+  commits already pushed for review.
 
 ## Git over SSH
 
@@ -794,8 +852,7 @@ remote (`git fetch`, `git push`, SSH-backed `gh`) from PowerShell.
 ## Completion Checklist
 
 Before considering any task complete, first self-review your changes by
-running [`/scrutinize`](.claude/skills/scrutinize/SKILL.md) on them. Then
-confirm:
+running the `/workflows:scrutinize` skill on them. Then confirm:
 
 1. Documentation (README, this file, docstrings) is accurate for the change.
 2. No forbidden Unicode punctuation (the pre-commit hook passes).

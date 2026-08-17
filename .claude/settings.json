@@ -1,0 +1,9 @@
+{
+  "extraKnownMarketplaces": {
+    "whmade": {
+      "source": { "source": "github", "repo": "whmade/claude-marketplace" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "workflows@whmade": true }
+}
