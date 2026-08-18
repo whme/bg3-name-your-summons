@@ -428,7 +428,7 @@ distributed through mod.io.
 
 Note: the mod manager only re-scans a mod's metadata on a full game restart, and
 description/thumbnail changes to an already-installed pak may need an uninstall +
-reinstall of the pak to take effect - an SE `reset` reloads Lua only.
+reinstall of the pak to take effect.
 
 ## Reference docs
 
@@ -483,8 +483,8 @@ all inherit this). Only the staged copy is stamped - the committed `meta.lsx`
 keeps build 0, so the semver flow is untouched and the artifact filename stays
 `X.Y.Z`. The `Version64` build field is 31 bits, so epoch seconds overflow it on
 2038-01-19; past that the stamp is omitted (a warning) rather than corrupting the
-version. For iteration the folder is symlinked into the
-game's `Data/`, and `reset` in the SE console reloads Lua without restarting.
+version. To test a change, put the built `.pak` in the game's `Mods` folder (see
+`deploy` above) and restart the game.
 
 Releasing: the mod version is a packed `Version64` int64 in `meta.lsx` (the
 `ModuleInfo` node and its nested `PublishVersion`), and is the single source of
