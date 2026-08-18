@@ -132,11 +132,17 @@ the game.
   node handle expires across ticks so it cannot be cached - together these mean we (re)wire ONLY on a
   real HUD rebuild and never poll (a per-second walk was what SE profiled - `Dispatching user function
   call ... took X ms`): `rewireBurst` (bounded retry - keep trying until a host is wired, then two
-  safety passes, then stop) runs at Register, on `SessionLoaded` / `ResetCompleted`, on a
-  keyboard<->controller switch (no BG3SE input-mode event, so `onInput` bursts on a device-kind change
-  seen via the live `MouseButtonInput` / `KeyInput` / `ControllerButtonInput` events - NOT the stale
-  `EclLua*` helper names), and on `ViewportResized` (a split-screen viewport join/leave rebuilds a HUD
-  host but fires none of the others). Steady state does zero walks.
+  safety passes, then stop) runs at Register, on `SessionLoaded` / `ResetCompleted`, on
+  the `GameStateChanged` transition INTO a world-up state (`Running` / `Paused`) from a non-world-up
+  one (the world-up HUD rebuild fires none of the others on a keyboard-only session, so the post-load
+  host would go unwired until a device switch; the `FromState` guard skips the in-play pause/unpause
+  toggles, which rebuild nothing), on a keyboard<->controller switch (no BG3SE input-mode event, so `onInput` bursts on
+  a device-kind change seen via the live `MouseButtonInput` / `KeyInput` / `ControllerButtonInput`
+  events - NOT the stale `EclLua*` helper names), and on `ViewportResized` (a split-screen viewport
+  join/leave rebuilds a HUD host but fires none of the others). The `onInput` latch (`lastInputKind`)
+  is CLEARED on `SessionLoaded` and on entering a world-up state, so a keyboard input pressed in the
+  menu pre-load cannot latch `kbm` and suppress the first in-game backstop burst. Steady state does
+  zero walks.
   While an on-summon prompt is pending a self-disarming `SAFETY_RECONCILE_MS` loop guards the
   world-pause against a missed close. All scans run only in `Running`/`Paused` (`scanAllowed`).
   `!nys_uidump` dumps the visual-tree landmark map (named nodes + depth + per-namescope `:Find` reach)
