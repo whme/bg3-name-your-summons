@@ -13,7 +13,7 @@
 #   ./make.ps1 xaml-check    resolve mod XAML keys/controls/pack assets vs the game (or the committed oracle in CI)
 #   ./make.ps1 xaml-extract  regenerate the committed xaml-check oracle from the installed game
 #   ./make.ps1 loca-check    compile every .loca.xml with divine (Windows only)
-#   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first
+#   ./make.ps1 build         pack the mod into build/ (.pak + .zip); -Clean wipes first, -NoBuildNumber omits the build-epoch filename suffix
 #   ./make.ps1 deploy        build, then copy the .pak into BG3's Mods folder
 #   ./make.ps1 story-check   Osiris lint (StoryCompiler; needs -Bg3Data; no-op if none)
 #   ./make.ps1 stats-check   stats lint (StatParser; needs -Bg3Data; no-op if none)
@@ -646,17 +646,22 @@ function Set-ModVersion([string]$MetaPath, [string]$SemVer) {
     [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
 }
 
-# Stamp the staged meta.lsx build field with epoch seconds; returns it, or 0.
-# The 31-bit build field overflows on 2038-01-19, so past that omit rather than
-# corrupt the version.
-function Set-StagedBuildTimestamp([string]$MetaPath) {
+# Build-time epoch seconds, or 0 past 2038-01-19 when it overflows the 31-bit
+# build field. One call per build so the filename and meta stamp cannot drift.
+function Get-BuildEpoch {
     $epoch = [int64][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     if ($epoch -gt 2147483647) {
         Write-Warning "Unix epoch seconds ($epoch) exceed the 31-bit Version64 build field; build number omitted."
         return 0
     }
+    return $epoch
+}
+
+# Stamp the staged meta.lsx build field with the epoch (0 leaves it unstamped).
+function Set-StagedBuildTimestamp([string]$MetaPath, [int64]$Epoch) {
+    if ($Epoch -le 0) { return 0 }
     $semver = (Get-ModVersion $MetaPath) -split "\." | Select-Object -First 3
-    $packed = (ConvertTo-Version64 ($semver -join ".")) -bor $epoch
+    $packed = (ConvertTo-Version64 ($semver -join ".")) -bor $Epoch
     $content = Get-Content -Raw -Path $MetaPath
     $updated = [regex]::Replace(
         $content,
@@ -664,7 +669,7 @@ function Set-StagedBuildTimestamp([string]$MetaPath) {
         "`${1}$packed`${2}"
     )
     [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
-    return $epoch
+    return $Epoch
 }
 
 # ---------------------------------------------------------------------------
@@ -746,6 +751,8 @@ function Assert-PakContents($Divine, $Pak) {
 # Create Package. Pass -Clean (via `./make.ps1 build -Clean`) to wipe build/ first.
 function Cmd-Build {
     $clean = @($Rest) -match "^-{0,2}[Cc]lean$"
+    # Drops the epoch from the FILENAME only; the pak's meta is still stamped.
+    $noBuildNumber = @($Rest) -match "^-{0,2}NoBuildNumber$"
     $modName = "NameYourSummons"
     $sourceDir = Join-Path $Root $modName
     $buildDir = Join-Path $Root "build"
@@ -758,7 +765,10 @@ function Cmd-Build {
     if ($clean -and (Test-Path $buildDir)) { Remove-Item $buildDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-    $version = Get-ModVersion $meta
+    # Committed meta is build 0, so its X.Y.Z is the semver; suffix the epoch.
+    $semver = ((Get-ModVersion $meta) -split "\." | Select-Object -First 3) -join "."
+    $epoch = Get-BuildEpoch
+    $version = if ($epoch -gt 0 -and -not $noBuildNumber) { "$semver.$epoch" } else { $semver }
     $pak = Join-Path $buildDir "$modName-$version.pak"
     $zipOut = Join-Path $buildDir "$modName-$version.zip"
     $divine = Get-Divine
@@ -776,7 +786,7 @@ function Cmd-Build {
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         Copy-Item -Path (Join-Path $sourceDir "*") -Destination $stage -Recurse -Force
         Convert-StageLoca $divine $stage
-        $stampedEpoch = Set-StagedBuildTimestamp (Join-Path $stage "Mods/$modName/meta.lsx")
+        $stampedEpoch = Set-StagedBuildTimestamp (Join-Path $stage "Mods/$modName/meta.lsx") $epoch
         if ($stampedEpoch -gt 0) {
             $stampedUtc = [System.DateTimeOffset]::FromUnixTimeSeconds($stampedEpoch).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
             Write-Host "Build number: $stampedEpoch (UTC $stampedUtc)"
@@ -799,6 +809,9 @@ function Cmd-Build {
     if (Test-Path $zipOut) { Remove-Item $zipOut -Force }
     Compress-Archive -Path $pak -DestinationPath $zipOut
 
+    # Deploy reads this: the epoch suffix cannot be re-derived (UtcNow has moved on).
+    $script:LastBuiltPak = $pak
+
     Write-Host ""
     Write-Host "Built:"
     Write-Host "  $pak"
@@ -820,11 +833,8 @@ function Cmd-Deploy {
     $buildCode = Cmd-Build
     if ($buildCode -ne 0) { return $buildCode }
 
-    $modName = "NameYourSummons"
-    $meta = Get-MetaPath
-    $version = Get-ModVersion $meta
-    $pak = Join-Path $Root "build/$modName-$version.pak"
-    if (-not (Test-Path $pak)) {
+    $pak = $script:LastBuiltPak
+    if (-not $pak -or -not (Test-Path $pak)) {
         Write-Host "Expected packed mod '$pak' but it is missing - build did not produce it."
         return 1
     }
@@ -839,7 +849,21 @@ function Cmd-Deploy {
         return 1
     }
 
-    $dest = Join-Path $modsDir "$modName-$version.pak"
+    # Epoch-suffixed names are unique per build, so clear prior paks first; two
+    # paks of the same mod UUID make BG3 load an ambiguous copy. The incoming name
+    # is left for Copy-Item -Force to overwrite, so a stable-name build is quiet.
+    $newLeaf = Split-Path -Leaf $pak
+    $stale = @(Get-ChildItem -Path $modsDir -Filter "NameYourSummons-*.pak" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne $newLeaf })
+    if ($stale) {
+        Write-Host ""
+        Write-Host "Removed stale paks:"
+        foreach ($old in $stale) {
+            Remove-Item $old.FullName -Force
+            Write-Host "  $($old.FullName)"
+        }
+    }
+    $dest = Join-Path $modsDir $newLeaf
     Copy-Item -Path $pak -Destination $dest -Force
     Write-Host ""
     Write-Host "Deployed:"

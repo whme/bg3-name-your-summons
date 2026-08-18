@@ -481,14 +481,18 @@ a dot-free temp dir to dodge this. In that stage it also compiles every
 `Localization/**/*.loca.xml` into the binary `.loca` the game loads (via
 `divine --action convert-loca`) and drops the `.xml`, so only compiled tables ship.
 It also stamps the STAGED `meta.lsx` `Version64` build field with the build time
-as Unix epoch seconds (UTC) (`Set-StagedBuildTimestamp`), so each packed `.pak`
-self-identifies when it was built (`build`, `deploy`, and the `release.yml` pack
-all inherit this). Only the staged copy is stamped - the committed `meta.lsx`
-keeps build 0, so the semver flow is untouched and the artifact filename stays
-`X.Y.Z`. The `Version64` build field is 31 bits, so epoch seconds overflow it on
-2038-01-19; past that the stamp is omitted (a warning) rather than corrupting the
-version. To test a change, put the built `.pak` in the game's `Mods` folder (see
-`deploy` above) and restart the game.
+as Unix epoch seconds (UTC) (`Set-StagedBuildTimestamp`) - the build number; the
+committed `meta.lsx` keeps build 0. The LOCAL `build` / `deploy` filenames carry it
+(`NameYourSummons-X.Y.Z.<epoch>.{pak,zip}`) and the startup line shows it
+(`Util.VersionString` appends `.build` when non-zero); since the epoch now makes
+each filename unique, `deploy` clears its prior `NameYourSummons-*.pak` from the
+Mods folder before copying, so the game never loads two paks of the same mod. The PUBLIC release asset
+stays `NameYourSummons-X.Y.Z.zip`: `release.yml` packs with `build -NoBuildNumber`,
+which drops the epoch from the filename only - the pak is still stamped. The build
+field is 31 bits, so epoch seconds overflow it on 2038-01-19; past that the stamp
+and suffix are omitted (a warning) and the filename is `X.Y.Z`. To test a change,
+put the built `.pak` in the game's `Mods` folder (see `deploy` above) and restart
+the game.
 
 Releasing: the mod version is a packed `Version64` int64 in `meta.lsx` (the
 `ModuleInfo` node and its nested `PublishVersion`), and is the single source of

@@ -28,7 +28,7 @@ jobs:
           key: tools-${{ runner.os }}-${{ hashFiles('make.ps1') }}
 
       - name: Pack the mod
-        run: ./make.ps1 build
+        run: ./make.ps1 build -NoBuildNumber
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
