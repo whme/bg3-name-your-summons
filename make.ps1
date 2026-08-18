@@ -849,6 +849,9 @@ function Cmd-Deploy {
         return 1
     }
 
+    # Epoch-suffixed names are unique per build, so clear prior paks first; two
+    # paks of the same mod UUID make BG3 load an ambiguous copy.
+    Get-ChildItem -Path $modsDir -Filter "NameYourSummons-*.pak" -ErrorAction SilentlyContinue | Remove-Item -Force
     $dest = Join-Path $modsDir (Split-Path -Leaf $pak)
     Copy-Item -Path $pak -Destination $dest -Force
     Write-Host ""

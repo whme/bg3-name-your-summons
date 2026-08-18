@@ -484,7 +484,9 @@ It also stamps the STAGED `meta.lsx` `Version64` build field with the build time
 as Unix epoch seconds (UTC) (`Set-StagedBuildTimestamp`) - the build number; the
 committed `meta.lsx` keeps build 0. The LOCAL `build` / `deploy` filenames carry it
 (`NameYourSummons-X.Y.Z.<epoch>.{pak,zip}`) and the startup line shows it
-(`Util.VersionString` appends `.build` when non-zero). The PUBLIC release asset
+(`Util.VersionString` appends `.build` when non-zero); since the epoch now makes
+each filename unique, `deploy` clears its prior `NameYourSummons-*.pak` from the
+Mods folder before copying, so the game never loads two paks of the same mod. The PUBLIC release asset
 stays `NameYourSummons-X.Y.Z.zip`: `release.yml` packs with `build -NoBuildNumber`,
 which drops the epoch from the filename only - the pak is still stamped. The build
 field is 31 bits, so epoch seconds overflow it on 2038-01-19; past that the stamp
