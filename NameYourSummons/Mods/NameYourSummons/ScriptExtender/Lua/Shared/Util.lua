@@ -159,12 +159,15 @@ function Util.Warn(...)
 	Ext.Utils.PrintWarning(Ext.Timer.ClockTime(), "[NameYourSummons]", ...)
 end
 
---- The installed mod version as "major.minor.revision", or "unknown" if the mod info is unreadable.
+--- The installed mod version as "major.minor.revision", plus ".build" when non-zero, or "unknown".
 ---@return string
 function Util.VersionString()
 	local ok, version = pcall(function()
 		local mod = Ext.Mod.GetMod(ModuleUUID)
 		local v = mod.Info.ModVersion
+		if v[4] and v[4] ~= 0 then
+			return string.format("%d.%d.%d.%d", v[1], v[2], v[3], v[4])
+		end
 		return string.format("%d.%d.%d", v[1], v[2], v[3])
 	end)
 	return (ok and type(version) == "string") and version or "unknown"

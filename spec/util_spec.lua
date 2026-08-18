@@ -258,6 +258,16 @@ function TestVersionString:testFormatsMajorMinorRevision()
 	lu.assertEquals(Util.VersionString(), "1.2.3")
 end
 
+function TestVersionString:testAppendsBuildWhenNonZero()
+	local orig = Ext.Mod.GetMod
+	Ext.Mod.GetMod = function()
+		return { Info = { ModVersion = { 1, 2, 3, 999 } } }
+	end
+	local v = Util.VersionString()
+	Ext.Mod.GetMod = orig
+	lu.assertEquals(v, "1.2.3.999")
+end
+
 function TestVersionString:testFailsSoftToUnknown()
 	local orig = Ext.Mod
 	Ext.Mod = nil
