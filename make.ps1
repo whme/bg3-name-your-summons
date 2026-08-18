@@ -1062,7 +1062,9 @@ function Cmd-PrepareRelease {
         Write-Host "INFO - Pushing release branch: $prBranch"
         Invoke-Git @("push", "-u", "origin", $prBranch)
         Write-Host "INFO - Opening PR against $maintenance"
-        & gh pr create --base $maintenance --fill | Out-Host
+        # The version-bump commit consumed every news fragment, so this PR has
+        # none and would fail news-fragment-check; label it to bypass that gate.
+        & gh pr create --base $maintenance --fill --label "no-news-fragment-needed" | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "gh pr create --base $maintenance failed with exit code $LASTEXITCODE" }
         Write-Host "INFO - Release $next prepared on branch $prBranch with a PR against $maintenance"
         Write-Host "INFO - After the PR is merged, switch to $maintenance, pull, and run './make.ps1 create-release-tag'"
