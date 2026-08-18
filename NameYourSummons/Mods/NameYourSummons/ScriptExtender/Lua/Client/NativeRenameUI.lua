@@ -1380,6 +1380,27 @@ local function installHudDetector()
 	pcall(function()
 		Ext.Events.ResetCompleted:Subscribe(rewireBurst)
 	end)
+	-- The world coming up (re)builds the HUD but fires none of the triggers above on a keyboard-only
+	-- session; guarding on FromState fires the backstop only on entry INTO a world-up state, not on
+	-- in-play pause/unpause (which rebuild nothing). Clearing the latch re-arms a kbm burst that a
+	-- pre-load menu keypress would otherwise suppress.
+	pcall(function()
+		local function isWorldUp(state)
+			return state == "Running" or state == "Paused"
+		end
+		Ext.Events.GameStateChanged:Subscribe(function(e)
+			local to = safe(function()
+				return tostring(e.ToState)
+			end)
+			local from = safe(function()
+				return tostring(e.FromState)
+			end)
+			if isWorldUp(to) and not isWorldUp(from) then
+				lastInputKind = nil
+				rewireBurst()
+			end
+		end)
+	end)
 	rewireBurst()
 end
 
@@ -1530,6 +1551,8 @@ function NativeRenameUI.Register()
 	pcall(function()
 		Ext.Events.SessionLoaded:Subscribe(function()
 			refreshSettingsCache()
+			-- Re-arm the input-kind backstop: a menu keyboard input may have latched it pre-load.
+			lastInputKind = nil
 			rewireBurst()
 		end)
 	end)
