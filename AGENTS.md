@@ -211,10 +211,14 @@ the game.
   the panel is open; the staged forgets flush only when the panel closes
   (`flushStaged`, run from the overlay's own close button and from the whole
   Examine panel closing via `NativeConfigUI.Flush`), so a forgotten name vanishes
-  on close and does not reappear on re-open. Editing a saved name also applies to
-  the live creature, but a manually-opened Examine panel does not repaint a name
-  changed from outside, so the server broadcasts `Channels.SummonRenamed` (uuid +
-  text) from its single apply path (`Server/Naming.lua`) and `NativeRenameUI`
+  on close and does not reappear on re-open. **Escape closes only the overlay, not
+  Examine** (like the controller's Circle): the `CloseExamine` button is gated
+  `Collapsed` while the overlay is open - a Collapsed `BoundEvent` button does not
+  receive the event - and the overlay's own `ls:LSInputBinding BoundEvent="UICancel"`
+  (enabled on `NysIsOpen`) closes it. Editing a saved name also applies to the live
+  creature, but a manually-opened Examine panel does not repaint a name changed from
+  outside, so the server broadcasts `Channels.SummonRenamed` (uuid + text) from its
+  single apply path (`Server/Naming.lua`) and `NativeRenameUI`
   writes the new text into the on-screen field.
 - **On-summon prompt = the Examine panel** (`Client/NativeRenameUI.lua`):
   the on-summon naming UI is the native Examine panel. Detection, the pending
