@@ -473,7 +473,10 @@
                                 </b:Interaction.Triggers>
                             </Grid>
                             <!--CLOSE BUTTON-->
-                            <ls:LSButton x:Name="CloseExamine" Style="{DynamicResource SmallCloseButton}" SoundID="UI_Shared_Cancel" HorizontalAlignment="Right" VerticalAlignment="Top" BoundEvent="UICancel" Margin="0,0,0,0">
+                            <!-- Collapsed while the overlay is open: a Collapsed BoundEvent button does not
+                                 receive the event, so UICancel falls through to the overlay's own binding below. -->
+                            <ls:LSButton x:Name="CloseExamine" Style="{DynamicResource SmallCloseButton}" SoundID="UI_Shared_Cancel" HorizontalAlignment="Right" VerticalAlignment="Top" BoundEvent="UICancel" Margin="0,0,0,0"
+                                         Visibility="{Binding IsVisible, ElementName=NYS_SettingsPanel, Converter={StaticResource BoolToCollapsedConverter}}">
                               <ls:LSButton.Triggers>
                                   <EventTrigger RoutedEvent="Button.Click">
                                       <BeginStoryboard x:Name="CloseAnimation" >
@@ -494,9 +497,16 @@
                      DataContext is an SE viewmodel set from Lua (NativeConfigUI) when
                      the panel opens; the gear toggles IsOpen. FallbackValue keeps it
                      collapsed before the DataContext is bound. -->
-                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="100">
-                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1820" Margin="0,150,0,0"
-                                         Visibility="{Binding NysIsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                <Grid x:Name="NYS_SettingsPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="100"
+                      Visibility="{Binding NysIsOpen, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
+                    <ls:LSInputBinding BoundEvent="UICancel" IsEnabled="{Binding NysIsOpen, FallbackValue=False}">
+                        <b:Interaction.Triggers>
+                            <b:EventTrigger EventName="LSInputBindingReleased">
+                                <b:InvokeCommandAction Command="{Binding NysCloseCommand}"/>
+                            </b:EventTrigger>
+                        </b:Interaction.Triggers>
+                    </ls:LSInputBinding>
+                    <ls:LSNineSliceImage Style="{StaticResource Generic9SliceBG}" Width="1500" Height="1820" Margin="0,150,0,0">
                         <Grid Margin="80,60,80,60">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
