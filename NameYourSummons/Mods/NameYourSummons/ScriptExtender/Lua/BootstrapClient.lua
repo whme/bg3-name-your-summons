@@ -25,6 +25,13 @@ Ext.Vars.RegisterModVariable(ModuleUUID, "Settings", {
 	Persistent = true,
 	SyncToClient = false,
 })
+Ext.Vars.RegisterModVariable(ModuleUUID, "SummonTypes", {
+	Server = true,
+	Client = false,
+	WriteableOnServer = true,
+	Persistent = true,
+	SyncToClient = false,
+})
 
 Loca.Register()
 NativeConfigUI.Register()
