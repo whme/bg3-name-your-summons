@@ -678,7 +678,8 @@
                                          only reachable if it carries the game's focusable style (Focusable +
                                          ls:MoveFocus + FocusVisualStyle + a focus-frame template); bare
                                          MoveFocus attrs on a custom template are NOT enough. The gear icon is
-                                         the content and the focus highlight is the style's. -->
+                                         the content and the focus highlight is the style's.
+                                         Full controller contract: docs/native-ui.md. -->
                                     <ls:LSButton x:Name="NYS_SettingsButton" Style="{StaticResource FocusableButtonStyleMinimal}"
                                                  Width="80" VerticalAlignment="Center" Margin="10,0,0,0" Command="{Binding NysGearCommand}">
                                         <Image Width="40" Height="40" Stretch="Uniform" HorizontalAlignment="Center"

@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: MIT
 --[[
-    Opt-in JSONL tracing, one file per Lua state (see docs/ingame-debugging.md and
-    AGENTS.md). Two invariants make it safe for crash forensics: every Trace.Log
+    Opt-in JSONL tracing, one file per Lua state (see docs/ingame-debugging.md).
+    Two invariants make it safe for crash forensics: every Trace.Log
     flushes the whole buffer to disk immediately (SaveFile has no append), so the
     last line before a crash is on disk; and payloads are sanitised (userdata ->
     tostring, depth/size-capped, cycle-safe) under pcall, so a Trace call never throws.

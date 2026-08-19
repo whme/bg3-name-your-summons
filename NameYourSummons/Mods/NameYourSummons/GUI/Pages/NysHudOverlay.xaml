@@ -1,6 +1,6 @@
 <!-- Persistent overlay merged into the always-active PlayerHUD state (ModType="Extend"); Lua
      wires it once. Its b:DataTrigger on the examine target invokes NysDetectCommand so Lua can
-     detect a manual Examine open. See AGENTS.md "Native Examine rename" and rule 5. -->
+     detect a manual Examine open. See docs/native-ui.md and docs/examine-panel.md. -->
 <ls:UIWidget x:Name="NYS_HudOverlay"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
