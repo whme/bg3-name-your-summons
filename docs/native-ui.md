@@ -3,9 +3,10 @@
 How to drive BG3's NoesisGUI from Script Extender, at a conceptual level. Our own
 panels are in [examine-panel.md](examine-panel.md).
 
-Everything in BG3's UI is a command bound in the game's XAML. Lua reaches those
-commands through the live data contexts the running UI already holds - that is the
-entry point for all native UI.
+Most actions in BG3's UI - opening a panel, closing a popup, pressing a button - are
+commands bound in the game's XAML, which Lua reaches through the live data contexts
+the running UI already holds. Other UI state is read or written as properties on
+those same contexts.
 
 ## The five ways in
 
@@ -31,8 +32,8 @@ view-models carry the identifiers the game's commands expect as parameters.
 
 A UI mod ships a whole GUI tree: a marker file, the page overrides, and the state
 machines. Override only the one state you need - states merge by name across mods -
-and copy the base state's events into your override. A page shipped without its state
-machine will not load.
+carrying over the base state's events, except any you deliberately drop to change
+behaviour. A page shipped without its state machine will not load.
 
 ## Invoking a command
 

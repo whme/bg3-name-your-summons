@@ -1,8 +1,8 @@
 # Name Your Summons - Agent Instructions
 
 A Baldur's Gate 3 mod that names a summoned creature and reapplies the name the next
-time it is summoned. Pure Lua on Norbyte's Script Extender (BG3SE), API v30;
-`./make.ps1` drives every gate and packs the pak.
+time it is summoned. Built on Norbyte's Script Extender (BG3SE), API v30 - Lua logic
+plus a NoesisGUI (XAML) UI overlay; `./make.ps1` drives every gate and packs the pak.
 
 **The user runs the game; you do not.** Verify every BG3SE / Osiris assumption
 against the IDE helpers, the API docs, or console output the user pastes, and hand
@@ -49,8 +49,8 @@ Native UI:
   focusable styles; commit an edited name from the field's own debounced handler, not
   on focus loss.
 
-The reasoning behind each lives in the doc your routing row names; the specific traps
-live in inline comments at their call sites.
+The doc your routing row names gives the architecture; the specific traps and the
+reasoning behind each principle live in inline comments at their call sites.
 
 ## Workflow
 
@@ -68,9 +68,8 @@ live in inline comments at their call sites.
 7. Call out explicitly whatever you could not verify in game, and name the exact
    console command the user should run.
 
-`./make.ps1 deploy` builds the pak into BG3's Mods folder. A Lua-only change needs an
-SE `reset`; a XAML, asset, or packaging change needs a full restart. Say which every
-time.
+`./make.ps1 deploy` builds the pak into BG3's Mods folder; every change is verified by
+rebuilding the pak and restarting the game.
 
 ## Code standards
 

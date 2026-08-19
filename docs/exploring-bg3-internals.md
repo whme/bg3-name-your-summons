@@ -2,8 +2,8 @@
 
 The game's own files are ground truth for how it is built - its UI XAML, templates,
 stats, and localisation. When a task depends on any of that, unpack the relevant game
-archive with LSLib's `divine.exe` (vendored by this repo) and base the work on the
-extracted file rather than a wiki's description.
+archive with LSLib's `divine.exe` (which the repo's tooling downloads on demand into
+`.tools/`) and base the work on the extracted file rather than a wiki's description.
 
 ## divine.exe
 

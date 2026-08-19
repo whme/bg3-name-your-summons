@@ -1,9 +1,10 @@
 # Contributing to Name Your Summons
 
-Name Your Summons is a pure-Lua Baldur's Gate 3 mod built on Norbyte's Script
-Extender (BG3SE). Packaging is a file copy plus a loca conversion, and the game
-itself is the integration test; the engine-independent logic is covered by unit
-tests and guarded by static checks, all driven by one task runner.
+Name Your Summons is a Baldur's Gate 3 mod built on Norbyte's Script Extender
+(BG3SE): Lua logic plus a NoesisGUI (XAML) UI overlay. Packaging compiles nothing -
+it stages the files and converts localization - so the game itself is the
+integration test; the engine-independent logic is covered by unit tests and guarded
+by static checks, all driven by one task runner.
 
 This file is how to set up, run the checks, and submit a change. The rules a
 coding agent must follow are in [AGENTS.md](AGENTS.md); the architecture and the
@@ -68,10 +69,8 @@ and validate the same language the game does (integer and bitwise operators,
 | Unit tests | [LuaUnit](https://github.com/bluebird75/luaunit) | `spec/` |
 | XML, typography, XAML, loca, pak | System.Xml / regex / divine | see [docs/build-and-gates.md](docs/build-and-gates.md) |
 
-The full gate list, what each one does *not* prove, why the divine-backed gates
-are split onto a Windows CI job, and the per-gate notes (StyLua's defaults,
-lua-language-server's Error-only gating and the `ExtIdeHelpers.lua` autofetch
-that also drives editor autocomplete) are in
+The full gate list, what each one does *not* prove, and why the divine-backed gates
+are split onto a Windows CI job are in
 [docs/build-and-gates.md](docs/build-and-gates.md).
 
 ## Enabling the git hook

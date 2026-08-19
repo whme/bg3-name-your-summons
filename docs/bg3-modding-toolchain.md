@@ -26,7 +26,7 @@ is [exploring-bg3-internals.md](exploring-bg3-internals.md).
 | KEN (Nexus mod) | An in-game live Noesis inspector - reach for it before hand-rolling a tree walk. |
 | Reference mods (ImpUI, Advanced Character Sheet) | Real examples of a UI-mod's GUI tree and state machines. |
 
-Confirm an event or field name against the C++ source before relying on it: the
-helpers and wikis track their own release, while the source matches the installed
-game. Read a `nil` field or a never-firing subscription as a rename and re-derive the
-name there.
+Confirm an event or field name against the C++ source before relying on it - the
+helpers and wikis track their own release. Match the source revision to your installed
+extender build (the tooling fetches `main`, which can be ahead of it), and read a
+`nil` field or a never-firing subscription as a rename to re-derive there.

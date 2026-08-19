@@ -20,9 +20,9 @@ opens rather than mutated in place.
 
 ## The on-summon prompt
 
-The naming prompt reuses the Examine panel. All the state - what is pending and the
-world pause - lives on the server; the client opens Examine on the new summon and
-sends the typed name back.
+The naming prompt reuses the Examine panel. The pending count and the world pause
+live on the server, while the client owns its per-viewport panel and queue state; the
+client opens Examine on the new summon and sends the typed name back.
 
 ## Multi-summon
 

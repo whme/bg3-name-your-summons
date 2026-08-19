@@ -11,8 +11,8 @@ UI. Only the server writes names and replicates them to peers.
 
 ## Detection
 
-There is no summon-created event, so the mod watches for a creature entering the
-level, asks the game whether it is a summon, and looks up its owner. That one
+There is no summon-created event the mod can hook, so it watches for a creature
+entering the level, asks the game whether it is a summon, and looks up its owner. That one
 pipeline covers every summon spell with no per-spell casing. A freshly summoned
 creature is not fully assembled the instant it appears, so detection waits before
 reading it.
@@ -38,8 +38,9 @@ handles a group reactively, one creature at a time.
 ## Prompting and the world pause
 
 While prompting for a name the mod can optionally freeze the world with solo
-turn-based mode. Because a frozen world must always thaw, every path that abandons a
-prompt still reports back to the server, so the pause cannot leak.
+turn-based mode. A frozen world must always thaw, so the mod resolves every prompt -
+whether the player names it, skips it, or the server retracts it - before lifting the
+pause.
 
 ## Split-screen
 

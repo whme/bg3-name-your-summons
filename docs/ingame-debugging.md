@@ -15,9 +15,9 @@ log line that never appears is itself an answer. When you cannot tell whether a
 failure is your change or the mechanism, ship a byte-for-byte minimal variant to
 bisect it.
 
-Deploy by building the pak and dropping it in the game's Mods folder. Say which
-reload the change needs every time: a Lua-only change needs an in-console `reset`,
-while a XAML, asset, or packaging change needs a full restart.
+Deploy by building the pak, dropping it in the game's Mods folder, and restarting the
+game - every change is rebuilt and the game restarted, so a run never tests a stale
+build.
 
 ## The console
 

@@ -6,8 +6,10 @@ walkthrough are in [../CONTRIBUTING.md](../CONTRIBUTING.md).
 ## The entrypoint
 
 `make.ps1` drives everything and downloads its own pinned tooling into `.tools/` on
-first use, so a clone plus a PowerShell is the whole setup. Every tool targets Lua
-5.4, the version BG3SE runs. Run `./make.ps1 help` for the current command list.
+first use, so a clone plus a PowerShell runs every cross-platform gate; the
+divine-backed gates additionally need the .NET 8 Desktop Runtime. The Lua tooling
+targets Lua 5.4, the version BG3SE runs. Run `./make.ps1 help` for the current
+command list.
 
 **To verify a change locally, run `./make.ps1 all`** - it formats in place then runs
 the cross-platform gates; a green `all` is the definition of done. CI runs `check`,
