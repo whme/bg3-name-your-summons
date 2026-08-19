@@ -1,12 +1,12 @@
 # Name Your Summons - Agent Instructions
 
 A Baldur's Gate 3 mod that names a summoned creature and reapplies the name the
-next time it is summoned. Pure Lua on Norbyte's Script Extender (BG3SE), API v30:
-no compiler, no build system, no in-game test runner.
+next time it is summoned. Pure Lua on Norbyte's Script Extender (BG3SE), API v30;
+`./make.ps1` drives every gate and packs the pak.
 
-**You cannot run the game. Only the user can.** Never claim a change works in
-game. Verify every BG3SE / Osiris assumption against the IDE helpers, the API
-docs, or console output the user pastes - never from memory.
+**The user runs the game; you do not.** Verify every BG3SE / Osiris assumption
+against the IDE helpers, the API docs, or console output the user pastes, and
+hand back the exact console command that would confirm the change in play.
 
 ## Read before you touch
 
@@ -26,49 +26,54 @@ guess costs the user a build, a restart, and a reproduction.
 Full index: [docs/README.md](docs/README.md). Contributor setup and releases:
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Invariants
+## Rules
 
-Violating one costs a game restart or damages a save. The reasoning is in the
-doc your routing row names.
+Each is an action to take. The trailing clause is what it costs to do otherwise;
+the full reasoning is in the doc your routing row names.
 
 Naming and state:
 
-1. Never write a template's shared loca handle - it renames EVERY creature from
-   that template, in every save, until the game restarts. Register your own via
-   `Ext.Loca.UpdateTranslatedString`, then point `DisplayName.Name.Handle` at it
-   with `Version = 0`.
-2. Runtime loca does not survive a restart. Re-register every saved name's handle
-   on `SessionLoaded`, before reapplying names.
-3. Only the server calls `e:Replicate(...)`. A client write is local view only.
-4. `pcall` every SE / Osiris call that can fail - a raw error tears down the Lua
-   state. Log a warning and continue.
-5. `entity:CreateComponent(...)` is deferred; the next line still reads `nil`.
-   Write a field on a component that already exists.
-6. The delays in `SummonWatcher.lua` and `Naming.lua` are empirical, not
-   defensive. Do not remove or shorten them.
+1. Register your own loca handle with `Ext.Loca.UpdateTranslatedString`, then
+   point `DisplayName.Name.Handle` at it with `Version = 0`. Writing the
+   template's shared handle renames EVERY creature from that template, in every
+   save, until the game restarts.
+2. Re-register every saved name's handle on `SessionLoaded` before reapplying
+   names; runtime loca does not survive a restart.
+3. Write `DisplayName` on the server and replicate it, and broadcast the text
+   separately for peers to re-register - replication carries the handle, not the
+   text, so a name that arrives without its text renders blank.
+4. Wrap every SE / Osiris call that can fail in `pcall`, log a warning, and
+   continue; a raw error tears down the Lua state.
+5. Write a field on a component that already exists. `entity:CreateComponent()`
+   is deferred, so the next line still reads `nil`.
+6. Leave the delays in `SummonWatcher.lua` and `Naming.lua` alone - they are
+   empirical, and a summon is not assembled on the tick it enters the level.
 
 Noesis and native UI:
 
-7. Never cache a Noesis node, DataContext, viewmodel, or command - handles expire
-   across ticks. Fetch fresh at every use.
-8. Never compare a Noesis object with `== nil`; `__eq` throws on an expired
-   object. Use truthiness.
-9. NEVER walk the whole visual tree, and never poll it - a per-second walk is what
-   SE profiled as a hitch. Anchor at `ContentRoot`, scan direct children or one
-   bounded named subtree, and re-wire on events.
-10. Never use a global input hook as a UI lifecycle detector - it walks whatever
-    tree is on screen and crashed on character creation's foreign tree (#99).
-11. Scan DataContexts with `GetAllProperties()`; reserve `GetProperty` for one
-    already-matched object (scanning with it costs 238-510 ms per Examine open).
-12. Prefix every SE viewmodel field `Nys` - an unprefixed `Name` aliases
-    `FrameworkElement.Name` and round-trips the literal string.
-13. An SE `Collection` is append-only from Lua. Rebuild the viewmodel to clear.
-14. WriteCallbacks dispatch async. Make writes idempotent; never guard them with
-    a synchronous re-entry flag.
-15. A rename must never hinge on blur - `LostFocus` / `LostKeyboardFocus` is not
-    reliably delivered, especially on controller.
-16. Every control added to Examine must exist in BOTH `Examine.xaml` and
-    `Examine_c.xaml`, and a controller-navigable one must use the game's
+7. Fetch every Noesis node, DataContext, viewmodel, and command fresh at each
+   use; a cached handle expires across ticks.
+8. Test a Noesis object with truthiness; `== nil` routes through `__eq`, which
+   throws on an expired object.
+9. Anchor every scan at `ContentRoot`, take direct children or one bounded named
+   subtree, and re-wire on events - a per-second walk is what SE profiled as a
+   hitch.
+10. Detect UI lifecycle from a persistent widget you own
+    ([docs/native-ui.md](docs/native-ui.md)). A global input hook walks whatever
+    tree is on screen and crashed on character creation's (#99).
+11. Read DataContexts with `GetAllProperties()`, reserving `GetProperty` for a
+    single already-matched object; scanning with it costs 238-510 ms per Examine
+    open.
+12. Prefix every SE viewmodel field `Nys`, so it cannot alias
+    `FrameworkElement.Name` and round-trip the literal string.
+13. Rebuild the viewmodel to clear a `Collection`; `coll[i] = nil` removes one
+    element in place.
+14. Make viewmodel writes idempotent - WriteCallbacks dispatch async, so a
+    synchronous re-entry flag cannot guard them.
+15. Commit an edited name from the field's own debounced `TextChanged`
+    subscription; blur is not reliably delivered, least of all on controller.
+16. Add every Examine control to BOTH `Examine.xaml` and `Examine_c.xaml`, and
+    style a controller-navigable one with the game's
     `FocusableButtonStyleMinimal` - a custom template drops the focus wiring and
     the button becomes unreachable.
 
@@ -144,8 +149,8 @@ section. Three blocks separated by blank lines: subject, body, Git trailers.
   `NameWriter:`, `prompt:`). Do not invent scopes.
 - **Subject**: imperative, capitalized when unscoped, no trailing period, under
   ~72 chars. Never pre-append a PR number - squash-merge adds it.
-- **Body**: WHY, plus the observable in-game behaviour before/after. This project
-  cannot be unit-tested, so the body is where the reasoning lives. Wrap at ~76.
+- **Body**: WHY, plus the observable in-game behaviour before/after. No gate
+  proves in-game behaviour, so the body is where the reasoning lives. Wrap ~76.
 - **References**: footer only, one per line - `GitHub: #<n>`, or `Closes #<n>`
   only when the change fully resolves an issue.
 - **AI co-authorship (MANDATORY)**: exactly one lowercase `Co-authored-by:`
@@ -171,6 +176,6 @@ this section.
 
 ## Git over SSH
 
-The `origin` remote uses SSH. On this machine only PowerShell can spawn `ssh`;
-the bundled bash fails with `cannot spawn ssh`. Run anything that reaches the
-remote (`git fetch`, `git push`, SSH-backed `gh`) from PowerShell.
+Run anything that reaches the `origin` remote (`git fetch`, `git push`,
+SSH-backed `gh`) from PowerShell - it is the only shell here that can spawn
+`ssh`; the bundled bash fails with `cannot spawn ssh`.

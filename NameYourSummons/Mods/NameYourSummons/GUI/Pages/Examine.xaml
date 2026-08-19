@@ -127,7 +127,7 @@
                                                     </ls:LSButton>
                                                 </StackPanel>
                                                 <!-- Confirm commits + advances the queue; Skip skips this summon. VMs set from
-                                                     Lua; both share NysShow* (#examineQueue > 0), so both hide for single summons
+                                                     Lua; both share NysShow* (#st.queue > 0), so both hide for single summons
                                                      and on the last of a group. -->
                                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{DynamicResource SmallBrownButtonStyle}" Height="44" Padding="24,0" Margin="0,8,0,0"
                                                              HorizontalAlignment="Center" FontSize="{DynamicResource ScaledSmallishFontSize}"

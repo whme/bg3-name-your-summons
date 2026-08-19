@@ -22,26 +22,32 @@ avoid.
 | Be unsure of an `Ext.*` / `Osi.*` / Noesis API shape | [bg3-modding-toolchain.md](bg3-modding-toolchain.md) | Where the authoritative docs live |
 | Set up, build, or cut a release as a contributor | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Human workflow |
 
-## What each file does NOT cover
+## What each file owns
 
-- **architecture.md** - not the client UI. Panels, viewmodels, and XAML are in
-  native-ui.md and examine-panel.md.
-- **native-ui.md** - the engine contract only. What OUR panels do is in
-  examine-panel.md. In particular: the re-wire trigger list lives in
-  examine-panel.md.
-- **examine-panel.md** - assumes native-ui.md; does not restate the engine rules.
-- **build-and-gates.md** - the gate set and the pak. The human setup and release
-  walkthrough is in CONTRIBUTING.md. The `make.ps1` command list is not copied
-  here at all - run `./make.ps1 help`.
-- **ingame-debugging.md** - how to get a fact out of a running game via the user.
-  How to get one out of a pak is exploring-bg3-internals.md.
-- **exploring-bg3-internals.md** - reading the game's files. Nothing about our
-  own code.
+Before adding a paragraph, check here for where it belongs - that is what keeps
+one fact in one place.
+
+- **architecture.md** - the server and shared side: detection, naming,
+  persistence, keys, multi-summon semantics, localization, and the server half
+  of prompting and the world pause.
+- **native-ui.md** - the Noesis engine contract, including the whole controller
+  focusable and accept contract.
+- **examine-panel.md** - our own panels, and authoritative for the re-wire
+  trigger list and the measured `!nys_uidump` tree depths.
+- **build-and-gates.md** - the gate set, how far each gate takes you, and
+  packaging. For the command list, run `./make.ps1 help`.
+- **ingame-debugging.md** - getting a fact out of a running game via the user:
+  console commands, tracing, the run loop.
+- **exploring-bg3-internals.md** - getting a fact out of the game's own paks
+  with `divine.exe`.
+- **bg3-modding-toolchain.md** - the stack, and where each tool's authoritative
+  documentation lives.
+- **../CONTRIBUTING.md** - contributor setup, the git hook, news fragments, and
+  the release walkthrough.
 
 ## Maintaining these files
 
-1. A behaviour change updates its doc in the **same PR**. A doc that describes a
-   mechanism you just replaced is worse than no doc.
+1. Update a doc in the **same PR** as the behaviour it describes.
 2. If a rule is in AGENTS.md, docs/ states the *reasoning*, never the rule again.
 3. Write prescriptively - "to do X, do D, because Y". No "we tried A, then B,
    then C" travelogue; when an approach is superseded, delete it rather than

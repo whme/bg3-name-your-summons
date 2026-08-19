@@ -1,9 +1,9 @@
 # Contributing to Name Your Summons
 
 Name Your Summons is a pure-Lua Baldur's Gate 3 mod built on Norbyte's Script
-Extender (BG3SE). There is no build step - the game itself is the only
-integration test - but the engine-independent logic is covered by unit tests and
-guarded by static checks, all driven by one task runner.
+Extender (BG3SE). Packaging is a file copy plus a loca conversion, and the game
+itself is the integration test; the engine-independent logic is covered by unit
+tests and guarded by static checks, all driven by one task runner.
 
 This file is how to set up, run the checks, and submit a change. The rules a
 coding agent must follow are in [AGENTS.md](AGENTS.md); the architecture and the
@@ -74,9 +74,8 @@ gates are split onto a Windows CI job are in
 
 Notes:
 
-- **Formatting is not up for debate.** StyLua is deterministic and uses its
-  defaults; run `./make.ps1 format` and commit the result. Do not hand-tune
-  style.
+- **Let StyLua decide formatting.** It is deterministic and uses its defaults;
+  run `./make.ps1 format` and commit the result.
 - **lua-language-server** gates on Error level only. The dynamic `Ext`/`Osi`
   surface produces Warnings (undefined-field, API drift) that are helpful inline
   in an editor but are not build failures. For editor autocomplete, the type
@@ -94,7 +93,8 @@ git config core.hooksPath .githooks
 
 ## Testing
 
-You **cannot run the game** in CI, and neither can a reviewer quickly. So:
+The game is the only integration test, and neither CI nor a reviewer runs it
+quickly. So:
 
 - **Unit tests** (`./make.ps1 test`) cover the engine-independent logic - key
   derivation, hashing, input sanitising, ModVar shaping, and the two
@@ -125,9 +125,9 @@ alongside the game once you enable it in
 | `!nys_clear` | server | wipe all saved names |
 
 `!nys_diag` is the primary debugging tool: when a name will not stick, paste its
-output when reporting the issue. There are also `!nys_debug`, `!nys_trace`, and
-`!nys_uidump` for deeper diagnosis - see
-[docs/ingame-debugging.md](docs/ingame-debugging.md).
+output when reporting the issue. There are more commands than the four above -
+`!nys_reapply`, `!nys_debug`, `!nys_trace`, `!nys_uidump` - each with traps
+worth knowing; see [docs/ingame-debugging.md](docs/ingame-debugging.md).
 
 ## Coding conventions
 

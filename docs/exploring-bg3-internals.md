@@ -1,32 +1,34 @@
 # Exploring Baldur's Gate 3 internals
 
-The game's own files are the ground truth for how it is built - its UI XAML,
-templates, stats, localisation, and metadata. When a task depends on that (native
-UI, stats, templates), **read the installed game's files instead of guessing from
-wikis, which lag behind patches.** This repo already downloads the only tool
-needed - LSLib's `divine.exe`, used by `make.ps1 build` - so you can unpack and
-inspect BG3's `.pak` files yourself, no manual step from the user.
+The game's own files are ground truth for how it is built - its UI XAML,
+templates, stats, localisation, and metadata. When a task depends on any of
+that, read the installed game's files: unpack the relevant `.pak` with LSLib's
+`divine.exe` (already vendored by this repo) and base the implementation on the
+extracted file rather than a wiki's description of it.
 
 ## Where the game lives
 
-Default Steam install (ask the user if it differs - GOG and non-default Steam
-libraries move it):
+Ask the user for the install path - GOG and non-default Steam libraries move it.
+The default Steam one is:
 
 ```
-C:\Program Files (x86)\Steam\steamapps\common\Baldurs Gate 3\
-  Data\
-    Game.pak          <- the UI lives here (Mods/MainUI/GUI/...)
-    Gustav.pak, Shared.pak, ... <- content, stats, templates, localisation
+C:\Program Files (x86)\Steam\steamapps\common\Baldurs Gate 3\Data\
+  Game.pak                   UI: Mods/MainUI/GUI/Pages/*.xaml, .../Library/*.xaml
+  Shared.pak, Gustav.pak     stats + templates: Public/<Mod>/Stats/Generated/...
+  Localization\English.pak   string tables: Localization/English/english.loca
 ```
 
-Everything the game loads is in a `.pak` under `Data\`. To find which pak holds
-what, list its contents and grep the paths - do not assume.
+That `Data` folder is what the game-data gates take as `-Bg3Data` (see
+[build-and-gates.md](build-and-gates.md)). Everything the game loads sits in a
+`.pak` under it; to learn which pak holds a given file, `list-package` the
+candidates and grep the paths.
 
-## The tool: `divine.exe`
+## divine.exe
 
-`divine.exe` is Norbyte's LSLib CLI - the packer the BG3 Modder's Multitool
-wraps. `make.ps1` fetches a pinned copy into `.tools\` (run `./make.ps1 setup`
-once if it is missing). Locate it without hard-coding the version subfolder:
+Any divine-backed `make.ps1` command (`build`, `loca-check`, `xaml-check
+-Bg3Data`) downloads the pinned LSLib release into `.tools\lslib-<version>\`, so
+run `./make.ps1 build` once, then find the binary by search - its subfolder
+inside the release has shifted between versions:
 
 ```powershell
 $divine = (Get-ChildItem .\.tools -Filter divine.exe -Recurse |
@@ -34,56 +36,53 @@ $divine = (Get-ChildItem .\.tools -Filter divine.exe -Recurse |
 $game   = "C:\Program Files (x86)\Steam\steamapps\common\Baldurs Gate 3\Data\Game.pak"
 ```
 
-**`divine.exe` needs absolute paths for `-s`/`-d`/`-f`** - wrap each in
-`(Resolve-Path ...).Path` or `Join-Path (Get-Location).Path ...`.
-
-### The four actions you need
+Give `-s` and `-d` absolute paths - divine rejects a relative one outright
+(`Cannot proceed without absolute path`), so wrap yours in
+`(Resolve-Path ...).Path` or `Join-Path (Get-Location).Path ...`. `-f` is the
+opposite: an in-pak path, forward slashes, relative to the pak root.
 
 | Action | What it does |
 |---|---|
-| `list-package` | list every file path inside a pak |
-| `extract-single-file` | pull one file out by its in-pak path |
-| `extract-package` | unpack a whole pak: `-a extract-package -s <pak> -d <outDir>` |
-| `convert-resource` | convert Larian binary (`.lsf`, `.loca`) to/from readable text (`.lsx`, `.xml`) |
-
-(`create-package`, the packer behind `make.ps1 build`, lives in the toolchain
-guide.)
+| `list-package` | list every path inside a pak (tab-separated: path, size) |
+| `extract-single-file` | pull one file out by its in-pak path (`-f`) |
+| `extract-package` | unpack a whole pak, filtered by `-x "*.xaml"` |
+| `convert-resource` | `.lsf` / `.lsb` <-> readable `.lsx` / `.lsj` |
+| `convert-loca` | `.loca` <-> readable `.xml` - the action for every `.loca` |
 
 ### Recipes (PowerShell)
 
-Find a file (the listing is thousands of lines, so filter):
+Find a file - the listing runs to ~29k lines, so filter it. Send divine's log to
+`2>$null` so its lines stay out of the pipeline:
 
 ```powershell
-& $divine -g bg3 -a list-package -s $game 2>&1 |
+& $divine -g bg3 -a list-package -s $game 2>$null |
   Select-String -Pattern "Examine" -SimpleMatch
-# -> Mods/MainUI/GUI/Pages/Examine.xaml
+# -> Mods/MainUI/GUI/Pages/Examine.xaml   12506   0
 ```
 
-Extract one file to the gitignored `.tools\_bg3ui\` scratch dir:
+Extract one file into the gitignored `.tools\_bg3ui\` scratch dir. Use a
+subfolder of your own: `xaml-check` owns `_bg3ui\Game` and wipes it every run.
 
 ```powershell
-$out  = Join-Path (Get-Location).Path ".tools\_bg3ui"
+$out  = Join-Path (Get-Location).Path ".tools\_bg3ui\scratch"
 New-Item -ItemType Directory -Force $out | Out-Null
 $dest = Join-Path $out "Examine.xaml"
 & $divine -g bg3 -a extract-single-file -s $game -d $dest -f "Mods/MainUI/GUI/Pages/Examine.xaml"
 ```
 
-Convert a binary resource to readable text:
+Read `.xaml`, `.xml`, `.txt`, `.lua` straight out of the pak; convert the binary
+formats first:
 
 ```powershell
-$src = Join-Path $out "metadata.lsf"
-$dst = Join-Path $out "metadata.lsx"
-& $divine -g bg3 -a convert-resource -s $src -d $dst
-Get-Content $dst -Raw
+& $divine -g bg3 -a convert-resource -s (Join-Path $out "metadata.lsf") -d (Join-Path $out "metadata.lsx")
+& $divine -g bg3 -a convert-loca     -s (Join-Path $out "english.loca") -d (Join-Path $out "english.xml")
 ```
 
-`.xaml`, `.xml`, `.txt`, `.lua` are already plain text - extract and read them
-directly. `.lsf`, `.lsb`, `.loca` are binary - `convert-resource` them first.
+## Recording the game build
 
-## Finding the game version (and why it matters)
-
-The SE console prints the build in its startup header - ask the user for the
-first lines, or read them from the log:
+Larian moves and renames assets between patches, so a finding holds only for the
+build it came from. Read the build out of the SE console header (ask the user
+for its first lines) and record it beside anything you derive from a pak:
 
 ```
 BG3Ext v32 built on Jun 21 2026 21:19:02
@@ -91,24 +90,11 @@ Game version v4.73.98.727 OK
     'Name Your Summons': SE v30; flags: Lua
 ```
 
-- `Game version v4.73.98.727` - the game build. **It gates where assets live and
-  what shape they have**: Larian moves and renames things between patches, and
-  BG3SE component layouts drift too.
-- `BG3Ext v32` - the Script Extender build.
-- `SE v30` - the API version the mod targets (`RequiredVersion` in `Config.json`);
-  it can lag the installed extender and guards the API version, not the layout.
+- `Game version v4.73.98.727` - the game build, the one that decides where an
+  asset lives and what shape it has.
+- `BG3Ext v32` - the installed Script Extender build.
+- `SE v30` - the API version the mod targets (`RequiredVersion` in
+  `Config.json`).
 
-The rule: **do not trust "patch X moved this to Y" claims from docs; confirm the
-layout against the user's actual paks with `list-package`.**
-
-## Checklist
-
-1. Confirm the install path with the user (default Steam path above).
-2. Get `divine.exe` (`./make.ps1 setup` if `.tools\` lacks it).
-3. Read the game version from the SE console header, then verify the layout - do
-   not assume it.
-4. `list-package` the likely pak (UI -> `Game.pak`) and grep for the feature's
-   keywords.
-5. `extract-single-file` into `.tools\_bg3ui\`; `convert-resource` binary assets;
-   read text assets directly.
-6. Base the implementation on the extracted file, not a wiki's description of it.
+Confirm any "patch X moved this to Y" claim from a wiki against the user's own
+paks with `list-package` before acting on it.

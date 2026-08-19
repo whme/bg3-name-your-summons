@@ -1,32 +1,37 @@
 # Build, gates, and packaging
 
-The quality-gate set, why it is split the way it is, what each gate does NOT
-prove, and how the pak is produced. For the contributor-facing setup and release
-walkthrough see [../CONTRIBUTING.md](../CONTRIBUTING.md); for getting facts out
-of a running game see [ingame-debugging.md](ingame-debugging.md).
+The quality-gate set, how far each gate takes you, and how the pak is produced.
+For contributor setup and the release walkthrough see
+[../CONTRIBUTING.md](../CONTRIBUTING.md); for getting facts out of a running game
+see [ingame-debugging.md](ingame-debugging.md).
 
 ## The entrypoint
 
 Everything is driven by a single cargo-style entrypoint, `make.ps1`, which
-downloads its own pinned tooling into `.tools/` (gitignored) on first use - no
-Rust or Lua build toolchain required. It runs under Windows PowerShell 5.1 and
-cross-platform `pwsh`, so CI (`.github/workflows/ci.yml`) invokes the same
+downloads its own pinned tooling into `.tools/` (gitignored) on first use, so a
+clone plus a PowerShell is the whole setup. It runs under Windows PowerShell 5.1
+and cross-platform `pwsh`, and CI (`.github/workflows/ci.yml`) invokes the same
 commands via `pwsh`.
 
-**Run `./make.ps1 help` for the current command list.** `make.ps1` prints its own
-comment-block help, so that is always accurate; a copy in a markdown file is
-stale by construction.
+**Run `./make.ps1 help` for the current command list** - it prints its own
+comment-block help, so it is always current.
 
 **Every tool targets Lua 5.4 - the version BG3SE runs** - so the tooling checks
 the same language the game does (integer and bitwise ops, `<const>`/`<close>`).
-The interpreter (`lua54`), luacheck (built on PUC-Rio Lua 5.4), and
-lua-language-server's `runtime.version` are all pinned to 5.4.
+The interpreter (`lua54`), luacheck (a luastatic binary built on PUC-Rio Lua
+5.4), and lua-language-server's `runtime.version` are all pinned to 5.4.
 
 **To verify a change locally, run `./make.ps1 all` and nothing else.** It formats
 in place and then runs the cross-platform gates it bundles (format, lint,
 typecheck, test, validate-xml, ascii-check); a green `all` is the definition of
 done. `xaml-check` and the divine gates are not in `all` (see below). CI runs
 `check`, which is identical except it verifies formatting instead of writing it.
+
+`all`/`check` carry the gates that behave identically for every contributor on
+every platform. Run the rest as their own commands: `loca-check` and `build` on
+Windows (see "Where each gate runs"), and `xaml-check` once you have the oracle
+salt or a game install (see "The XAML oracle"). CI runs each of those as its own
+job.
 
 ## The gates
 
@@ -38,7 +43,7 @@ done. `xaml-check` and the divine gates are not in `all` (see below). CI runs
 | Unit tests | LuaUnit | `spec/` | `test` |
 | XML well-formedness | System.Xml | (none) | `validate-xml` |
 | Typography | regex | (mirrors `.githooks/pre-commit`) | `ascii-check` |
-| XAML resolution | custom + oracle | `xaml-oracle.txt` | `xaml-check` |
+| XAML resolution | custom | `xaml-oracle.txt` + salt | `xaml-check` |
 | Loca compile | divine | (none) | `loca-check` |
 | Pak smoke | divine | (none) | `build` (asserts pak members) |
 | Osiris lint | LSLib StoryCompiler | (none) | `story-check` |
@@ -46,158 +51,150 @@ done. `xaml-check` and the divine gates are not in `all` (see below). CI runs
 
 Notes:
 
-- **StyLua** uses its opinionated defaults verbatim (`.stylua.toml`) - tabs, 120
-  columns, Roblox Lua Style Guide. Do not tune the config to a personal style;
-  the point of a deterministic formatter is that style is not up for debate.
+- **StyLua** uses its opinionated defaults verbatim. Do not tune the config to a
+  personal style; the point of a deterministic formatter is that style is not up
+  for debate.
 - **luacheck** lints against `std = "lua54"`, so it accepts and checks every file
   including `Util.lua`'s bitwise FNV-1a (a Lua-5.4-only construct). Engine
-  globals (`Ext`, `Osi`, `Mods`, `ModuleUUID`, `_C/_D/_P`) are declared in
-  `.luacheckrc` as read-only; add one there if luacheck flags a real engine
-  global as undefined. `spec/` has a scoped override (writable `Ext`/`Osi` for
-  the stubs, `allow_defined_top` for the LuaUnit `Test*` tables). Line length is
-  disabled - StyLua owns that.
-- **lua-language-server** type-checks from the EmmyLua annotations. `typecheck`
-  auto-fetches the authoritative BG3SE `ExtIdeHelpers.lua` into `.luals-libs/`
-  (gitignored; `.luarc.json` points `workspace.library` there) and gates on
-  **Error level only**. The dynamic `Ext`/`Osi` surface produces unavoidable
-  *Warnings* (undefined-field, API drift) that are useful inline in an editor but
-  are not build failures. Editors read the same `.luarc.json`, so autocomplete
-  works once `.luals-libs/` is populated.
-- **LuaUnit** is a single pure-Lua file, so it bootstraps on the prebuilt Lua 5.4
-  interpreter with no C-compiler dependency (unlike busted). It tests only the
-  engine-independent modules. `spec/spec_helper.lua` stubs the `Ext`/`Osi`
-  surface and reimplements `Ext.Require` so a module and its dependencies load
-  off-game; `spec/run.lua` is the runner.
-- The `.githooks/pre-commit` hook runs `format-check`, `lint`, `validate-xml`,
-  and `xaml-check` when a PowerShell is available, so the ASCII-punctuation check
-  still works without one. `xaml-check` skips unless the committer has
-  `$env:NYS_XAML_ORACLE_SALT` set. In CI every gate runs, but some no-op when
-  their inputs are absent - `xaml-check` without the oracle salt (a fork with no
-  secret), `story-check` / `stats-check` without their content (see below).
+  globals are declared read-only in `.luacheckrc`; add one there if luacheck
+  flags a real engine global as undefined.
+- **lua-language-server** type-checks from the EmmyLua annotations and gates on
+  **Error level only**. Read its *Warnings* (undefined-field, API drift) inline
+  in the editor: they come from the dynamic `Ext`/`Osi` surface and are
+  informational. `typecheck` auto-fetches the authoritative BG3SE
+  `ExtIdeHelpers.lua` into `.luals-libs/` (gitignored), which is also what makes
+  editor autocomplete work, since editors read the same `.luarc.json`.
+- **LuaUnit** is a single pure-Lua file, so it runs directly on the prebuilt Lua
+  5.4 interpreter. `spec/spec_helper.lua` stubs the `Ext`/`Osi` surface and
+  reimplements `Ext.Require` so a module and its dependencies load off-game.
+- The `.githooks/pre-commit` hook always runs the ASCII-punctuation scan (pure
+  bash), and adds `format-check`, `lint`, `validate-xml`, and `xaml-check` when a
+  PowerShell is on PATH. Set `$env:NYS_XAML_ORACLE_SALT` to include `xaml-check`.
+  In CI every gate runs, but some no-op when their inputs are absent - `xaml-check`
+  without the oracle salt (a fork with no secret), `story-check` / `stats-check`
+  without their content (see below).
 
-## What the gates do NOT prove
+## How far each gate takes you
 
-- **The unit suite proves code correctness, never feature correctness in game.**
-  It covers only the engine-independent logic (`Util`, `Store`, `NameWriter`).
-- **`validate-xml` proves the XML parses, NOT that the Noesis semantics hold.**
-  There is no offline validator for Larian's `ls:`/`se:` XAML dialect: the
-  controls are compiled game code, not extractable data, so XamlPlayer/Noesis
-  cannot load them even with full game data. Real XAML validity is only provable
-  in game (the `UI State verification failed` console line).
-- **Nothing here proves in-game behaviour.** You cannot run the game; only the
-  user can.
+- **`./make.ps1 all` settles syntax, formatting, types, and the pure logic.** The
+  suite covers the engine-independent modules (`Util`, `Store`, `NameWriter`,
+  `SummonClassifier`, `LocaKeys`, `Trace`) plus the shipped `.loca.xml` tables.
+  To settle behaviour, run `./make.ps1 deploy` and have the user exercise it in
+  game (see [ingame-debugging.md](ingame-debugging.md)). Keep new pure logic in
+  those modules, out of the ECS / net / native-UI / timing glue, so a spec can
+  reach it.
+- **`validate-xml` settles that every XAML, `meta.lsx`, and `.loca.xml` parses.**
+  To settle the Noesis semantics of Larian's `ls:`/`se:` dialect, load the page
+  in game and read the console for `UI State verification failed`.
+- **`xaml-check` settles resource keys and `pack://` assets** - an unresolved one
+  fails the run. Read its `WARNING` lines too: an unknown `ls:`/`se:`/`noesis:`
+  control is reported as a warning, because the control universe is scraped from
+  the controls the game's own XAML instantiates.
+- **`build` settles that the pak packs and carries its key members.** Confirm the
+  line `verify-pak: meta.lsx, Examine.xaml, and a compiled .loca are present.` -
+  when `list-package` prints nothing, `Assert-PakContents` warns and returns, so
+  the member assertions did not run.
+- **The user settles in-game behaviour.** Hand them the exact console command to
+  run (`!nys_diag`, `!nys_rename`, ...) and read the output or the trace files;
+  see [ingame-debugging.md](ingame-debugging.md).
 
-## Asset gates: local vs CI, and the divine-on-Linux trap
+## Where each gate runs
 
-The Lua gates and the two game-data-free asset gates (`validate-xml`,
-`ascii-check`) run on `ubuntu-latest` and are folded into `all`/`check`. The
-**divine-dependent** gates are split off because **LSLib's `divine` CLI crashes
-on POSIX paths** - `Divine/CLI/CommandLineActions.cs::TryToValidatePath` runs
-`Uri.IsFile` on a relative `Uri` for any `/abs/path` (uncaught throw) and rejects
-`file:///abs/path` as non-rooted, so no input works on Linux (identical on
-`master`). Therefore:
+Run `loca-check` and the `build` pak-smoke gate on Windows. CI runs them on a
+`windows-latest` job (`ci.yml`, job `assets`), matching `release.yml`; that job
+is the first time the pak is built on a PR, since `release.yml` only builds on a
+tag. Windows is required because both drive LSLib's `divine` CLI, which accepts
+Windows-style paths only (`Divine/CLI/CommandLineActions.cs::TryToValidatePath`
+rejects `/abs/path` and `file:///abs/path` alike). The Lua gates and the two
+game-data-free asset gates (`validate-xml`, `ascii-check`) run on
+`ubuntu-latest`.
 
-- `loca-check` and the `build` pak-smoke gate run on a **`windows-latest`** CI
-  job (`ci.yml` `assets`), matching `release.yml`. This is the first time the pak
-  is built on a PR - `release.yml` only builds on a tag. They are NOT in
-  `all`/`check` (which stay cross-platform); run them locally on Windows.
+`story-check` and `stats-check` are scaffolded for content still to come: run
+`story-check` (LSLib `StoryCompiler --check-only`) once a
+`Mods/NameYourSummons/Story/` tree exists, and `stats-check` (`StatParser`) once
+a `Mods/NameYourSummons/Stats/` tree exists. Both tools ship in the vendored
+LSLib `ExportTool` zip, located by filename via `Get-LslibTool`, and both take
+`-Bg3Data`, so run them locally against an installed game.
 
-`xaml-check` resolves the mod's XAML `Static`/`DynamicResource` keys,
-`ls:`/`se:`/`noesis:` controls, and `pack://` assets against the game's real UI,
-catching typo'd resources/assets that `validate-xml` (well-formedness only)
-cannot. It gets the game's identifier universe one of two ways: live from
-`-Bg3Data <Data folder>` (the game's `Data` directory, unpacked by `divine` -
-exact and always current), or from a committed HMAC oracle so it can also run in
-CI with no game install. With neither available (a fork with no secret) it skips
-cleanly, so it is not in `all`/`check` but does run as its own CI job. Only the
-game can confirm the runtime binding semantics.
+## The XAML oracle
 
-The oracle (`xaml-oracle.txt`) is keyed HMAC-SHA-256 (128-bit) digests of every
-game key/control/asset identifier - no readable game data, so committing it does
-not redistribute Larian's copyrighted XAML. `xaml-extract` regenerates it from
-the installed game and must be re-run after a game patch (a stale oracle drifts
-into false results). Both `xaml-extract` and the CI job read the salt from
-`$env:NYS_XAML_ORACLE_SALT`; the extract salt and the CI secret of the same name
-MUST match, or every game reference fails to resolve. No install path is ever
-assumed - `-Bg3Data` is explicit.
+`xaml-check` resolves the mod's XAML against the game's real UI identifiers, and
+gets that universe one of two ways: live from `-Bg3Data <Data folder>` (exact and
+always current), or from the committed oracle, which also lets it run in CI with
+no game install. Pass `-Bg3Data` explicitly; no install path is guessed. In a
+fork with neither the salt nor a game install it skips cleanly.
 
-`story-check` and `stats-check` share that local-only, game-data-backed bucket
-and are scaffolded now for content that does not exist yet: `story-check` runs
-LSLib `StoryCompiler --check-only` once a `Mods/NameYourSummons/Story/` tree
-exists, and `stats-check` runs LSLib `StatParser` once a
-`Mods/NameYourSummons/Stats/` tree exists (both tools ship in the vendored
-`ExportTool` zip, located via `Get-LslibTool`). Like `xaml-check`, each no-ops
-cleanly when its content or `-Bg3Data` is absent, so they never run on the hosted
-runners.
+The oracle (`xaml-oracle.txt`) holds keyed HMAC-SHA-256 digests truncated to 128
+bits, so the committed file carries no readable game data and is safe to publish
+alongside the mod. Two rules keep it honest:
+
+- Keep the salt `xaml-extract` runs with identical to the CI secret of the same
+  name, `$env:NYS_XAML_ORACLE_SALT`; a mismatched salt resolves every game
+  reference as a miss.
+- Re-run `xaml-extract` after a game patch; a stale oracle likewise resolves
+  against identifiers the game no longer has.
 
 ## Packaging
 
 `./make.ps1 build` downloads a pinned LSLib release into `.tools/` and wraps
 `divine.exe -a create-package` to produce `build/NameYourSummons-<version>.pak`
-plus a matching zip, both suffixed with the mod's semantic version (`-Clean`
-wipes `build/` first). The Modder's Multitool *Create Package* does the same
-thing by hand.
+plus a matching zip (`-Clean` wipes `build/` first). The Modder's Multitool
+*Create Package* does the same thing by hand.
 
-**Trap: divine excludes any file whose ABSOLUTE path contains a dot-segment**
-(e.g. a `.paseo` worktree), silently emitting an empty pak. `make.ps1 build`
-stages the mod into a dot-free temp dir to dodge this.
+**Stage the mod into a dot-free temp directory before packing.** `Cmd-Build`
+does this, and refuses to run when the system temp path is itself dotted: divine
+excludes any file whose ABSOLUTE path contains a dot-segment (e.g. a `.paseo`
+worktree) and silently emits an EMPTY pak.
 
-In that stage it also:
+In that stage `Cmd-Build` also:
 
 - compiles every `Localization/**/*.loca.xml` into the binary `.loca` the game
-  loads (via `divine --action convert-loca`) and drops the `.xml`, so only
-  compiled tables ship (`Convert-StageLoca`);
+  loads (`Convert-StageLoca`, via `divine --action convert-loca`) and drops the
+  `.xml`, so only compiled tables ship;
 - stamps the STAGED `meta.lsx` `Version64` build field with the build time as
   Unix epoch seconds (UTC) (`Set-StagedBuildTimestamp`) - the build number. The
   committed `meta.lsx` keeps build 0.
 
+After packing, `Assert-PakContents` lists the pak and requires `meta.lsx`,
+`Examine.xaml`, and a compiled `NameYourSummons.loca`, on top of the raw size
+check.
+
 The LOCAL `build` / `deploy` filenames carry the build number
 (`NameYourSummons-X.Y.Z.<epoch>.{pak,zip}`) and the startup line shows it
 (`Util.VersionString` appends `.build` when non-zero). Since the epoch makes each
-filename unique, `deploy` clears its prior `NameYourSummons-*.pak` from the Mods
-folder before copying, so the game never loads two paks of the same mod.
+filename unique, `deploy` clears any other `NameYourSummons-*.pak` out of the
+Mods folder before copying, so the game loads exactly one pak of the mod.
 
-The PUBLIC release asset stays `NameYourSummons-X.Y.Z.zip`: `release.yml` packs
-with `build -NoBuildNumber`, which drops the epoch from the filename only - the
-pak is still stamped.
-
-The build field is 31 bits, so epoch seconds overflow it on 2038-01-19; past that
-the stamp and suffix are omitted (a warning) and the filename is `X.Y.Z`.
+For the PUBLIC release asset, pack with `build -NoBuildNumber` (what
+`release.yml` does) to get `NameYourSummons-X.Y.Z.zip`; that drops the epoch from
+the filename only, and the pak is still stamped.
 
 To test a change, run `./make.ps1 deploy` and have the user restart the game.
 
 ## Versioning
 
 The mod version is a packed `Version64` int64 in `meta.lsx` (the `ModuleInfo`
-node and its nested `PublishVersion`), and is **the single source of truth**.
-`Get-ModVersion` decodes it, `Set-ModVersion` re-encodes a semver into it.
+node and its nested `PublishVersion`, which are kept in step), and is **the
+single source of truth**. `Get-ModVersion` decodes it, `Set-ModVersion`
+re-encodes a semver into it. The top-level `<version>` node in `meta.lsx` is the
+LSX file-format version, not the mod's - do not touch it.
 
 The release workflow itself (`prepare-release`, `create-release-tag`, the
 maintenance-branch flow, news fragments) is documented for humans in
 [../CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Mod-manager thumbnail (known limitation)
+## Mod-manager thumbnail
 
-`mod_publish_logo.png` sits next to `meta.lsx` by convention (the same path every
-Larian-toolkit-published mod uses; it is discovered by filename and is not
-referenced in `meta.lsx`). `make.ps1 build` packs the whole `NameYourSummons/`
-folder, so the file ships automatically - no build change needed. The source
-image is `assets/mod-thumbnail.png` (1920x1080, 16:9); update both if you replace
-it.
+Keep `mod_publish_logo.png` next to `meta.lsx` - the path every
+Larian-toolkit-published mod uses, discovered by filename rather than referenced
+from `meta.lsx`. `make.ps1 build` packs the whole `NameYourSummons/` folder, so
+it ships with no build change. Its source is `assets/mod-thumbnail.png`
+(1920x1080, 16:9); replace both together.
 
-**It does NOT render in the in-game mod manager for our mod, and cannot.** The
-manager reads a mod's description AND thumbnail fresh from the pak at game
-startup (neither is cached to disk - confirmed: the description updates on a full
-relaunch, nothing in `%LOCALAPPDATA%\...\Baldur's Gate 3` stores it). The
-description shows, but the thumbnail stays the grey placeholder: the engine only
-populates the card image (`VMModPreview.MainScreenshot.Screenshot`, with a
+Expect the grey placeholder card in the in-game mod manager: the engine populates
+the card image (`VMModPreview.MainScreenshot.Screenshot`, with a
 `HasScreenshotTexture` fallback - see `Mods/ModBrowser/GUI/...` in `Game.pak`)
-for mods it downloaded from mod.io, not for a locally-installed `.pak`. Because
-Name Your Summons requires the Script Extender it can never be published to
-mod.io, so there is no path to an in-game thumbnail. The file is kept anyway: it
-is zero-cost, correct by convention, and would light up if the mod were ever
-distributed through mod.io.
-
-Note: the mod manager only re-scans a mod's metadata on a full game restart, and
-description/thumbnail changes to an already-installed pak may need an uninstall
-plus reinstall of the pak to take effect.
+for mods it downloaded from mod.io, and a Script-Extender mod ships as a local
+`.pak`. The description does render, read fresh from the pak at startup: to see a
+description change, fully restart the game, and reinstall the pak if the old text
+persists.

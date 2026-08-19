@@ -688,7 +688,7 @@
                                 </StackPanel>
                                 <!-- The controller has no Enter, so Confirm commits + advances the queue; Skip skips
                                      this summon. Focusable style so a controller can reach them. VMs set from Lua; both
-                                     share NysShow* (#examineQueue > 0), hidden for single summons and the last of a group. -->
+                                     share NysShow* (#st.queue > 0), hidden for single summons and the last of a group. -->
                                 <ls:LSButton x:Name="NYS_ConfirmButton" Style="{StaticResource FocusableButtonStyleMinimal}" Margin="0,8,0,0"
                                              HorizontalAlignment="Center" MinWidth="200"
                                              Command="{Binding NysConfirmCommand}"
