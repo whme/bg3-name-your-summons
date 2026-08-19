@@ -22,6 +22,10 @@ Install both parts in order.
 | 2. Name Your Summons | Download the latest `.pak` from the [Releases](https://github.com/whme/bg3-name-your-summons/releases) page and drop it in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`. |
 | 3. Enable it | Launch the game and enable **Name Your Summons** from the **Mods** menu. |
 
+**Updating from 1.2.0 or earlier?** Delete the old versioned
+`NameYourSummons-*.pak` from your `Mods\` folder first - the `.pak` now has a stable
+filename, so future updates overwrite it in place.
+
 Want to build from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Controller / gamepad support

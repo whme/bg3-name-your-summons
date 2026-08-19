@@ -620,6 +620,14 @@ function Get-MetaPath {
     return (Join-Path $Root "$modName/Mods/$modName/meta.lsx")
 }
 
+# The mod's own UUID, for the stable pak filename. Anchor to the ModuleInfo node
+# so a future dependency's UUID attribute cannot be picked instead.
+function Get-ModUuid($MetaPath) {
+    $node = Select-Xml -Path $MetaPath -XPath "//node[@id='ModuleInfo']/attribute[@id='UUID']" | Select-Object -First 1
+    if (-not $node) { throw "Could not read UUID from meta.lsx ($MetaPath)" }
+    return [string]$node.Node.value
+}
+
 # Encode a semantic version (X.Y.Z) into BG3's packed Version64 int64 - the
 # inverse of Get-ModVersion (major<<55 | minor<<47 | revision<<31 | build).
 # Releases carry a zero build field, so only the first three fields are set.
@@ -644,6 +652,36 @@ function Set-ModVersion([string]$MetaPath, [string]$SemVer) {
         "`${1}$packed`${2}"
     )
     [System.IO.File]::WriteAllText($MetaPath, $updated, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# Extract one version's section from CHANGELOG.md, mirroring release.yml's
+# assembly (keep the two in sync). Returns $null when that version has no section
+# yet (a dev build before prepare-release).
+function Get-ChangelogSection([string]$ChangelogPath, [string]$Version) {
+    if (-not (Test-Path $ChangelogPath)) { return $null }
+    $inTarget = $false
+    $collected = @()
+    foreach ($line in (Get-Content -Path $ChangelogPath)) {
+        if ($line -like "## *" -and $line -like "*$Version*") { $inTarget = $true; continue }
+        if ($inTarget -and $line -like "## *") { break }
+        if ($inTarget) { $collected += $line }
+    }
+    if ($collected.Count -eq 0) { return $null }
+    return ($collected -join "`n").Trim()
+}
+
+# Render the in-zip README.txt from templates/zip_readme_template.txt. It ships in
+# the .zip so anyone extracting it sees the install steps and the issue #147
+# reminder to delete an old versioned pak before updating.
+function Write-ZipReadme([string]$Destination, [string]$Version, [string]$PakName) {
+    $template = Join-Path $Root "templates/zip_readme_template.txt"
+    $body = Get-Content -Raw -Path $template
+    $changelog = Get-ChangelogSection (Join-Path $Root "CHANGELOG.md") $Version
+    if (-not $changelog) {
+        $changelog = "See https://github.com/whme/bg3-name-your-summons/releases for the release notes."
+    }
+    $body = $body.Replace("{{VERSION}}", $Version).Replace("{{PAKNAME}}", $PakName).Replace("{{CHANGELOG}}", $changelog)
+    [System.IO.File]::WriteAllText($Destination, $body, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # Build-time epoch seconds, or 0 past 2038-01-19 when it overflows the 31-bit
@@ -769,7 +807,11 @@ function Cmd-Build {
     $semver = ((Get-ModVersion $meta) -split "\." | Select-Object -First 3) -join "."
     $epoch = Get-BuildEpoch
     $version = if ($epoch -gt 0 -and -not $noBuildNumber) { "$semver.$epoch" } else { $semver }
-    $pak = Join-Path $buildDir "$modName-$version.pak"
+    # Stable, version-free pak name so an update overwrites the old pak in place
+    # rather than silently coexisting with it (issue #147). The version lives in
+    # the zip name only; the pak's internal Version64 is still epoch-stamped below.
+    $uuid = Get-ModUuid $meta
+    $pak = Join-Path $buildDir "${modName}_$uuid.pak"
     $zipOut = Join-Path $buildDir "$modName-$version.zip"
     $divine = Get-Divine
 
@@ -807,9 +849,18 @@ function Cmd-Build {
     Assert-PakContents $divine $pak
 
     if (Test-Path $zipOut) { Remove-Item $zipOut -Force }
-    Compress-Archive -Path $pak -DestinationPath $zipOut
+    # Bundle a README.txt in the zip, then remove it so build/ keeps only the pak
+    # and the zip.
+    $readme = Join-Path $buildDir "README.txt"
+    Write-ZipReadme $readme $semver (Split-Path -Leaf $pak)
+    try {
+        Compress-Archive -Path $pak, $readme -DestinationPath $zipOut
+    }
+    finally {
+        Remove-Item $readme -Force -ErrorAction SilentlyContinue
+    }
 
-    # Deploy reads this: the epoch suffix cannot be re-derived (UtcNow has moved on).
+    # Cmd-Deploy reads this to copy the exact pak just built.
     $script:LastBuiltPak = $pak
 
     Write-Host ""
@@ -849,12 +900,11 @@ function Cmd-Deploy {
         return 1
     }
 
-    # Epoch-suffixed names are unique per build, so clear prior paks first; two
-    # paks of the same mod UUID make BG3 load an ambiguous copy. The incoming name
-    # is left for Copy-Item -Force to overwrite, so a stable-name build is quiet.
-    $newLeaf = Split-Path -Leaf $pak
-    $stale = @(Get-ChildItem -Path $modsDir -Filter "NameYourSummons-*.pak" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne $newLeaf })
+    # Two paks of one mod UUID make BG3 load an ambiguous copy, so sweep legacy
+    # version-suffixed paks. The dash filter matches only those - the current
+    # underscore/UUID pak is overwritten in place by Copy-Item -Force below, and an
+    # unrelated NameYourSummons_*.pak is left alone.
+    $stale = @(Get-ChildItem -Path $modsDir -Filter "NameYourSummons-*.pak" -ErrorAction SilentlyContinue)
     if ($stale) {
         Write-Host ""
         Write-Host "Removed stale paks:"
@@ -863,7 +913,7 @@ function Cmd-Deploy {
             Write-Host "  $($old.FullName)"
         }
     }
-    $dest = Join-Path $modsDir $newLeaf
+    $dest = Join-Path $modsDir (Split-Path -Leaf $pak)
     Copy-Item -Path $pak -Destination $dest -Force
     Write-Host ""
     Write-Host "Deployed:"
