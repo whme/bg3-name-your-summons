@@ -68,10 +68,10 @@ The gear button next to the Examine name field opens the config window. There
 you can:
 
 - Review every saved name in the current save, grouped by the character that
-  summoned it, then edit or forget any of them. Nothing takes effect until you
-  press Save; closing the window discards unsaved edits. Saving applies each
-  rename to any matching summon that is currently out, and reverts any summon
-  whose name you forgot back to its original.
+  summoned it, then edit or forget any of them. Edits apply as you make them - an
+  edited name is applied to any matching summon that is currently out. A forget
+  can be undone while the window is open, and takes effect when you close it,
+  reverting that summon to its original name.
 - Choose when the prompt appears:
   - **Ask me to name new summons** - turn the prompt on or off entirely.
   - **Also re-ask for summons I have already named** - when on, the prompt

@@ -103,6 +103,63 @@ The SE console is a separate window that stays up while the game runs. Signals:
   - `UI State verification failed ... state 'X'` -> that page failed to parse
     (often an unresolved `StaticResource` or an unstyled bare control).
 
+## Console commands
+
+Server state unless noted. Ask the user to run the one that answers your
+question, and to paste the output verbatim.
+
+| Command | What it does |
+|---|---|
+| `!nys_list` | list all saved names |
+| `!nys_diag` | dump what the game thinks each summon is named |
+| `!nys_rename <name>` | rename the host's summons now, no prompt |
+| `!nys_clear` | wipe all saved names |
+| `!nys_debug` | toggle debug console logging (registered in BOTH states so one call flips both) |
+| `!nys_trace` | toggle full-detail JSONL tracing (registered in BOTH states; run from the matching console context) |
+| `!nys_uidump` | (client) dump the visual-tree landmark map to `nys-trace-client.jsonl`; forces tracing on |
+
+**`!nys_diag` is the primary debugging tool**: it dumps the loca handle, what it
+resolves to, `CustomName` if present, and the root template. Ask for that output
+when a name will not stick.
+
+`!nys_uidump` dumps named nodes plus depth, and the per-namescope `:Find` reach
+for each landmark. It is the authority for the tree depths in
+[examine-panel.md](examine-panel.md) - re-run it rather than guessing after a
+game patch, and use it to plan a shallower node anchor.
+
+## Tracing
+
+`Shared/Trace.lua` writes every channel payload (both directions), watcher
+decision, store write, and swallowed `pcall` failure as one JSON line per event
+to `nys-trace-client.jsonl` / `nys-trace-server.jsonl` in
+`%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Script Extender\`, flushed per
+line so the record survives a crash.
+
+It is OFF by default; toggle it on with `!nys_trace` (in both states) when
+reproducing an issue, then ask the user for both files instead of pasted console
+excerpts.
+
+## Logging policy
+
+Console logging is quiet by default (issue #106). Each state prints ONE startup
+line (`Util.Say` with the mod version plus "loaded successfully"); after that
+only warnings (`Util.Warn`) and user-invoked command output (`Util.Say`) print.
+Routine info (`Util.Log` - "Named ...", "Saved name ...", "Reapply ...") is gated
+behind `!nys_debug`.
+
+So new routine tracing goes through `Util.Log` (hidden unless debugging), and
+anything a console command prints for the user must use `Util.Say`.
+
+## What you can and cannot prove offline
+
+`./make.ps1 all` proves code correctness, never feature correctness in game. The
+unit suite covers only the engine-independent logic; everything touching ECS,
+net, native UI, or timing is in untested glue. See
+[build-and-gates.md](build-and-gates.md) for what each gate does not prove.
+
+State plainly when a change needs in-game verification you cannot perform, and
+name the exact console command the user should run to confirm it.
+
 ## Before you finish
 
 Strip all `TEMPORARY` discovery tooling and turn off (or remove) `DEBUG` logging

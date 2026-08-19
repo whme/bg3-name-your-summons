@@ -11,12 +11,12 @@
     (`examineNodeById`, `findNamedIn`, `liveFieldIn`). The server routes an on-summon
     prompt to a viewport via ViewportChar, matched to a panel by SelectedCharacter.
 
-    Native-UI approach (see docs/bg3-modding-toolchain.md and AGENTS.md):
+    Native-UI approach (see docs/native-ui.md and docs/examine-panel.md):
     - Controls we add are driven by per-element MVVM, not global mouse hit-testing:
       the gear's Command binds to a viewmodel on its nested DataContext; the field
       commits via its own per-element subscriptions.
     - Manual-open detection is a persistent HUD overlay's DataTrigger, not an input
-      hook (installHudDetector; see AGENTS.md rule 5). The old per-click tree scan
+      hook (installHudDetector; see docs/native-ui.md). The old per-click tree scan
       crashed on character creation's foreign tree (#99).
     - Close a panel from Lua with closeExaminePanel: drive its CustomEvent command
       with a boxed string planted as a XAML resource.
@@ -1160,7 +1160,7 @@ end
 -- Closing Examine from Lua: its close runs the "CloseWidget" state event through the widget's
 -- CustomEvent command, whose parameter must be a BOXED Noesis string - we plant a
 -- <System:String x:Key="NYS_CloseWidget"> resource in Examine.xaml and read it back live via
--- element:Resource(). See AGENTS.md.
+-- element:Resource(). See docs/native-ui.md.
 local CLOSE_WIDGET_RESOURCE = "NYS_CloseWidget"
 
 --- Close viewport `id`'s open Examine panel; true if the close command was issued.
@@ -1305,6 +1305,7 @@ local function ensureOverlaysWired()
 end
 
 -- The HUD rebuild fires no event and the new host lags it, so retry on a bounded schedule then stop.
+-- Re-wiring is event-driven, never polled; the authoritative trigger list is in docs/examine-panel.md.
 local REWIRE_INTERVAL_MS = 400
 local REWIRE_MAX_TRIES = 25
 

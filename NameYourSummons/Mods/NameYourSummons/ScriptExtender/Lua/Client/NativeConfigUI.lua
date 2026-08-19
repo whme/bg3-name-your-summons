@@ -119,6 +119,7 @@ end
 
 --- The live settings viewmodel for viewport `id` (its panel's DataContext). Valid only
 --- in the immediate scope - re-fetch every time; never cache across calls/ticks.
+--- (Noesis handle lifetime: see docs/native-ui.md.)
 ---@param id integer
 ---@return any|nil
 local function liveVm(id)

@@ -5,9 +5,9 @@ Extender (BG3SE). There is no build step - the game itself is the only
 integration test - but the engine-independent logic is covered by unit tests and
 guarded by static checks, all driven by one task runner.
 
-For architecture and the deeper BG3SE-specific standards, see
-[AGENTS.md](AGENTS.md). This file is the short version: how to set up, run the
-checks, and submit a change.
+This file is how to set up, run the checks, and submit a change. The rules a
+coding agent must follow are in [AGENTS.md](AGENTS.md); the architecture and the
+BG3SE-specific reasoning live in [docs/](docs/README.md).
 
 ## Prerequisites
 
@@ -25,21 +25,19 @@ binaries fetched on first use into `.tools/` (gitignored).
 `make.ps1` is a cargo-style entrypoint. Run it from the repo root:
 
 ```powershell
-./make.ps1 setup         # download all tooling up front (optional)
-./make.ps1 format        # format the code in place with StyLua
-./make.ps1 format-check  # verify formatting (diff only, no writes)
-./make.ps1 lint          # luacheck
-./make.ps1 typecheck     # lua-language-server
-./make.ps1 test          # LuaUnit suite
-./make.ps1 check         # format-check + lint + typecheck + test (what CI runs)
+./make.ps1 help          # the full, current command list
+./make.ps1 all           # format in place, then the bundled cross-platform gates
+./make.ps1 check         # the read-only twin of `all` (what CI runs)
 ./make.ps1 build         # pack the mod into build/ (.pak + .zip)
-./make.ps1 changelog     # assemble news/ fragments into CHANGELOG.md
-./make.ps1 prepare-release     # maintainers: bump version, changelog, branch, PR
-./make.ps1 create-release-tag  # maintainers: tag the release (fires release.yml)
+./make.ps1 deploy        # build, then copy the .pak into BG3's Mods folder
 ```
 
-Run `./make.ps1 check` before you push; CI runs the exact same commands via
-`pwsh` on Linux, so a green local `check` means a green CI.
+`./make.ps1 help` prints the authoritative list - it is generated from the
+script itself, so it never drifts. Run `./make.ps1 all` while you work and
+`./make.ps1 check` before you push; CI runs the same commands via `pwsh` on
+Linux, so a green local `check` means a green CI for those gates. The
+divine-dependent gates (`loca-check`, `build`) are Windows-only and run in a
+separate CI job - see [docs/build-and-gates.md](docs/build-and-gates.md).
 
 ## Building the mod
 
@@ -68,6 +66,11 @@ and validate the same language the game does (integer and bitwise operators,
 | Lint | [luacheck](https://github.com/lunarmodules/luacheck) | `.luacheckrc` (`std = "lua54"`) |
 | Type check | [lua-language-server](https://github.com/LuaLS/lua-language-server) | `.luarc.json` |
 | Unit tests | [LuaUnit](https://github.com/bluebird75/luaunit) | `spec/` |
+| XML, typography, XAML, loca, pak | System.Xml / regex / divine | see [docs/build-and-gates.md](docs/build-and-gates.md) |
+
+The full gate list, what each one does *not* prove, and why the divine-backed
+gates are split onto a Windows CI job are in
+[docs/build-and-gates.md](docs/build-and-gates.md).
 
 Notes:
 
@@ -122,7 +125,9 @@ alongside the game once you enable it in
 | `!nys_clear` | server | wipe all saved names |
 
 `!nys_diag` is the primary debugging tool: when a name will not stick, paste its
-output when reporting the issue.
+output when reporting the issue. There are also `!nys_debug`, `!nys_trace`, and
+`!nys_uidump` for deeper diagnosis - see
+[docs/ingame-debugging.md](docs/ingame-debugging.md).
 
 ## Coding conventions
 
@@ -135,7 +140,8 @@ output when reporting the issue.
 - Default to no inline comments; add one only for a non-obvious BG3SE/Osiris
   quirk, an empirical timing delay, or a replication invariant.
 
-See [AGENTS.md](AGENTS.md) for the full standards and the BG3SE gotchas.
+See [AGENTS.md](AGENTS.md) for the full standards and [docs/](docs/README.md)
+for the BG3SE and NoesisGUI reasoning behind them.
 
 ## News fragments
 
@@ -188,8 +194,9 @@ there on this machine).
    ```
 
    The tag push fires `.github/workflows/release.yml`, which packs the `.pak`,
-   attests it, and publishes a **draft** release. Review and publish it from the
-   GitHub Releases page.
+   attests it, and publishes a **draft** release (its body is built from
+   `templates/release_template.md` plus the tagged `CHANGELOG.md` section). Review
+   and publish it from the GitHub Releases page.
 
 ## Submitting changes
 
