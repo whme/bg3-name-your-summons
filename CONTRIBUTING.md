@@ -1,9 +1,10 @@
 # Contributing to Name Your Summons
 
-Name Your Summons is a pure-Lua Baldur's Gate 3 mod built on Norbyte's Script
-Extender (BG3SE). There is no build step - the game itself is the only
-integration test - but the engine-independent logic is covered by unit tests and
-guarded by static checks, all driven by one task runner.
+Name Your Summons is a Baldur's Gate 3 mod built on Norbyte's Script Extender
+(BG3SE): Lua logic plus a NoesisGUI (XAML) UI overlay. Packaging compiles nothing -
+it stages the files and converts localization - so the game itself is the
+integration test; the engine-independent logic is covered by unit tests and guarded
+by static checks, all driven by one task runner.
 
 This file is how to set up, run the checks, and submit a change. The rules a
 coding agent must follow are in [AGENTS.md](AGENTS.md); the architecture and the
@@ -68,20 +69,9 @@ and validate the same language the game does (integer and bitwise operators,
 | Unit tests | [LuaUnit](https://github.com/bluebird75/luaunit) | `spec/` |
 | XML, typography, XAML, loca, pak | System.Xml / regex / divine | see [docs/build-and-gates.md](docs/build-and-gates.md) |
 
-The full gate list, what each one does *not* prove, and why the divine-backed
-gates are split onto a Windows CI job are in
+The full gate list, what each one does *not* prove, and why the divine-backed gates
+are split onto a Windows CI job are in
 [docs/build-and-gates.md](docs/build-and-gates.md).
-
-Notes:
-
-- **Formatting is not up for debate.** StyLua is deterministic and uses its
-  defaults; run `./make.ps1 format` and commit the result. Do not hand-tune
-  style.
-- **lua-language-server** gates on Error level only. The dynamic `Ext`/`Osi`
-  surface produces Warnings (undefined-field, API drift) that are helpful inline
-  in an editor but are not build failures. For editor autocomplete, the type
-  check auto-fetches the BG3SE `ExtIdeHelpers.lua` into `.luals-libs/`
-  (gitignored); `.luarc.json` points your editor at it too.
 
 ## Enabling the git hook
 
@@ -94,7 +84,8 @@ git config core.hooksPath .githooks
 
 ## Testing
 
-You **cannot run the game** in CI, and neither can a reviewer quickly. So:
+The game is the only integration test, and neither CI nor a reviewer runs it
+quickly. So:
 
 - **Unit tests** (`./make.ps1 test`) cover the engine-independent logic - key
   derivation, hashing, input sanitising, ModVar shaping, and the two
@@ -125,23 +116,16 @@ alongside the game once you enable it in
 | `!nys_clear` | server | wipe all saved names |
 
 `!nys_diag` is the primary debugging tool: when a name will not stick, paste its
-output when reporting the issue. There are also `!nys_debug`, `!nys_trace`, and
-`!nys_uidump` for deeper diagnosis - see
-[docs/ingame-debugging.md](docs/ingame-debugging.md).
+output when reporting the issue. There are more commands than the four above -
+`!nys_reapply`, `!nys_debug`, `!nys_trace`, `!nys_uidump` - each with traps
+worth knowing; see [docs/ingame-debugging.md](docs/ingame-debugging.md).
 
 ## Coding conventions
 
-- **ASCII punctuation only.** No em/en-dashes, smart quotes, ellipsis glyphs, or
-  arrows anywhere in the repo - use `-`, `'`/`"`, `...`, `->`. The pre-commit
-  hook enforces this.
-- **EmmyLua annotations** (`---@param`, `---@return`, `---@field`) on functions
-  with non-obvious types - the type hints are what make the dynamically-typed
-  BG3SE objects navigable.
-- Default to no inline comments; add one only for a non-obvious BG3SE/Osiris
-  quirk, an empirical timing delay, or a replication invariant.
-
-See [AGENTS.md](AGENTS.md) for the full standards and [docs/](docs/README.md)
-for the BG3SE and NoesisGUI reasoning behind them.
+ASCII punctuation only (the pre-commit hook enforces it), EmmyLua annotations on
+non-obvious types, and inline comments only for a real BG3SE/Osiris quirk. The
+full standards are in [AGENTS.md](AGENTS.md); the reasoning is in
+[docs/](docs/README.md).
 
 ## News fragments
 
