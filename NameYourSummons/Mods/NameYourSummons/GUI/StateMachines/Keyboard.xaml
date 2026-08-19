@@ -26,9 +26,20 @@
             </ls:State.Events>
         </ls:State>
 
-        <!-- Merge NysHudOverlay into the always-active PlayerHUD (ModType="Extend" adds, does not
-             replace) for examine detection. Attributes mirror the base keyboard state. -->
+        <!-- Manual-Examine detection needs a persistent HUD overlay. A StateWidget added to
+             PlayerHUD via Extend appears for a single player but does NOT replicate into the
+             per-player PlayerHUD instances split-screen creates. Mount it as its OWN
+             Owner="Player" state pulled in as an InitialSubstate instead - the pattern the
+             game itself uses for the per-player PlayerPortraits - so it exists for every
+             viewport. Extend merges additively, so PlayerHUD's own PlayerPortraits substate
+             is preserved. -->
         <ls:State Name="PlayerHUD" ModType="Extend" Layout="Player" Owner="Player">
+            <ls:State.InitialSubstates>
+                <ls:InitialSubstate Name="NYS_HudOverlayState"/>
+            </ls:State.InitialSubstates>
+        </ls:State>
+
+        <ls:State Name="NYS_HudOverlayState" Layout="Player" Owner="Player">
             <ls:State.Widgets>
                 <ls:StateWidget Filename="NysHudOverlay.xaml" Layer="HUD" IgnoreHitTest="True"/>
             </ls:State.Widgets>
