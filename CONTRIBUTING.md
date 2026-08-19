@@ -47,9 +47,10 @@ pinned [LSLib](https://github.com/Norbyte/lslib) release into `.tools/` (needs
 the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)),
 then produces:
 
-- `build/NameYourSummons-<version>.pak` - the installable mod; drop it in
-  `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`.
-- `build/NameYourSummons-<version>.zip` - the same `.pak` zipped for upload.
+- `build/NameYourSummons_<UUID>.pak` - the installable mod; drop it in your
+  `Mods\` folder. The UUID filename is stable, so an update overwrites in place.
+- `build/NameYourSummons-<version>.zip` - the `.pak` plus a generated `README.txt`,
+  zipped for upload; the zip keeps the version in its name.
 
 Pass `-Clean` (`./make.ps1 build -Clean`) to wipe `build/` first. (The **BG3
 Modder's Multitool** *Create Package* still works too - it wraps the same LSLib

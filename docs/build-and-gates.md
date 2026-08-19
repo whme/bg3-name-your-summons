@@ -41,10 +41,10 @@ either from a live game install or from a committed oracle so it can also run in
 
 ## Packaging
 
-`./make.ps1 build` packs the mod into `build/` as a versioned `.pak` and zip, and
-`deploy` copies it into the game's Mods folder. Two things the build does that are
-easy to miss: it compiles the plain-text localisation sources into the binary format
-the game loads, and it stamps a build number into the packaged manifest while leaving
-the committed one untouched. The mod version itself lives as a single packed integer
-in the manifest and is the one source of truth. To test a change, `deploy` and have
-the user restart the game.
+`./make.ps1 build` packs the mod into `build/` as a stable-named `.pak` and a
+versioned zip, and `deploy` copies it into the game's Mods folder. Two things the
+build does that are easy to miss: it compiles the plain-text localisation sources
+into the binary format the game loads, and it stamps a build number into the packaged
+manifest while leaving the committed one untouched. The mod version itself lives as a
+single packed integer in the manifest and is the one source of truth. To test a
+change, `deploy` and have the user restart the game.

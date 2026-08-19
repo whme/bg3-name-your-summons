@@ -35,7 +35,7 @@ jobs:
         with:
           name: release-package
           path: |
-            build/NameYourSummons-${{ github.ref_name }}.pak
+            build/NameYourSummons_*.pak
             build/NameYourSummons-${{ github.ref_name }}.zip
           retention-days: 1
           if-no-files-found: error

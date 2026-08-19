@@ -18,6 +18,10 @@ Install both parts in order.
 | 2. Name Your Summons | Download `NameYourSummons-{{VERSION}}.zip` below, extract the `.pak`, and drop it in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`. |
 | 3. Enable it | Launch the game and enable **Name Your Summons** from the **Mods** menu. |
 
+**Updating from 1.2.0 or earlier?** Delete the old versioned `NameYourSummons-*.pak`
+from that folder first - the pak now has a stable filename, so leaving the old one
+behind would make the game load a stale copy.
+
 ## Verifying the download
 The release `.zip` is signed with a [GitHub build attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) produced by this repository's release workflow.
 Verifying the attestation cryptographically proves that the archive came from the `whme/bg3-name-your-summons` release workflow at the tagged commit - i.e. the `.zip` you have is byte-for-byte the one GitHub built for this release and was not modified or repackaged after upload.
