@@ -87,12 +87,10 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <!-- Name Your Summons: the summon's name + settings gear (summons only).
-                                                 The name box defaults to read-only/Focusable/IsHitTestVisible all off - the
-                                                 native plain-name look, correct for a forbidden summon; NativeRenameUI flips
-                                                 those input-checked flags on for a renamable one.
-                                                 OpenVirtualKeyboardOnFocus=False: with Steam Input active (Big Picture) the
-                                                 default (True) pops Steam's on-screen keyboard on focus. -->
+                                            <!-- Summon name + settings gear (summons only). Both default off/hidden;
+                                                 NativeRenameUI enables them only for a summon the viewer may rename.
+                                                 OpenVirtualKeyboardOnFocus=False stops Steam Input (Big Picture) popping
+                                                 its on-screen keyboard on focus. -->
                                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
@@ -106,10 +104,10 @@
                                                 </StackPanel.Style>
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                                     <ls:LSTextBox x:Name="NYS_NameInput" Text="{Binding Name, Mode=OneWay}" IsReadOnly="True" Focusable="False" IsHitTestVisible="False" OpenVirtualKeyboardOnFocus="False" MinWidth="200" MaxLines="1" TextWrapping="NoWrap" TextAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ScaledBigFontSize}" SelectTextOnFocus="True"/>
-                                                    <!-- An LSButton with a Command binding (a Grid has no Click/command). Its
-                                                         DataContext is a small NYS_GearVM set from Lua (NativeRenameUI). -->
+                                                    <!-- LSButton (not a Grid) so it can carry a Command; NYS_GearVM is set from Lua. -->
                                                     <ls:LSButton x:Name="NYS_SettingsButton" Width="40" Height="40" Margin="10,0,0,0" VerticalAlignment="Center"
-                                                                 Background="Transparent" Command="{Binding NysGearCommand}">
+                                                                 Background="Transparent" Command="{Binding NysGearCommand}"
+                                                                 Visibility="{Binding NysShowGear, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                                                         <ls:LSButton.Template>
                                                             <ControlTemplate TargetType="{x:Type ls:LSButton}">
                                                                 <Grid Background="Transparent">

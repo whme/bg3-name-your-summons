@@ -8,8 +8,8 @@ split-screen and on a controller. The server side is in
 ## The rename bar
 
 The mod overrides the game's Examine page to add a name field and a settings gear for
-summons. Typing in the field saves the name. A story-bound summon the player has not
-opted into renaming is shown as plain, non-editable text rather than an input field.
+summons. Typing in the field saves the name. A summon the viewer cannot rename - a story
+summon not opted into, or another player's in split-screen - shows plain with no gear.
 
 ## The settings overlay
 
@@ -32,6 +32,6 @@ left, and the server's pause always lifts.
 
 ## Split-screen and controller
 
-All panel state is keyed per viewport, so each player names and configures
-independently. One Lua path serves both keyboard and controller; the controller
-layout differs only where the engine requires focusable controls.
+All panel state is keyed per viewport, so each player independently names, configures, and
+renames only the summons they own. One Lua path serves both keyboard and controller; the
+controller layout differs only where the engine requires focusable controls.
