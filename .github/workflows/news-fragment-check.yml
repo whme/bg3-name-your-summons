@@ -40,9 +40,12 @@ jobs:
           echo "Checking for news fragments in PR..."
 
           # Diff against the PR's actual base so this works for both `main`
-          # and `*-maintenance`.
-          ADDED=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD")
-          FRAGMENTS=$(echo "$ADDED" | grep -E '${{ env.NEWS_FRAGMENT_PATTERN }}' || true)
+          # and `*-maintenance`. Count additions, modifications, and renames
+          # (filter R gives the destination path) so editing a fragment's text
+          # or fixing its id/type by renaming also satisfies the requirement -
+          # each is still held to the id check below.
+          CHANGED=$(git diff --name-only --diff-filter=AMR "origin/${{ github.base_ref }}...HEAD")
+          FRAGMENTS=$(echo "$CHANGED" | grep -E '${{ env.NEWS_FRAGMENT_PATTERN }}' || true)
 
           # Fragment-shaped files whose id changelogging would silently drop.
           # Reject these even under the override label - they are always a mistake.
@@ -108,8 +111,8 @@ jobs:
             cat << 'EOF'
           **News Fragment Check**
 
-          This PR adds a news fragment whose name changelogging silently ignores,
-          so the change would be missing from the changelog.
+          This PR includes a news fragment whose name changelogging silently
+          ignores, so the change would be missing from the changelog.
 
           A fragment id must be a **PR/issue number** (e.g. `news/123.bugfix.md`) or
           an **arbitrary name prefixed with `~`** (e.g. `news/~fix-summon.bugfix.md`).
