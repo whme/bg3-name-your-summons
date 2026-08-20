@@ -84,6 +84,10 @@ Channels.RenameName = traced("RenameName", Ext.Net.CreateChannel(ModuleUUID, "Na
 -- that only knows the creature's uuid, not the storage key).
 Channels.RenameSummon = traced("RenameSummon", Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_RenameSummon"))
 
+-- Client -> Server (request/reply): "does the viewing player own this summon?" ViewerCharacter is
+-- the viewport's controlled character; reply is { Owned = bool }.
+Channels.QueryOwnership = traced("QueryOwnership", Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_QueryOwnership"))
+
 -- Client -> Server (request/reply): "give me the current settings"
 Channels.GetSettings = traced("GetSettings", Ext.Net.CreateChannel(ModuleUUID, "NameYourSummons_GetSettings"))
 

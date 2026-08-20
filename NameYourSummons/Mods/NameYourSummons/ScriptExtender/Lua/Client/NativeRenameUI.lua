@@ -393,7 +393,9 @@ local function panelState(id)
 			liveText = nil, -- latest field text seen via TextChanged (commit does not depend on a blur)
 			textGen = 0, -- debounce token: bumped per TextChanged so only the last one commits
 			editEnabled = false,
-			forbidden = false,
+			owned = false, -- summon belongs to this viewport's player; gates rename + gear
+			ownedUuid = nil, -- the uuid `owned` was resolved for
+			ownershipResolved = nil, -- true once the server has answered for ownedUuid
 			queue = {}, -- AskName requests not yet shown, FIFO
 			current = nil, -- the request being examined now, or nil
 			answered = false, -- current got a name (SubmitName sent)
@@ -419,6 +421,8 @@ end
 -- Forward declarations for the mutually-recursive on-summon flow (and the wire/unwire
 -- pair, which reference each other via the deferred swap-rewire).
 local showNext, openExamine, answerSession, getExamineCommand, entityHandleFor, unwirePanel
+-- Forward-declared: commitField/flushName above gate their send on it, but it is defined below.
+local canCommit
 
 ---------------------------------------------------------------------------
 -- Rename primitives
@@ -577,6 +581,10 @@ local function commitField(id, field)
 		end
 		return
 	end
+	-- Strict send: the display is optimistic, but never rename until ownership is confirmed.
+	if not canCommit(id) then
+		return
+	end
 	if submitRename(uuid, raw) then
 		st.lastSent = name
 		Util.Log(("NYS: renamed %s -> '%s'"):format(uuid, name))
@@ -607,7 +615,7 @@ local function flushName(id)
 			st.lastSent = name
 			st.answered = true
 		end
-	elseif field then
+	elseif field and canCommit(id) then
 		local uuid = examinedSummonUuidIn(id)
 		if uuid and submitRename(uuid, raw) then
 			st.lastSent = name
@@ -674,6 +682,11 @@ end
 --- Opening the gear leaves the field, so commit any typed name first.
 ---@param id integer
 local function onGearClick(id)
+	local st = panels[id]
+	-- Inert only once the server confirms the summon is another player's (optimistic until then).
+	if st and st.current == nil and st.ownershipResolved and not st.owned then
+		return
+	end
 	flushName(id)
 	if onGearClickHandler then
 		onGearClickHandler(id)
@@ -700,6 +713,146 @@ local function refreshQueueButtons(id)
 			end)
 		end
 	end
+end
+
+--- Show or hide viewport `id`'s settings gear (its NYS_GearVM's NysShowGear flag).
+---@param id integer
+---@param visible boolean
+local function setGearVisible(id, visible)
+	local gear = findNamedIn(id, "NYS_SettingsButton")
+	local vm = gear and safe(function()
+		return gear.DataContext
+	end)
+	if vm then
+		pcall(function()
+			vm.NysShowGear = visible and true or false
+		end)
+	end
+end
+
+--- Whether to SHOW viewport `id`'s rename field + gear: true for a prompt, optimistically true for
+--- a manual examine until the server says the summon is not the viewer's, false when forbidden.
+---@param id integer
+---@return boolean
+local function isRenamable(id)
+	local st = panels[id]
+	if not st then
+		return false
+	end
+	if st.current ~= nil then
+		return true
+	end
+	local uuid = examinedSummonUuidIn(id)
+	if uuid == nil then
+		return false
+	end
+	if isForbiddenSummon(uuid) then
+		return false
+	end
+	-- Optimistic until the server answers for THIS summon; a stale answer (ownedUuid ~= uuid) reads
+	-- as unresolved so the controls do not flicker when the panel is reused for a new summon.
+	if not st.ownershipResolved or st.ownedUuid ~= uuid then
+		return true
+	end
+	return st.owned == true
+end
+
+--- Whether a rename may actually be SENT for viewport `id`: only once the server confirms the
+--- summon is the viewer's own (a prompt is owned by construction). Display stays optimistic.
+---@param id integer
+---@return boolean
+function canCommit(id)
+	local st = panels[id]
+	if not st then
+		return false
+	end
+	if st.current ~= nil then
+		return true
+	end
+	local uuid = examinedSummonUuidIn(id)
+	return uuid ~= nil
+		and not isForbiddenSummon(uuid)
+		and st.ownershipResolved == true
+		and st.owned == true
+		and st.ownedUuid == uuid
+end
+
+--- Gate viewport `id`'s rename field and gear on renamability.
+---@param id integer
+local function applyGates(id)
+	local renamable = isRenamable(id)
+	setGearVisible(id, renamable)
+	if renamable then
+		enableEditing(id)
+	else
+		disableEditing(id)
+	end
+end
+
+-- Bounded retry while the summon's DataContext settles: split-screen re-layout can wire the field
+-- a few ticks before its summon context is readable.
+local OWNERSHIP_RETRY_MS = 100
+local OWNERSHIP_MAX_TRIES = 12
+
+--- Reveal viewport `id`'s controls optimistically, then ask the server whether the summon is the
+--- viewer's own (the client cannot read an owner) and keep or retract them. Retries until readable.
+---@param id integer
+---@param triesLeft integer|nil
+local function resolveOwnership(id, triesLeft)
+	triesLeft = triesLeft or OWNERSHIP_MAX_TRIES
+	local st = panels[id]
+	-- Panel gone or unwired (a rewire will call us again); stop retrying.
+	if not st or not st.wired or st.current ~= nil then
+		return
+	end
+	local function retry()
+		if triesLeft > 0 then
+			Ext.Timer.WaitForRealtime(OWNERSHIP_RETRY_MS, function()
+				resolveOwnership(id, triesLeft - 1)
+			end)
+		end
+	end
+	local uuid = examinedSummonUuidIn(id)
+	if uuid == nil then
+		retry()
+		return
+	end
+	if st.ownershipResolved and st.ownedUuid == uuid then
+		applyGates(id)
+		return
+	end
+	st.ownershipResolved = false
+	applyGates(id)
+	local viewer = selectedCharOf(examineNodeById(id))
+	-- Supersede an earlier in-flight query so a slow stale reply cannot clobber a newer one.
+	st.ownGen = (st.ownGen or 0) + 1
+	local gen = st.ownGen
+	pcall(function()
+		Channels.QueryOwnership:RequestToServer({ SummonUuid = uuid, ViewerCharacter = viewer }, function(response)
+			local pst = panels[id]
+			if not pst or pst.ownGen ~= gen then
+				return
+			end
+			if examinedSummonUuidIn(id) ~= uuid then
+				-- The panel shifted mid-relayout; re-resolve for whatever it now shows.
+				retry()
+				return
+			end
+			pst.ownedUuid = uuid
+			pst.ownershipResolved = true
+			pst.owned = type(response) == "table" and response.Owned == true
+			-- Never write the field text here: the OneWay Name binding already keeps the name on
+			-- screen, and writing it blanked the name when captured before Name had bound.
+			applyGates(id)
+			if pst.owned then
+				-- Flush a name the player typed during the optimistic window (held until now).
+				local field = liveFieldIn(id)
+				if field then
+					commitField(id, field)
+				end
+			end
+		end)
+	end)
 end
 
 --- Attach viewport `id`'s gear Command viewmodel and its field's key/focus subscriptions.
@@ -773,6 +926,10 @@ local function wirePanel(id)
 					onGearClick(id)
 				end)
 			end)
+			-- Seed on the vm directly (like NysShowSkip): a just-assigned DataContext re-fetches stale.
+			pcall(function()
+				vm.NysShowGear = isRenamable(id)
+			end)
 			pcall(function()
 				gear.DataContext = vm
 			end)
@@ -824,11 +981,15 @@ local function wirePanel(id)
 
 	st.wired = true
 
-	-- Enable editing for any renamable summon (on-summon or manual); forbidden/non-summon stays plain.
-	local summonUuid = examinedSummonUuidIn(id)
-	st.forbidden = summonUuid ~= nil and isForbiddenSummon(summonUuid)
-	if st.current ~= nil or (summonUuid ~= nil and not st.forbidden) then
-		enableEditing(id)
+	-- A prompt is the owner's own by construction; a manual examine may be another player's
+	-- summon, so ask the server.
+	if st.current ~= nil then
+		st.owned = true
+		st.ownedUuid = examinedSummonUuidIn(id)
+		st.ownershipResolved = true
+		applyGates(id)
+	else
+		resolveOwnership(id)
 	end
 end
 
@@ -848,7 +1009,6 @@ function unwirePanel(id)
 	st.fieldSubs = {}
 	st.wired = false
 	st.editEnabled = false
-	st.forbidden = false
 end
 
 --- Re-wire the already-open panels after another panel opened. Opening one Examine panel
@@ -1231,7 +1391,28 @@ local function hostIsWired(host)
 	return (dc and dcProp(dc, "NysWired")) == true
 end
 
---- The panel widget lags the examine target, so reconcile on a short bounded retry (gen-deduped).
+-- The rename bar renders a beat after the examine target is set, so reconcile on a fine-grained
+-- bounded retry (gen-deduped) that reveals the controls without a visible lag, and exits as soon
+-- as every open panel is latched rather than running all TRIES passes.
+local DETECT_RECONCILE_MS = 25
+local DETECT_RECONCILE_TRIES = 24
+local DETECT_SETTLE_PASSES = 2
+
+--- Whether every open Examine panel is now wired (or mid-open), so the reconcile burst can stop.
+---@return boolean
+local function examinesSettled()
+	if next(openIds) == nil then
+		return false
+	end
+	for id in pairs(openIds) do
+		local st = panels[id]
+		if not st or (not st.wired and not st.awaitingOpen) then
+			return false
+		end
+	end
+	return true
+end
+
 --- Manual panels are unwired first so a re-open re-subscribes; an active on-summon session is left alone.
 local function onExamineDetected()
 	Trace.Log("detect", "onExamineDetected (overlay DataTrigger fired)")
@@ -1242,18 +1423,27 @@ local function onExamineDetected()
 			unwirePanel(id)
 		end
 	end
-	local function pass(triesLeft)
+	local function pass(triesLeft, settle)
 		if gen ~= reconcileGen then
 			return
 		end
 		pollLifecycle()
+		if examinesSettled() then
+			-- Latched. A couple of safety passes catch a laggy second split-screen viewport, then stop.
+			if settle <= 0 then
+				return
+			end
+			settle = settle - 1
+		else
+			settle = DETECT_SETTLE_PASSES
+		end
 		if triesLeft > 0 then
-			Ext.Timer.WaitForRealtime(100, function()
-				pass(triesLeft - 1)
+			Ext.Timer.WaitForRealtime(DETECT_RECONCILE_MS, function()
+				pass(triesLeft - 1, settle)
 			end)
 		end
 	end
-	pass(6)
+	pass(DETECT_RECONCILE_TRIES, DETECT_SETTLE_PASSES)
 end
 
 ---@param host any
@@ -1533,7 +1723,7 @@ function NativeRenameUI.Register()
 		Ext.RegisterConsoleCommand("nys_uidump", dumpUiStructure)
 	end)
 	pcall(function()
-		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" } })
+		Ext.UI.RegisterType(GEAR_VM, { NysGearCommand = { Type = "Command" }, NysShowGear = { Type = "Bool" } })
 	end)
 	pcall(function()
 		Ext.UI.RegisterType(SKIP_VM, { NysSkipCommand = { Type = "Command" }, NysShowSkip = { Type = "Bool" } })
@@ -1558,8 +1748,8 @@ function NativeRenameUI.Register()
 		end)
 	end)
 
-	-- The setting changed; refresh the cache and re-evaluate every open panel so a summon
-	-- that just became forbidden reverts to plain text at once.
+	-- Re-gate every open panel so a story summon that just became (dis)allowed updates its
+	-- field and gear at once. Ownership is cached per panel, so this reuses it.
 	Channels.SettingsChanged:SetHandler(function(data, _user)
 		if type(data) ~= "table" then
 			return
@@ -1567,11 +1757,7 @@ function NativeRenameUI.Register()
 		cachedAllowStory = data.AllowStorySummons == true
 		for id, st in pairs(panels) do
 			if st.wired then
-				local uuid = examinedSummonUuidIn(id)
-				st.forbidden = uuid ~= nil and isForbiddenSummon(uuid)
-				if st.forbidden and st.editEnabled then
-					disableEditing(id)
-				end
+				applyGates(id)
 			end
 		end
 	end)

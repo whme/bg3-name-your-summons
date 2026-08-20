@@ -809,6 +809,23 @@ function Watcher.RegisterNet()
 		Util.Log(("Renamed summon %s ('%s') via key %s"):format(uuid, name, key))
 	end)
 
+	-- The client cannot resolve a summon's owner (Osi is server-only), so it asks here; owned means
+	-- owner and viewer share a controlling user, as Util.IsNameVisible decides for ListNames.
+	Channels.QueryOwnership:SetRequestHandler(function(data, _user)
+		if type(data) ~= "table" or type(data.SummonUuid) ~= "string" then
+			return { Owned = false }
+		end
+		local uuid = Util.ToUuid(data.SummonUuid)
+		if not isSummon(uuid) then
+			return { Owned = false }
+		end
+		local ownerUser = reservedUser(Osi.CharacterGetOwner(uuid))
+		local viewerUser = reservedUser(type(data.ViewerCharacter) == "string" and data.ViewerCharacter or nil)
+		local hostOk, host = pcall(Osi.GetHostCharacter)
+		local hostUser = reservedUser(hostOk and host or nil)
+		return { Owned = Util.IsNameVisible(ownerUser, viewerUser, hostUser) }
+	end)
+
 	Channels.GetSettings:SetRequestHandler(function(_data, _user)
 		return Store.Settings()
 	end)

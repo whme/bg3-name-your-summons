@@ -649,11 +649,9 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <!-- The summon's name + settings gear + Skip (summons only). The name box
-                                 defaults to read-only/Focusable/IsHitTestVisible all off - the native
-                                 plain-name look, correct for a forbidden summon; NativeRenameUI flips
-                                 those input-checked flags on for a renamable one so a controller can
-                                 navigate to it. The gear and Skip are always controller-navigable. -->
+                            <!-- Summon name + settings gear + Skip (summons only). Both default off/hidden;
+                                 NativeRenameUI enables them (controller-reachable) only for a summon the
+                                 viewer may rename. Skip is navigable while a group is queued. -->
                             <StackPanel x:Name="NYS_RenameBar" Orientation="Vertical" HorizontalAlignment="Center">
                                 <StackPanel.Style>
                                     <Style TargetType="StackPanel">
@@ -681,7 +679,8 @@
                                          the content and the focus highlight is the style's.
                                          Full controller contract: docs/native-ui.md. -->
                                     <ls:LSButton x:Name="NYS_SettingsButton" Style="{StaticResource FocusableButtonStyleMinimal}"
-                                                 Width="80" VerticalAlignment="Center" Margin="10,0,0,0" Command="{Binding NysGearCommand}">
+                                                 Width="80" VerticalAlignment="Center" Margin="10,0,0,0" Command="{Binding NysGearCommand}"
+                                                 Visibility="{Binding NysShowGear, Converter={StaticResource BoolToVisibleConverter}, FallbackValue=Collapsed}">
                                         <Image Width="40" Height="40" Stretch="Uniform" HorizontalAlignment="Center"
                                                Source="pack://application:,,,/Core;component/Assets/CharacterAssign/ico_settings_d.png"/>
                                     </ls:LSButton>
