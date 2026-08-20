@@ -13,9 +13,8 @@
 ### Bug Fixes
 
 - On keyboard, pressing Escape with the summon settings panel open now closes
-  only that panel, leaving the Examine panel open - matching the controller,
-  where Circle already did this. Previously Escape closed the whole Examine
-  panel out from under the open settings. (#135)
+  only that panel, leaving the Examine panel open - matching the controller.
+  Previously Escape closed the whole Examine panel out from under the open settings. (#135)
 
 - The `.pak` now has a stable filename, so an update overwrites the old file
   instead of leaving a stale copy (delete any old `NameYourSummons-*.pak` once). (#147)
