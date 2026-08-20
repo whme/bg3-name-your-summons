@@ -2,6 +2,13 @@
 
 <!-- changelogging: start -->
 
+## 1.3.0 (2026-08-20)
+
+### Bug Fixes
+
+- The `.pak` now has a stable filename, so an update overwrites the old file
+  instead of leaving a stale copy (delete any old `NameYourSummons-*.pak` once). (#147)
+
 ## 1.2.0 (2026-08-18)
 
 ### Bug Fixes
