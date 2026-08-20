@@ -17,7 +17,11 @@ on:
 
 env:
   OVERRIDE_LABEL: "no-news-fragment-needed"
-  NEWS_FRAGMENT_PATTERN: '^news/.*\.(feature|bugfix|security|deprecation|removal)\.md$'
+  # A file that looks like a fragment: a valid type suffix, directly in news/.
+  NEWS_FRAGMENT_PATTERN: '^news/[^/]+\.(feature|bugfix|security|deprecation|removal)\.md$'
+  # A fragment changelogging will actually pick up: the id must be a PR/issue
+  # number or a `~`-prefixed name. A bare slug is dropped without warning.
+  NEWS_ID_PATTERN: '^news/([0-9]+|~[^/]+)\.(feature|bugfix|security|deprecation|removal)\.md$'
 
 jobs:
   news-fragment-check:
@@ -37,12 +41,33 @@ jobs:
 
           # Diff against the PR's actual base so this works for both `main`
           # and `*-maintenance`.
-          FRAGMENTS=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" | \
-            grep -E '${{ env.NEWS_FRAGMENT_PATTERN }}' || true)
+          ADDED=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD")
+          FRAGMENTS=$(echo "$ADDED" | grep -E '${{ env.NEWS_FRAGMENT_PATTERN }}' || true)
 
+          # Fragment-shaped files whose id changelogging would silently drop.
+          # Reject these even under the override label - they are always a mistake.
+          MALFORMED=""
+          VALID=""
           if [ -n "$FRAGMENTS" ]; then
+            VALID=$(echo "$FRAGMENTS" | grep -E '${{ env.NEWS_ID_PATTERN }}' || true)
+            MALFORMED=$(echo "$FRAGMENTS" | grep -Ev '${{ env.NEWS_ID_PATTERN }}' || true)
+          fi
+
+          if [ -n "$MALFORMED" ]; then
+            echo "Malformed news fragment name(s) - changelogging would ignore these:"
+            echo "$MALFORMED" | sed 's/^/  - /'
+            {
+              echo "status=malformed"
+              echo "malformed<<FRAGMENTS_EOF"
+              echo "$MALFORMED"
+              echo "FRAGMENTS_EOF"
+            } >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ -n "$VALID" ]; then
             echo "News fragment(s) found:"
-            echo "$FRAGMENTS" | sed 's/^/  - /'
+            echo "$VALID" | sed 's/^/  - /'
             echo "status=success" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -73,6 +98,28 @@ jobs:
           Success! This PR meets the news fragment requirements.
           EOF
 
+      - name: Prepare comment content - Malformed news fragment
+        if: steps.check.outputs.status == 'malformed'
+        env:
+          MALFORMED: ${{ steps.check.outputs.malformed }}
+        shell: bash
+        run: |
+          {
+            cat << 'EOF'
+          **News Fragment Check**
+
+          This PR adds a news fragment whose name changelogging silently ignores,
+          so the change would be missing from the changelog.
+
+          A fragment id must be a **PR/issue number** (e.g. `news/123.bugfix.md`) or
+          an **arbitrary name prefixed with `~`** (e.g. `news/~fix-summon.bugfix.md`).
+          A bare non-numeric name is dropped without warning.
+
+          Rename the fragment(s) below to a valid id:
+          EOF
+            printf '%s\n' "$MALFORMED" | sed 's/^/- `/; s/$/`/'
+          } > comment/body.txt
+
       - name: Prepare comment content - Missing news fragment
         if: steps.check.outputs.status == 'failed'
         shell: bash
@@ -99,6 +146,6 @@ jobs:
           name: comment
           path: comment/
 
-      - if: steps.check.outputs.status == 'failed'
+      - if: steps.check.outputs.status != 'success'
         shell: bash
         run: exit 1
