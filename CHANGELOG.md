@@ -2,6 +2,28 @@
 
 <!-- changelogging: start -->
 
+## 1.3.0 (2026-08-20)
+
+### Features
+
+- In split-screen co-op you can now only rename a summon, and open its settings gear, when it
+  belongs to you. Examining another player's summon shows it as a plain vanilla examine panel.
+  (#130)
+
+### Bug Fixes
+
+- On keyboard, pressing Escape with the summon settings panel open now closes
+  only that panel, leaving the Examine panel open - matching the controller,
+  where Circle already did this. Previously Escape closed the whole Examine
+  panel out from under the open settings. (#135)
+
+- The `.pak` now has a stable filename, so an update overwrites the old file
+  instead of leaving a stale copy (delete any old `NameYourSummons-*.pak` once). (#147)
+
+- The Examine panel's rename field and settings gear now work when you manually open Examine
+  on a summon in split-screen local co-op; previously they appeared but did nothing outside
+  single-player. (#149)
+
 ## 1.2.0 (2026-08-18)
 
 ### Bug Fixes
