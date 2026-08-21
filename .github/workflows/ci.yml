@@ -59,13 +59,13 @@ jobs:
   validate-xml:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: ./make.ps1 validate-xml
 
   ascii-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: ./make.ps1 ascii-check
 
   # Resolves the mod's XAML against the committed HMAC oracle (no game install
@@ -74,7 +74,7 @@ jobs:
   xaml-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: ./make.ps1 xaml-check
         env:
           NYS_XAML_ORACLE_SALT: ${{ secrets.NYS_XAML_ORACLE_SALT }}
@@ -86,7 +86,7 @@ jobs:
   assets:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/cache@v6
         with:
           path: .tools
