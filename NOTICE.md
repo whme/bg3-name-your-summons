@@ -22,13 +22,12 @@ property of Larian Studios. They are included solely to make the mod function
 and are used under Larian Studios' mod policy / EULA. They are NOT granted under
 the MIT License:
 
-- `NameYourSummons/Mods/NameYourSummons/GUI/Pages/Examine.xaml` and
-  `NameYourSummons/Mods/NameYourSummons/GUI/StateMachines/Keyboard.xaml` -
-  overrides of Larian's own game UI. Most of the markup (the `ls:` controls, the
-  `SmallBrownButtonStyle` / `TickBox` styles, the character-sheet layout, and the
-  `pack://application:,,,/Core;component/Assets/...` asset references) is Larian's
-  original work. Only the `NYS_*` elements added by this mod are original; the
-  surrounding markup is reproduced only to override the Examine page.
+- Every `.xaml` under `NameYourSummons/Mods/NameYourSummons/GUI/` except the mod's
+  own `Nys`-prefixed files (e.g. `NysHudOverlay.xaml`) - these override Larian's own
+  game UI (the keyboard and controller variants of the Examine page) and reproduce
+  its markup: the `ls:` controls, the `SmallBrownButtonStyle` / `TickBox` styles, the
+  character-sheet layout, and the `pack://application:,,,/Core;component/Assets/...`
+  asset references. Only the `NYS_*` elements this mod injects into them are original.
 - `assets/nys-rename.png`, `assets/nys-ingame.png`, `assets/nys-settings.png`,
   and `assets/mod-thumbnail.png` - screenshots depicting Baldur's Gate 3,
   included for documentation and preview art. `assets/mod-thumbnail.png` is
