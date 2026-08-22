@@ -823,6 +823,10 @@ function Watcher.RegisterNet()
 		if not isSummon(uuid) then
 			return { Owned = false }
 		end
+		-- Intentionally lenient advisory UX, not a security gate: the rename itself is not
+		-- owner-checked server-side, so a nil/unresolved viewer stays allowed (via IsNameVisible)
+		-- to avoid a happy-path flicker; the client retracts the controls if the summon turns
+		-- out to be another player's. Do not "fix" this to fail closed.
 		local ownerUser = reservedUser(Osi.CharacterGetOwner(uuid))
 		local viewerUser = reservedUser(type(data.ViewerCharacter) == "string" and data.ViewerCharacter or nil)
 		local hostOk, host = pcall(Osi.GetHostCharacter)
