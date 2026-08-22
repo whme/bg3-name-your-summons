@@ -231,7 +231,7 @@ local function collectSettings(v)
 	local toggles = get(v, "NysTypeToggles")
 	for index, cat in ipairs(Classifier.CATEGORIES) do
 		local toggle = toggles and toggles[index]
-		settings[Classifier.SettingKey(cat.key)] = toggle ~= nil and get(toggle, "NysChecked") == true
+		settings[Classifier.SettingKey(cat.key)] = (toggle and get(toggle, "NysChecked")) == true
 	end
 	return settings
 end
