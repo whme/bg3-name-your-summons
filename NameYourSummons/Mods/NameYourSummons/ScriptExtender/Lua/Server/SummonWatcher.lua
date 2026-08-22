@@ -440,12 +440,16 @@ end
 function Watcher.HandleSummon(summonGuid, rootTemplate, attempt)
 	attempt = attempt or 1
 	twatch("HandleSummon", { Summon = summonGuid, Template = rootTemplate, Attempt = attempt })
-	if not Osi.Exists(summonGuid) or Osi.Exists(summonGuid) == 0 then
+	local okExists, exists = pcall(Osi.Exists, summonGuid)
+	if okExists and exists ~= 1 then
 		twatch("HandleSummon: summon no longer exists", { Summon = summonGuid })
 		return
 	end
 
-	local ownerRaw = Osi.CharacterGetOwner(summonGuid)
+	local okOwner, ownerRaw = pcall(Osi.CharacterGetOwner, summonGuid)
+	if not okOwner then
+		ownerRaw = nil
+	end
 	if not ownerRaw or ownerRaw == "" then
 		-- The owner link is not wired up yet on some summon paths; retry briefly.
 		if attempt < 5 then

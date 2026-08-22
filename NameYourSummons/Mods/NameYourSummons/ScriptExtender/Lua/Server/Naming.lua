@@ -231,8 +231,8 @@ function Naming.OwnerOf(summon)
 	if not uuid then
 		return nil
 	end
-	local ownerRaw = Osi.CharacterGetOwner(uuid)
-	if not ownerRaw or ownerRaw == "" then
+	local ok, ownerRaw = pcall(Osi.CharacterGetOwner, uuid)
+	if not ok or not ownerRaw or ownerRaw == "" then
 		return nil
 	end
 	return Util.ToUuid(ownerRaw)
