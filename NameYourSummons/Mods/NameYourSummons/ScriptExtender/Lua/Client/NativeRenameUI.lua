@@ -338,7 +338,7 @@ end
 ---@return string|nil
 local function examinedSummonUuidIn(id)
 	local examine = examineNodeById(id)
-	if examine == nil then
+	if not examine then
 		return nil
 	end
 	local found
@@ -346,7 +346,7 @@ local function examinedSummonUuidIn(id)
 		local dc = safe(function()
 			return node.DataContext
 		end)
-		if dc == nil then
+		if not dc then
 			return false
 		end
 		local uuid = dcProp(dc, "EntityUUID")
