@@ -67,7 +67,7 @@ function Trace.Sanitize(value, depth, seen)
 			out["..."] = "entries capped"
 			break
 		end
-		local key = (type(k) == "string" or type(k) == "number") and k or tostring(k)
+		local key = (type(k) == "string" or type(k) == "number") and k or (safeCall(tostring, k) or "<key>")
 		out[key] = Trace.Sanitize(v, depth + 1, seen)
 	end
 	seen[value] = nil
