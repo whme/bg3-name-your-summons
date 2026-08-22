@@ -33,22 +33,22 @@ local TYPE_ORDER = {
 
 -- Toggle metadata for the config UI, in display order.
 Classifier.CATEGORIES = {
-	{ key = "Familiar", label = "Familiars (all, whatever their creature type)" },
-	{ key = "Beast", label = "Beasts / animals" },
-	{ key = "Undead", label = "Undead" },
-	{ key = "Elemental", label = "Elementals" },
-	{ key = "Fey", label = "Fey" },
-	{ key = "Fiend", label = "Fiends" },
-	{ key = "Celestial", label = "Celestials" },
-	{ key = "Construct", label = "Constructs" },
-	{ key = "Dragon", label = "Dragons" },
-	{ key = "Giant", label = "Giants" },
-	{ key = "Humanoid", label = "Humanoids" },
-	{ key = "Monstrosity", label = "Monstrosities" },
-	{ key = "Ooze", label = "Oozes" },
-	{ key = "Plant", label = "Plants" },
-	{ key = "Aberration", label = "Aberrations" },
-	{ key = "Untagged", label = "Other / untagged summons" },
+	{ key = "Familiar" },
+	{ key = "Beast" },
+	{ key = "Undead" },
+	{ key = "Elemental" },
+	{ key = "Fey" },
+	{ key = "Fiend" },
+	{ key = "Celestial" },
+	{ key = "Construct" },
+	{ key = "Dragon" },
+	{ key = "Giant" },
+	{ key = "Humanoid" },
+	{ key = "Monstrosity" },
+	{ key = "Ooze" },
+	{ key = "Plant" },
+	{ key = "Aberration" },
+	{ key = "Untagged" },
 }
 
 -- The master toggle: when on, every summon is eligible regardless of type.
