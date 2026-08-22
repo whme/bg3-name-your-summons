@@ -70,6 +70,16 @@ function TestSanitize:testEntriesCapped()
 	lu.assertEquals(out["..."], "entries capped")
 end
 
+function TestSanitize:testThrowingKeyBecomesPlaceholderKeepingValue()
+	local badKey = setmetatable({}, {
+		__tostring = function()
+			error("boom")
+		end,
+	})
+	local out = Trace.Sanitize({ [badKey] = "payload-value" })
+	lu.assertEquals(out["<key>"], "payload-value")
+end
+
 TestEntryFor = {}
 
 function TestEntryFor:testShapeAndSanitisedData()
@@ -139,4 +149,18 @@ function TestLogging:testLogNeverThrowsOnThrowingKeyTostring()
 		end,
 	})
 	lu.assertTrue(pcall(Trace.Log, "cat", "msg", { [badKey] = "v" }))
+end
+
+function TestLogging:testHostileKeyStillRecordsTheLine()
+	Trace.SetEnabled(true)
+	self.savedCalls = {}
+	local badKey = setmetatable({}, {
+		__tostring = function()
+			error("boom")
+		end,
+	})
+	Trace.Log("cat", "hostile", { [badKey] = "v" })
+	lu.assertEquals(#self.savedCalls, 1)
+	local _, rows = self.savedCalls[1].contents:gsub("\n", "")
+	lu.assertEquals(rows, 2)
 end
