@@ -19,7 +19,7 @@ Install both parts in order.
 | Step | How |
 |---|---|
 | 1. Script Extender | Download the latest updater from the [BG3SE releases](https://github.com/Norbyte/bg3se/releases) page and extract `DWrite.dll` into the game's `bin` folder, next to `bg3.exe` (e.g. `...\steamapps\common\Baldurs Gate 3\bin\`). It downloads and updates itself the next time you launch the game. |
-| 2. Name Your Summons | Download the latest `.pak` from the [Releases](https://github.com/whme/bg3-name-your-summons/releases) page and drop it in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`. |
+| 2. Name Your Summons | Download the latest `NameYourSummons-*.zip` from the [Releases](https://github.com/whme/bg3-name-your-summons/releases) page, extract the `.pak` from inside it, and drop that `.pak` in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\Mods\`. |
 | 3. Enable it | Launch the game and enable **Name Your Summons** from the **Mods** menu. |
 
 **Updating from 1.2.0 or earlier?** Delete the old versioned
