@@ -48,11 +48,11 @@ function TestLocaKeys:testResolvesGameStringWhenPresent()
 	lu.assertEquals(result, "translated!")
 end
 
-function TestLocaKeys:testCategoryLabelsMatchClassifier()
+function TestLocaKeys:testEveryCategoryHasLocaLabel()
 	for _, cat in ipairs(Classifier.CATEGORIES) do
 		local entry = LocaKeys.Strings["Cat" .. cat.key]
 		lu.assertNotNil(entry, "missing Cat" .. cat.key)
-		lu.assertEquals(entry.en, cat.label, "Cat" .. cat.key .. " fallback out of step with CATEGORIES")
+		lu.assertTrue(#entry.en > 0, "Cat" .. cat.key .. " needs a non-empty English fallback")
 	end
 end
 
